@@ -1,0 +1,12 @@
+build/
+dist/
+.vs/
+chaos_ai_v0.9.0/
+screenshots/
+verification/
+*.png
+*.obj
+*.exe
+*.pdb
+*.ilk
+*.log
