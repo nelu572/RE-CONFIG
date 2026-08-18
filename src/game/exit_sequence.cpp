@@ -1,0 +1,339 @@
+#include "exit_sequence.h"
+
+#include "game_config.h"
+
+static constexpr float EXIT_VISUAL_W = 74.0f;
+static constexpr float EXIT_VISUAL_H = 100.0f;
+static constexpr float EXIT_OPEN_DISTANCE = 120.0f;
+static constexpr float EXIT_DOOR_SPRING_STIFFNESS = 360.0f;
+static constexpr float EXIT_DOOR_SPRING_DAMPING = 26.0f;
+
+static float g_exit_open_amount = 0.0f;
+static float g_exit_open_velocity = 0.0f;
+static int g_room_solved = 0;
+static float g_room_transition_fade = 0.0f;
+static int g_room_transition_pending = -1;
+static uint32_t g_exit_color = 0x00f04a5b;
+static uint32_t g_exit_door_color = 0x00a83540;
+static uint32_t g_exit_soft_color = 0x006f3038;
+
+static float ExitClampF(float value, float lo, float hi) {
+    if (value < lo) return lo;
+    if (value > hi) return hi;
+    return value;
+}
+
+static float ExitAbsF(float value) {
+    return value < 0.0f ? -value : value;
+}
+
+static float ExitApproachF(float value, float target, float step) {
+    if (value < target) {
+        value += step;
+        if (value > target) value = target;
+    } else if (value > target) {
+        value -= step;
+        if (value < target) value = target;
+    }
+    return value;
+}
+
+static float ExitSmooth01(float value) {
+    value = ExitClampF(value, 0.0f, 1.0f);
+    return value * value * (3.0f - 2.0f * value);
+}
+
+static uint32_t ExitFadeColor(uint32_t color, float fade) {
+    fade = ExitClampF(fade, 0.0f, 1.0f);
+    int r = (int)((float)((color >> 16) & 255) * fade);
+    int g = (int)((float)((color >> 8) & 255) * fade);
+    int b = (int)((float)(color & 255) * fade);
+    return (uint32_t)((r << 16) | (g << 8) | b);
+}
+
+static float ExitSpringF(float value, float* velocity, float target, float dt, float stiffness, float damping) {
+    float accel = (target - value) * stiffness - *velocity * damping;
+    *velocity += accel * dt;
+    value += *velocity * dt;
+    if (ExitAbsF(target - value) < 0.0005f && ExitAbsF(*velocity) < 0.0005f) {
+        value = target;
+        *velocity = 0.0f;
+    }
+    return value;
+}
+
+static RectI ExitClampRect(RectI rect) {
+    if (rect.x < 0) {
+        rect.w += rect.x;
+        rect.x = 0;
+    }
+    if (rect.y < 0) {
+        rect.h += rect.y;
+        rect.y = 0;
+    }
+    if (rect.x + rect.w > FB_W) {
+        rect.w = FB_W - rect.x;
+    }
+    if (rect.y + rect.h > FB_H) {
+        rect.h = FB_H - rect.y;
+    }
+    if (rect.w < 0) rect.w = 0;
+    if (rect.h < 0) rect.h = 0;
+    return rect;
+}
+
+static int PlayerNearExit(const RectF* player, const RectF* exit_rect) {
+    float dx = 0.0f;
+    if (player->x + player->w < exit_rect->x) {
+        dx = exit_rect->x - (player->x + player->w);
+    } else if (exit_rect->x + exit_rect->w < player->x) {
+        dx = player->x - (exit_rect->x + exit_rect->w);
+    }
+
+    float dy = 0.0f;
+    if (player->y + player->h < exit_rect->y) {
+        dy = exit_rect->y - (player->y + player->h);
+    } else if (exit_rect->y + exit_rect->h < player->y) {
+        dy = player->y - (exit_rect->y + exit_rect->h);
+    }
+
+    return dx * dx + dy * dy <= EXIT_OPEN_DISTANCE * EXIT_OPEN_DISTANCE;
+}
+
+static int CircleSpanAtY(int x, int w, int center_y, int radius, int yy, int* left, int* right) {
+    int center_x2 = x * 2 + w;
+    int center_y2 = center_y * 2;
+    int radius2 = radius * 2;
+    int limit = radius2 * radius2;
+    int py2 = yy * 2 + 1;
+    int dy = py2 - center_y2;
+
+    *left = x;
+    *right = x + w;
+    while (*left < *right) {
+        int px2 = *left * 2 + 1;
+        int dx = px2 - center_x2;
+        if (dx * dx + dy * dy <= limit) {
+            break;
+        }
+        ++(*left);
+    }
+    if (*left >= *right) {
+        return 0;
+    }
+    while (*right > *left) {
+        int px2 = (*right - 1) * 2 + 1;
+        int dx = px2 - center_x2;
+        if (dx * dx + dy * dy <= limit) {
+            break;
+        }
+        --(*right);
+    }
+    return *right > *left;
+}
+
+static void DrawBlendRect(RenderContext* render, int x, int y, int w, int h, uint32_t color, float alpha) {
+    alpha = ExitClampF(alpha, 0.0f, 1.0f);
+    int a = (int)(alpha * 256.0f + 0.5f);
+    if (a <= 0 || w <= 0 || h <= 0) {
+        return;
+    }
+    if (a > 256) a = 256;
+    int sx = x * render->scale;
+    int sy = y * render->scale;
+    int sw = w * render->scale;
+    int sh = h * render->scale;
+    if (sx < 0) { sw += sx; sx = 0; }
+    if (sy < 0) { sh += sy; sy = 0; }
+    if (sx + sw > render->width) sw = render->width - sx;
+    if (sy + sh > render->height) sh = render->height - sy;
+    if (sw <= 0 || sh <= 0) {
+        return;
+    }
+
+    int sr = (int)((color >> 16) & 255);
+    int sg = (int)((color >> 8) & 255);
+    int sb = (int)(color & 255);
+    int inv = 256 - a;
+    for (int yy = sy; yy < sy + sh; ++yy) {
+        uint32_t* row = render->pixels + yy * render->width + sx;
+        for (int xx = 0; xx < sw; ++xx) {
+            uint32_t dst = row[xx];
+            int dr = (int)((dst >> 16) & 255);
+            int dg = (int)((dst >> 8) & 255);
+            int db = (int)(dst & 255);
+            row[xx] = (uint32_t)((((sr * a + dr * inv) >> 8) << 16) |
+                                 (((sg * a + dg * inv) >> 8) << 8) |
+                                 ((sb * a + db * inv) >> 8));
+        }
+    }
+}
+
+static void FillExitDoor(RenderContext* render, int x, int y, int w, int h, int thickness, float open_amount) {
+    int radius = w / 2;
+    int overlap = 2;
+    int inner_x = x + thickness - overlap;
+    int inner_w = w - thickness * 2 + overlap * 2;
+    int inner_radius = inner_w / 2;
+    int center_y = y + radius;
+    int inner_top = center_y - inner_radius;
+    int inner_bottom = y + h;
+    int inner_h = inner_bottom - inner_top;
+    int door_y = inner_top - (int)(ExitClampF(open_amount, 0.0f, 1.08f) * (float)inner_h + 0.5f);
+    int door_bottom = door_y + inner_h;
+    if (door_y < inner_top) door_y = inner_top;
+    if (door_bottom > inner_bottom) door_bottom = inner_bottom;
+
+    for (int yy = door_y; yy < door_bottom; ++yy) {
+        int left = inner_x;
+        int right = inner_x + inner_w;
+        if (yy < center_y) {
+            if (!CircleSpanAtY(inner_x, inner_w, center_y, inner_radius, yy, &left, &right)) {
+                continue;
+            }
+        }
+        if (right > left) {
+            DrawRect(render, left, yy, right - left, 1, g_exit_door_color);
+        }
+    }
+}
+
+static void DrawExitFrame(RenderContext* render, int x, int y, int w, int h, int thickness) {
+    int radius = w / 2;
+    int inner_radius = radius - thickness;
+    int center_x = x + radius;
+    int center_y = y + radius;
+
+    for (int yy = y; yy < y + radius; ++yy) {
+        int outer_left = center_x;
+        int outer_right = center_x;
+        if (!CircleSpanAtY(x, w, center_y, radius, yy, &outer_left, &outer_right)) {
+            continue;
+        }
+
+        int inner_left = center_x;
+        int inner_right = center_x;
+        int has_inner = CircleSpanAtY(x + thickness, w - thickness * 2, center_y, inner_radius, yy, &inner_left, &inner_right);
+        if (!has_inner) {
+            DrawRect(render, outer_left, yy, outer_right - outer_left, 1, g_exit_color);
+            continue;
+        }
+
+        if (inner_left > outer_left) {
+            DrawRect(render, outer_left, yy, inner_left - outer_left, 1, g_exit_color);
+        }
+        if (outer_right > inner_right) {
+            DrawRect(render, inner_right, yy, outer_right - inner_right, 1, g_exit_color);
+        }
+    }
+
+    DrawRect(render, x, y + radius, thickness, h - radius, g_exit_color);
+    DrawRect(render, x + w - thickness, y + radius, thickness, h - radius, g_exit_color);
+}
+
+void ExitSequenceSetExitColor(uint32_t exit_color) {
+    g_exit_color = exit_color;
+    g_exit_door_color = ExitFadeColor(exit_color, 0.70f);
+    g_exit_soft_color = ExitFadeColor(exit_color, 0.48f);
+}
+
+void ExitSequenceResetStageState() {
+    g_room_solved = 0;
+    g_exit_open_amount = 0.0f;
+    g_exit_open_velocity = 0.0f;
+}
+
+void ExitSequenceUpdateDoor(float dt, const RectF* player_rect, const RectF* exit_rect) {
+    float target = PlayerNearExit(player_rect, exit_rect) ? 1.0f : 0.0f;
+    g_exit_open_amount = ExitSpringF(g_exit_open_amount,
+                                     &g_exit_open_velocity,
+                                     target,
+                                     dt,
+                                     EXIT_DOOR_SPRING_STIFFNESS,
+                                     EXIT_DOOR_SPRING_DAMPING);
+    g_exit_open_amount = ExitClampF(g_exit_open_amount, -0.08f, 1.08f);
+}
+
+void ExitSequenceStartTransition(int room) {
+    if (room >= 0 && room < RoomCount()) {
+        g_room_transition_pending = room;
+        g_room_transition_fade = 0.001f;
+    }
+}
+
+int ExitSequenceUpdateTransition(float dt, int* current_room, ExitSequenceResetStageCallback reset_stage, void* reset_user_data) {
+    if (g_room_transition_pending >= 0) {
+        g_room_transition_fade = ExitApproachF(g_room_transition_fade, 1.0f, dt * 5.5f);
+        if (g_room_transition_fade >= 0.999f) {
+            *current_room = g_room_transition_pending;
+            g_room_transition_pending = -1;
+            reset_stage(reset_user_data);
+            g_room_transition_fade = 1.0f;
+        }
+        return 1;
+    }
+    if (g_room_transition_fade > 0.0f) {
+        g_room_transition_fade = ExitApproachF(g_room_transition_fade, 0.0f, dt * 4.7f);
+    }
+    return g_room_transition_fade > 0.001f;
+}
+
+int ExitSequenceTransitionVisible() {
+    return g_room_transition_pending >= 0 || g_room_transition_fade > 0.001f;
+}
+
+void ExitSequenceSetRoomSolved(int solved) {
+    g_room_solved = solved;
+}
+
+int ExitSequenceRoomSolved() {
+    return g_room_solved;
+}
+
+RectF ExitSequenceVisualRect(const RectF* exit_rect) {
+    RectF visual;
+    visual.x = exit_rect->x + exit_rect->w * 0.5f - EXIT_VISUAL_W * 0.5f;
+    visual.y = exit_rect->y + exit_rect->h - EXIT_VISUAL_H;
+    visual.w = EXIT_VISUAL_W;
+    visual.h = EXIT_VISUAL_H;
+    return visual;
+}
+
+RectI ExitSequenceDirtyRect(const RectF* exit_rect) {
+    RectF visual = ExitSequenceVisualRect(exit_rect);
+    RectI rect = {
+        (int)(visual.x + 0.5f) - 14,
+        (int)(visual.y + 0.5f) - 14,
+        (int)(visual.w + 0.5f) + 28,
+        (int)(visual.h + 0.5f) + 28
+    };
+    return ExitClampRect(rect);
+}
+
+void ExitSequenceDrawExit(RenderContext* render, const RectF* exit_rect) {
+    RectF visual = ExitSequenceVisualRect(exit_rect);
+    int x = (int)(visual.x + 0.5f);
+    int y = (int)(visual.y + 0.5f);
+    int w = (int)(visual.w + 0.5f);
+    int h = (int)(visual.h + 0.5f);
+    int thickness = 8;
+
+    FillExitDoor(render, x, y, w, h, thickness, g_exit_open_amount);
+    DrawExitFrame(render, x, y, w, h, thickness);
+}
+
+void ExitSequenceDrawSolvedUi(RenderContext* render, uint32_t text_color, ExitSequenceDrawTextSmallCallback draw_text_small) {
+    if (!g_room_solved) {
+        return;
+    }
+    DrawRect(render, 1492, 62, 92, 3, g_exit_color);
+    DrawRect(render, 1492, 74, 44, 2, g_exit_soft_color);
+    draw_text_small(1602, 52, "CLEAR", 3, text_color);
+}
+
+void ExitSequenceDrawTransition(RenderContext* render) {
+    if (!ExitSequenceTransitionVisible()) {
+        return;
+    }
+    DrawBlendRect(render, 0, 0, FB_W, FB_H, 0x00292324, ExitSmooth01(g_room_transition_fade));
+}
