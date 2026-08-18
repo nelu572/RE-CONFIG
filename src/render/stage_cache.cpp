@@ -79,7 +79,7 @@ static void CaptureCachedFrameState(const StageCacheState* state) {
     g_prev_room_solved = state->room_solved;
     g_prev_context_room = state->current_room;
     g_prev_tutorial_hint_visible = state->tutorial_hint_visible;
-    g_prev_tutorial_hint_dirty = TutorialUiWorldHintDirtyRect(state->render, state->room);
+    g_prev_tutorial_hint_dirty = TutorialUiWorldHintDirtyRect(state->render, state->room, state->player);
     g_prev_type_a_bump_visible = state->type_a_bump_visible;
     g_prev_type_a_setting_feedback_visible = state->type_a_setting_feedback_visible;
     g_prev_transition_visible = state->transition_visible;
@@ -127,7 +127,7 @@ void StageCacheDrawCached(const StageCacheState* state, StageCacheDrawCallback d
     if (state->tutorial_hint_visible || g_prev_tutorial_hint_visible ||
         state->current_room != g_prev_context_room) {
         dirty[count++] = g_prev_tutorial_hint_dirty;
-        dirty[count++] = TutorialUiWorldHintDirtyRect(state->render, state->room);
+        dirty[count++] = TutorialUiWorldHintDirtyRect(state->render, state->room, state->player);
     }
     if (state->type_a_bump_visible || g_prev_type_a_bump_visible ||
         state->current_room != g_prev_context_room) {

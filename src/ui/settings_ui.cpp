@@ -38,6 +38,8 @@ static int g_settings_full_dirty = 0;
 static int g_settings_dirty = 1;
 static int g_settings_cache_valid = 0;
 static int g_settings_cache_building = 0;
+static int g_settings_tutorial_target_active = 0;
+static float g_settings_tutorial_pulse_seconds = 0.0f;
 static uint32_t g_settings_cache_supersample_pixels[RENDER_W * RENDER_H];
 static unsigned char g_settings_cache_alpha[RENDER_W * RENDER_H];
 static const uint32_t COL_TUTORIAL_TARGET = 0x0035cfc3;
@@ -55,6 +57,14 @@ static float SettingsAbsF(float v) {
 static float SettingsSmooth01(float value) {
     value = SettingsClampF(value, 0.0f, 1.0f);
     return value * value * (3.0f - 2.0f * value);
+}
+
+static float SettingsPulse01(float seconds) {
+    const float cycle_seconds = 0.86f;
+    float phase = seconds / cycle_seconds;
+    phase -= (float)((int)phase);
+    float triangle = phase < 0.5f ? phase * 2.0f : (1.0f - phase) * 2.0f;
+    return SettingsSmooth01(triangle);
 }
 
 static float SettingsApproachF(float value, float target, float step) {
@@ -342,6 +352,15 @@ void SettingsUiMarkFullDirty() {
     g_settings_dirty = 1;
 }
 
+static void SettingsSetTutorialTargetActive(int active) {
+    active = active ? 1 : 0;
+    if (g_settings_tutorial_target_active != active) {
+        g_settings_tutorial_target_active = active;
+        g_settings_tutorial_pulse_seconds = 0.0f;
+        g_settings_dirty = 1;
+    }
+}
+
 void SettingsUiClearDirty() {
     g_settings_full_dirty = 0;
     g_settings_dirty = 0;
@@ -416,6 +435,15 @@ void SettingsUiUpdateFade(float dt) {
     g_settings_fade = SettingsApproachF(g_settings_fade, target, dt * 6.4f);
     g_settings_motion = SettingsApproachF(g_settings_motion, target, dt * 7.2f);
     g_settings_content_motion = SettingsEaseOutFollowF(g_settings_content_motion, 1.0f, dt, 18.0f);
+    if (g_settings_open && g_settings_tutorial_target_active) {
+        g_settings_tutorial_pulse_seconds += dt;
+        if (g_settings_tutorial_pulse_seconds > 60.0f) {
+            g_settings_tutorial_pulse_seconds -= 60.0f;
+        }
+        g_settings_dirty = 1;
+    } else if (!g_settings_tutorial_target_active) {
+        g_settings_tutorial_pulse_seconds = 0.0f;
+    }
 
     if (old_fade != g_settings_fade ||
         old_motion != g_settings_motion ||
@@ -637,7 +665,18 @@ static void DrawSettingsCategoryRow(int x, int y, SettingsCategory category, flo
         color = COL_TUTORIAL_TARGET;
     }
     int bold = selected_alpha > 0.985f && g_settings_focus == SETTINGS_FOCUS_CATEGORY ? 1 : 0;
-    DrawTextUi(x, y - 1, SettingsCategoryAt(category)->name, 23, SettingsFadeColor(color, fade), bold);
+    int text_size = 23;
+    int draw_x = x;
+    int draw_y = y - 1;
+    if (tutorial_target) {
+        int size_delta = (int)(SettingsPulse01(g_settings_tutorial_pulse_seconds) * 4.0f + 0.5f);
+        text_size += size_delta;
+        int base_w = SettingsEstimateTextWidth(SettingsCategoryAt(category)->name, 23);
+        int pulse_w = SettingsEstimateTextWidth(SettingsCategoryAt(category)->name, text_size);
+        draw_x -= (pulse_w - base_w) / 2;
+        draw_y -= size_delta / 2;
+    }
+    DrawTextUi(draw_x, draw_y, SettingsCategoryAt(category)->name, text_size, SettingsFadeColor(color, fade), bold);
     if (tutorial_target) {
         DrawTutorialTargetUnderline(x, y + 28, SettingsCategoryAt(category)->name, 23, fade);
     }
@@ -750,7 +789,18 @@ static void DrawSettingsItemRow(int x, int y, int w, const SettingsItemDef* item
     if (tutorial_target) {
         name_color = SettingsFadeColor(COL_TUTORIAL_TARGET, fade);
     }
-    DrawTextUi(x, y, item->name, 23, name_color, 0);
+    int text_size = 23;
+    int draw_x = x;
+    int draw_y = y;
+    if (tutorial_target) {
+        int size_delta = (int)(SettingsPulse01(g_settings_tutorial_pulse_seconds) * 4.0f + 0.5f);
+        text_size += size_delta;
+        int base_w = SettingsEstimateTextWidth(item->name, 23);
+        int pulse_w = SettingsEstimateTextWidth(item->name, text_size);
+        draw_x -= (pulse_w - base_w) / 2;
+        draw_y -= size_delta / 2;
+    }
+    DrawTextUi(draw_x, draw_y, item->name, text_size, name_color, 0);
     if (tutorial_target) {
         DrawTutorialTargetUnderline(x, y + 29, item->name, 23, fade);
     }
@@ -762,6 +812,7 @@ void SettingsUiDrawMenu(const SettingsUiColors* colors, const SettingsUiTutorial
     if (fade <= 0.001f || !g_settings_render) {
         return;
     }
+    SettingsSetTutorialTargetActive(tutorial && tutorial->active);
     float motion = SettingsSmooth01(g_settings_motion);
     float content_motion = SettingsSmooth01(g_settings_content_motion);
     const int panel_w = 1120;
@@ -782,8 +833,7 @@ void SettingsUiDrawMenu(const SettingsUiColors* colors, const SettingsUiTutorial
     for (int i = 0; i < SETTINGS_CATEGORY_COUNT; ++i) {
         float selected_alpha = g_settings_category_alpha[i];
         int row_y = panel_y + 164 + i * 62;
-        int current_focus = g_settings_focus == SETTINGS_FOCUS_CATEGORY && i == g_settings_category_selection;
-        int tutorial_target = tutorial->mark_system_category && i == SETTINGS_SYSTEM && !current_focus;
+        int tutorial_target = tutorial->mark_system_category && i == SETTINGS_SYSTEM;
         if (i == g_settings_category_selection && selected_alpha > 0.001f) {
             DrawSettingsCategoryIndicator(panel_x + 78, row_y, g_settings_focus == SETTINGS_FOCUS_CATEGORY, selected_alpha, fade, colors);
         }
@@ -815,11 +865,8 @@ void SettingsUiDrawMenu(const SettingsUiColors* colors, const SettingsUiTutorial
             if (item_index >= 0) {
                 const SettingsItemDef* item = SettingsItemAt(item_index);
                 int item_y = panel_y + 178 + i * 74;
-                int current_focus = g_settings_focus == SETTINGS_FOCUS_ITEM &&
-                                    item_index == SelectedSettingsItemIndex();
                 int tutorial_target = tutorial->mark_type_a_setting &&
-                                      item->feature == FEATURE_COLLISION_TYPE_A &&
-                                      !current_focus;
+                                      item->feature == FEATURE_COLLISION_TYPE_A;
                 DrawSettingsItemRow(content_x + 32, item_y, row_w - 64, item, item_index, tutorial_target, colors);
                 if (i + 1 < count) {
                     DrawRect(g_settings_render, content_x + 32, item_y + 50, row_w - 96, 1, SettingsFadeColor(colors->type_a, content_fade * (0.28f + right_area_strength * 0.22f)));

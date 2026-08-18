@@ -11,12 +11,14 @@ static const RectF g_room00_platforms[] = {
 };
 
 static const RectF g_room01_platforms[] = {
-    { T(6),  T(21), T(36), T(6) },
-    { T(20), T(13), T(4),  T(1) },
+    { T(0),  T(0),  T(48), T(4) },
+    { T(0),  T(21), T(48), T(6) },
+    { T(0),  T(4),  T(3),  T(17) },
+    { T(45), T(4),  T(3),  T(17) },
 };
 
 static const RectF g_room01_type_a_walls[] = {
-    { T(21), T(14), T(2), T(7) },
+    { T(23), T(4), T(2), T(17) },
 };
 
 static const RoomDef g_rooms[] = {

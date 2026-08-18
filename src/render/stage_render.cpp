@@ -61,21 +61,66 @@ static void DrawObjectClippedRect(const StageRenderState* state,
     DrawRect(state->render, x0, y0, x1 - x0, y1 - y0, color);
 }
 
-static void DrawTypeABrickTilePattern(const StageRenderState* state, int object_x, int object_y, int object_w, int object_h, int tile_x, int tile_y, uint32_t pattern_color) {
-    uint32_t block = pattern_color;
-    DrawObjectClippedRect(state, object_x, object_y, object_w, object_h, tile_x + 2, tile_y + 3, 36, 9, block);
-    DrawObjectClippedRect(state, object_x, object_y, object_w, object_h, tile_x, tile_y + 16, 18, 9, block);
-    DrawObjectClippedRect(state, object_x, object_y, object_w, object_h, tile_x + 22, tile_y + 16, 18, 9, block);
-    DrawObjectClippedRect(state, object_x, object_y, object_w, object_h, tile_x + 2, tile_y + 29, 36, 8, block);
+struct TypeABrickPatternRect {
+    int x;
+    int y;
+    int w;
+    int h;
+};
+
+static const TypeABrickPatternRect g_type_a_brick_pattern_rects[] = {
+    { 0, 6, 17, 14 },
+    { 23, 6, 17, 14 },
+    { 0, 26, 4, 14 },
+    { 10, 26, 20, 14 },
+    { 36, 26, 4, 14 },
+};
+
+static const TypeABrickPatternRect g_type_a_brick_pattern_alt_rects[] = {
+    { 0, 6, 4, 14 },
+    { 10, 6, 20, 14 },
+    { 36, 6, 4, 14 },
+    { 0, 26, 17, 14 },
+    { 23, 26, 17, 14 },
+};
+
+static void DrawTypeABrickTilePattern(const StageRenderState* state,
+                                      int object_x,
+                                      int object_y,
+                                      int object_w,
+                                      int object_h,
+                                      int tile_x,
+                                      int tile_y,
+                                      int tile_col,
+                                      uint32_t pattern_color) {
+    const TypeABrickPatternRect* rects = g_type_a_brick_pattern_rects;
+    int rect_count = (int)(sizeof(g_type_a_brick_pattern_rects) / sizeof(g_type_a_brick_pattern_rects[0]));
+    if ((tile_col & 1) != 0) {
+        rects = g_type_a_brick_pattern_alt_rects;
+        rect_count = (int)(sizeof(g_type_a_brick_pattern_alt_rects) / sizeof(g_type_a_brick_pattern_alt_rects[0]));
+    }
+    for (int i = 0; i < rect_count; ++i) {
+        const TypeABrickPatternRect* rect = &rects[i];
+        DrawObjectClippedRect(state,
+                              object_x,
+                              object_y,
+                              object_w,
+                              object_h,
+                              tile_x + rect->x,
+                              tile_y + rect->y,
+                              rect->w,
+                              rect->h,
+                              pattern_color);
+    }
 }
 
 static void DrawTypeATilePattern(const StageRenderState* state, int x, int y, int w, int h, uint32_t pattern_color) {
     const int tile_size = 40;
     for (int local_y = 0; local_y < h; local_y += tile_size) {
-        for (int local_x = 0; local_x < w; local_x += tile_size) {
+        for (int local_x = 0, tile_col = 0; local_x < w; local_x += tile_size, ++tile_col) {
             int tile_x = x + local_x;
             int tile_y = y + local_y;
-            DrawTypeABrickTilePattern(state, x, y, w, h, tile_x, tile_y, pattern_color);
+            DrawTypeABrickTilePattern(state, x, y, w, h, tile_x, tile_y, tile_col, pattern_color);
         }
     }
 }
@@ -100,94 +145,64 @@ static float StageWrap01(float value) {
     return value;
 }
 
-static void DrawObjectClippedOutlinePathPoint(const StageRenderState* state,
-                                              int object_x,
-                                              int object_y,
-                                              int object_w,
-                                              int object_h,
-                                              int x,
-                                              int y,
-                                              int w,
-                                              int h,
-                                              int path_pos,
-                                              uint32_t color) {
-    int px = x;
-    int py = y;
-    int top_len = w;
-    int right_len = h - 1;
-    int bottom_len = w - 1;
-    int left_len = h - 2;
-    if (path_pos < top_len) {
-        px = x + path_pos;
-        py = y;
-    } else if ((path_pos -= top_len) < right_len) {
-        px = x + w - 1;
-        py = y + 1 + path_pos;
-    } else if ((path_pos -= right_len) < bottom_len) {
-        px = x + w - 2 - path_pos;
-        py = y + h - 1;
-    } else {
-        path_pos -= bottom_len;
-        px = x;
-        py = y + h - 2 - path_pos;
-    }
-    DrawObjectClippedRect(state,
-                          object_x,
-                          object_y,
-                          object_w,
-                          object_h,
-                          px,
-                          py,
-                          state->type_a_off_line_thickness,
-                          state->type_a_off_line_thickness,
-                          color);
+static uint32_t StageScaleColor(uint32_t color, float scale) {
+    scale = StageClampF(scale, 0.0f, 1.0f);
+    int r = (int)((float)((color >> 16) & 255) * scale + 0.5f);
+    int g = (int)((float)((color >> 8) & 255) * scale + 0.5f);
+    int b = (int)((float)(color & 255) * scale + 0.5f);
+    return (uint32_t)((r << 16) | (g << 8) | b);
 }
 
-static void DrawObjectClippedAnimatedOutlineSegment(const StageRenderState* state,
-                                                    int object_x,
-                                                    int object_y,
-                                                    int object_w,
-                                                    int object_h,
-                                                    int x,
-                                                    int y,
-                                                    int w,
-                                                    int h,
-                                                    int tile_col,
-                                                    int tile_row,
-                                                    int brick_index,
-                                                    uint32_t color) {
-    int perimeter = w + (h - 1) + (w - 1) + (h - 2);
-    if (perimeter <= 0) {
+static void DrawObjectClippedRectOutline(const StageRenderState* state,
+                                         int object_x,
+                                         int object_y,
+                                         int object_w,
+                                         int object_h,
+                                         int x,
+                                         int y,
+                                         int w,
+                                         int h,
+                                         int thickness,
+                                         uint32_t color) {
+    if (w <= 0 || h <= 0 || thickness <= 0) {
         return;
     }
-
-    const float cycle_seconds = 1.5f;
-    float offset = (float)((tile_col * 5 + tile_row * 9 + brick_index * 7) % 19) / 19.0f;
-    float phase = StageWrap01((float)(state->render_time_seconds / cycle_seconds) + offset);
-    int start = (int)(phase * (float)perimeter);
-    for (int i = 0; i < state->type_a_off_visible_path_len; ++i) {
-        int path_pos = start + i;
-        while (path_pos >= perimeter) {
-            path_pos -= perimeter;
-        }
-        DrawObjectClippedOutlinePathPoint(state, object_x, object_y, object_w, object_h, x, y, w, h, path_pos, color);
-    }
+    DrawObjectClippedRect(state, object_x, object_y, object_w, object_h, x, y, w, thickness, color);
+    DrawObjectClippedRect(state, object_x, object_y, object_w, object_h, x, y + h - thickness, w, thickness, color);
+    DrawObjectClippedRect(state, object_x, object_y, object_w, object_h, x, y, thickness, h, color);
+    DrawObjectClippedRect(state, object_x, object_y, object_w, object_h, x + w - thickness, y, thickness, h, color);
 }
 
-static void DrawTypeABrickTileAnimatedTrace(const StageRenderState* state,
-                                            int object_x,
-                                            int object_y,
-                                            int object_w,
-                                            int object_h,
-                                            int tile_x,
-                                            int tile_y,
-                                            int tile_col,
-                                            int tile_row,
-                                            uint32_t color) {
-    DrawObjectClippedAnimatedOutlineSegment(state, object_x, object_y, object_w, object_h, tile_x + 2, tile_y + 3, 36, 9, tile_col, tile_row, 0, color);
-    DrawObjectClippedAnimatedOutlineSegment(state, object_x, object_y, object_w, object_h, tile_x, tile_y + 16, 18, 9, tile_col, tile_row, 1, color);
-    DrawObjectClippedAnimatedOutlineSegment(state, object_x, object_y, object_w, object_h, tile_x + 22, tile_y + 16, 18, 9, tile_col, tile_row, 2, color);
-    DrawObjectClippedAnimatedOutlineSegment(state, object_x, object_y, object_w, object_h, tile_x + 2, tile_y + 29, 36, 8, tile_col, tile_row, 3, color);
+static void DrawTypeABrickTileWireTrace(const StageRenderState* state,
+                                        int object_x,
+                                        int object_y,
+                                        int object_w,
+                                        int object_h,
+                                        int tile_x,
+                                        int tile_y,
+                                        int tile_col,
+                                        int tile_row,
+                                        uint32_t color) {
+    const TypeABrickPatternRect* rects = g_type_a_brick_pattern_rects;
+    int rect_count = (int)(sizeof(g_type_a_brick_pattern_rects) / sizeof(g_type_a_brick_pattern_rects[0]));
+    if ((tile_col & 1) != 0) {
+        rects = g_type_a_brick_pattern_alt_rects;
+        rect_count = (int)(sizeof(g_type_a_brick_pattern_alt_rects) / sizeof(g_type_a_brick_pattern_alt_rects[0]));
+    }
+    for (int i = 0; i < rect_count; ++i) {
+        const TypeABrickPatternRect* rect = &rects[i];
+        DrawObjectClippedRectOutline(state,
+                                     object_x,
+                                     object_y,
+                                     object_w,
+                                     object_h,
+                                     tile_x + rect->x,
+                                     tile_y + rect->y,
+                                     rect->w,
+                                     rect->h,
+                                     1,
+                                     color);
+    }
 }
 
 static void DrawTypeAOffAnimatedTrace(const StageRenderState* state, const RectF* wall, uint32_t pattern_color) {
@@ -196,18 +211,19 @@ static void DrawTypeAOffAnimatedTrace(const StageRenderState* state, const RectF
     int w = (int)(wall->w + 0.5f);
     int h = (int)(wall->h + 0.5f);
     const int tile_size = 40;
-    for (int local_y = 0; local_y < h; local_y += tile_size) {
-        for (int local_x = 0; local_x < w; local_x += tile_size) {
-            DrawTypeABrickTileAnimatedTrace(state,
-                                            x,
-                                            y,
-                                            w,
-                                            h,
-                                            x + local_x,
-                                            y + local_y,
-                                            local_x / tile_size,
-                                            local_y / tile_size,
-                                            pattern_color);
+    uint32_t trace_color = StageScaleColor(pattern_color, 0.42f);
+    for (int local_y = 0, tile_row = 0; local_y < h; local_y += tile_size, ++tile_row) {
+        for (int local_x = 0, tile_col = 0; local_x < w; local_x += tile_size, ++tile_col) {
+            DrawTypeABrickTileWireTrace(state,
+                                        x,
+                                        y,
+                                        w,
+                                        h,
+                                        x + local_x,
+                                        y + local_y,
+                                        tile_col,
+                                        tile_row,
+                                        trace_color);
         }
     }
 }
@@ -279,7 +295,7 @@ static void DrawSettingsMenu(const StageRenderState* state) {
 }
 
 static void DrawContextUi(const StageRenderState* state) {
-    TutorialUiDrawWorldHint(state->render, state->room);
+    TutorialUiDrawWorldHint(state->render, state->room, state->player);
     ExitSequenceDrawSolvedUi(state->render, state->text_color, state->draw_text_small);
     ExitSequenceDrawTransition(state->render);
 }
