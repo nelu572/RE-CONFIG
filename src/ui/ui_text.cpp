@@ -262,7 +262,7 @@ static void WarmTextCacheEntry(const wchar_t* text, int size, int bold) {
 }
 
 void UiTextWarmSettingsTextCache() {
-    WarmTextCacheEntry(L"SETTINGS", 32, 0);
+    WarmTextCacheEntry(L"설정", 32, 0);
     WarmTextCacheEntry(L"X", 26, 0);
     WarmTextCacheEntry(L"ON", 21, 0);
     WarmTextCacheEntry(L"ON", 21, 1);

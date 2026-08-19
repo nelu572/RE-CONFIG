@@ -18,7 +18,7 @@
 - Red를 특정 기믹만의 의미색으로 고정하지 않는다.
 - 플랫폼은 하나의 완전히 평평한 단색 면으로 유지한다.
 - 텍스처, 그라데이션, 그림자, 배경 장식, 픽셀 장식, 불필요한 외곽선은 추가하지 않는다.
-- 팔레트 값은 현재 인게임 테스트 기준이며, 최종 아트 확정 전까지 실제 화면 평가에 따라 조정될 수 있다.
+- 팔레트 값은 ROOM 00~01 인게임 테스트 기준이며, 최종 아트 확정 전까지 실제 화면 평가에 따라 조정될 수 있다.
 
 ## 현재 컬러 팔레트와 역할 규칙
 
@@ -35,12 +35,12 @@
 | BRICK WALL | Base `#CB4855`, Pattern `#E78D96` | `BRICK 충돌` 설정의 영향을 받는 벽/블록 계열 오브젝트. Main Color와 같은 Hue의 명도/채도 variation 및 벽돌 표면 문법으로 식별한다. |
 | EXIT | `#F04A5B` | EXIT 프레임. 목적지 역할이므로 플랫폼보다 한 단계 선명하게 강조한다. |
 | EXIT 내부 | `#A83540` | EXIT 문 내부 파생색 |
-| Tutorial Accent | `#35CFC3` | 튜토리얼/조작 안내 전용 |
+| Focus Accent | `#35CFC3` | SETTINGS에서 현재 사용자가 조작 중인 포커스. 튜토리얼 유도는 이 색 자체가 아니라 얇은 underline/marker 점멸로 보조한다. |
 | Off / Neutral | `#9A908D` | OFF, 비활성 상태 텍스트 |
 
 BRICK은 플레이어에게 막는 벽/블록 계열 오브젝트로 인식되는 기믹 명칭이다. 내부 구현에는 `type_a` 명칭이 남아 있을 수 있지만, 플레이어 노출 명칭과 기획 문서에서는 `BRICK WALL`, `BRICK 충돌`을 기준으로 쓴다. A 글자, 경고표시, 아이콘, 큰 X는 사용하지 않는다.
 
-Cyan은 세계 오브젝트 색으로 사용하지 않고 튜토리얼/조작 안내 전용 Accent로 제한한다. BRICK 충돌 OFF 상태는 ON 상태의 OFFSET BRICK 구조를 기준으로 유지하되, 통과 가능한 상태가 즉시 읽히도록 Base 면을 제거하고 벽돌 outline의 일부 선분만 시간에 따라 순환하는 표현을 검토한다.
+Cyan은 세계 오브젝트 색으로 사용하지 않고 SETTINGS의 현재 포커스 색으로 제한한다. BRICK 충돌 OFF 상태는 ON 상태의 OFFSET BRICK 구조를 기준으로 유지하되, 통과 가능한 상태가 즉시 읽히도록 Base 면을 제거하고 낮은 명도의 outline wire로 표현한다. 시간에 따라 일부 선분만 순환하는 animated trace는 별도 후보로 둔다.
 
 ### BRICK WALL 표면 문법
 
@@ -48,9 +48,9 @@ Cyan은 세계 오브젝트 색으로 사용하지 않고 튜토리얼/조작 �
 
 패턴은 오브젝트의 전체 width/height에 맞춰 늘리지 않는다. 각 BRICK WALL 오브젝트의 local 좌상단을 기준으로 40x40 셀을 만들고, 각 셀 내부 local `0..39` 좌표에 같은 벽돌 패턴을 반복한다. 오브젝트가 타일 배수가 아니면 마지막 부분 셀만 해당 오브젝트 Rect 안에서 자연스럽게 잘린다. 인접 셀과 맞닿았을 때 가로 벽돌 행과 엇갈린 이음새가 이어져 전체 오브젝트가 하나의 연속된 벽처럼 읽히는 것을 우선한다.
 
-| 최종 디자인 | 규칙 | 주요 규격 |
+| 현재 구현 기준 | 규칙 | 주요 규격 |
 | --- | --- | --- |
-| OFFSET BRICK | 가로로 긴 큰 벽돌 행과 반 칸 어긋난 중간 행을 사용한다. 여러 40x40 셀이 붙었을 때 40x40 경계가 아이콘처럼 드러나지 않고 연속된 벽처럼 읽히게 한다. | 40x40 기준 `36x9 @ 2,3`, `18x9 @ 0,16`, `18x9 @ 22,16`, `36x8 @ 2,29` |
+| OFFSET BRICK | 40x40 셀 안에서 위/아래 행이 어긋난 벽돌 패턴을 반복한다. 여러 셀이 붙었을 때 40x40 경계가 아이콘처럼 드러나지 않고 연속된 벽처럼 읽히게 한다. | 짝수 열: `17x14 @ 0,6`, `17x14 @ 23,6`, `4x14 @ 0,26`, `20x14 @ 10,26`, `4x14 @ 36,26`. 홀수 열: 위/아래 행을 반대로 배치한다. |
 
 ### BRICK 색상
 
@@ -62,13 +62,13 @@ Main Color 원본은 일반 플랫폼 `#B73845`이며, HSL 기준 Hue 약 `354°
 | BRICK Base | `#CB4855` |
 | BRICK Pattern | `#E78D96` |
 
-### BRICK OFF 상태 프로토타입
+### BRICK OFF 상태
 
 BRICK COLLISION이 OFF일 때도 ON 상태의 OFFSET BRICK 기본 좌표와 40x40 local tile 반복 규칙은 변경하지 않는다. OFF에서는 Base 채우기를 렌더링하지 않고, 빈 영역은 Background `#292324`가 그대로 보인다. Pattern `#E78D96` 계열의 선만 사용하며 Point Color `#35CFC3`는 사용하지 않는다.
 
-OFF 프로토타입은 각 brick rectangle의 outline을 `TOP -> RIGHT -> BOTTOM -> LEFT` 순서의 시계방향 path로 보고, 현재 animation phase에 해당하는 짧은 선분만 표시한다. 사각형 전체 outline은 동시에 표시하지 않는다. Cycle은 약 `1.5s`이며, 타일 좌표와 brick index 기반의 deterministic phase offset으로 brick마다 표시 구간을 분산한다.
+현재 구현은 Base 면을 제거하고 각 brick rectangle의 outline 전체를 낮은 명도의 Pattern 선으로 표시하는 wire trace 방식이다. 통과 가능한 상태를 즉시 읽히게 하는 것이 우선이며, Cyan은 사용하지 않는다.
 
-현재 기본값은 후보 B 기준인 line thickness `2px`, visible path length `14px`이다.
+짧은 선분이 시계방향으로 순환하는 animated trace 방식은 후보로 남겨둔다. 해당 후보를 사용할 경우 각 brick rectangle의 outline을 `TOP -> RIGHT -> BOTTOM -> LEFT` 순서의 path로 보고, 약 `1.5s` cycle과 tile/brick index 기반 deterministic phase offset을 사용한다. 현재 코드에는 이 후보의 `line thickness 2px`, `visible path length 14px` 값이 남아 있지만 실제 렌더링 기준은 전체 outline wire trace다.
 
 ## UI 방향
 
@@ -81,6 +81,40 @@ OFF 프로토타입은 각 brick rectangle의 outline을 `TOP -> RIGHT -> BOTTOM
 - 마우스 슬라이더를 전제로 하지 않는다.
 - ON/OFF, 단계 선택, 열거형 선택을 기본 입력 모델로 삼는다.
 - 설정 변경 결과가 가능하면 UI 뒤의 월드 또는 즉시 이어지는 월드 상태에서 확인되어야 한다.
+
+## SETTINGS UI 현재 구현 기준
+
+현재 SETTINGS UI는 ROOM 01의 `BRICK 충돌` 학습을 기준으로 한 확정 후보 상태다. ROOM 02 이후의 새 기믹을 넣기 전에 실제 게임 화면 위에서 가독성을 최종 확인해야 한다.
+
+기본 구조:
+
+- 1920x1080 fixed framebuffer 기준 중앙 패널을 사용한다.
+- 패널 크기는 `1120x632`, 위치는 화면 중앙이다.
+- 패널 배경은 Background `#292324`를 약 `98.5%` alpha로 덮어 월드 위에 띄운다.
+- 패널 외곽선과 구분선은 BRICK Base 계열을 낮은 alpha로 사용한다. 의미 없는 장식용 상단 진행선이나 제목 underline은 사용하지 않는다.
+- 왼쪽 CATEGORY 영역 너비는 `284px`이며, 오른쪽 SETTING 영역은 구분선 오른쪽 `48px` 여백 뒤에서 시작한다.
+- CATEGORY 행 간격은 `62px`, SETTING 행 간격은 `74px`이다.
+
+포커스 규칙:
+
+- Cyan `#35CFC3`은 현재 사용자가 조작 중인 포커스에만 사용한다.
+- CATEGORY 포커스에서는 현재 카테고리 이름과 좌측 indicator가 Cyan이 된다.
+- SETTING 포커스에서는 현재 설정 항목, 작은 좌측 marker, 얇은 underline, 값/컨트롤 일부가 Cyan이 된다.
+- 포커스가 없는 반대 열은 Text Dim 계열로 낮추되, disabled 상태처럼 보이지 않도록 정상적으로 읽히는 밝기를 유지한다.
+- 값 변경 가능 항목은 기존 좌우 삼각형 `< >` 아이콘으로 조작 가능성을 표시하고, 값과 화살표가 하나의 컨트롤로 읽히도록 간격을 좁힌다.
+- 방향 값은 텍스트 화살표 대신 도형 화살표 아이콘으로 렌더링한다.
+
+튜토리얼 강조:
+
+- Cyan `#35CFC3`는 튜토리얼 타겟 전용 색이 아니라 현재 포커스 색이다.
+- ROOM 01에서 BRICK에 막힌 뒤 `X` 힌트가 나오고, SETTINGS 내부에서는 `시스템` CATEGORY와 `BRICK 충돌` SETTING을 순서대로 강조한다.
+- 튜토리얼 유도는 기존처럼 대상 텍스트의 작은 pulse와 짧은 underline 점멸을 사용한다. 이 효과는 포커스가 CATEGORY/SETTING 어디에 있든 `BRICK 충돌`을 OFF로 만들어 튜토리얼이 완료될 때까지 유지한다.
+
+남은 확인:
+
+- 실제 ROOM 01 화면 위에 패널을 띄웠을 때 BRICK WALL, EXIT, 플레이어가 패널 뒤에서 과하게 산만하지 않은지 확인한다.
+- `BRICK 충돌 OFF` 값의 neutral 색 `#9A908D`가 충분히 읽히는지 확인한다.
+- SETTINGS UI 캡처를 남긴 뒤 이 수치를 최종값으로 고정할지 결정한다.
 
 ## 설정 UI의 역할
 

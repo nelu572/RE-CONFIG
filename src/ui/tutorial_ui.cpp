@@ -209,11 +209,9 @@ void TutorialUiDrawWorldHint(RenderContext* render, const RoomDef* room, const P
 SettingsUiTutorialState TutorialUiSettingsState() {
     SettingsUiTutorialState tutorial;
     tutorial.mark_system_category = SettingsUiIsOpen() &&
-                                    SettingsUiCategoryFocusActive() &&
                                     (g_tutorial_step == TUTOR_SETTINGS_CATEGORY ||
                                      g_tutorial_step == TUTOR_SETTINGS_ITEM);
     tutorial.mark_type_a_setting = SettingsUiIsOpen() &&
-                                   SettingsUiItemFocusActive() &&
                                    SettingsUiSelectedCategory() == SETTINGS_SYSTEM &&
                                    (g_tutorial_step == TUTOR_SETTINGS_ITEM ||
                                     g_tutorial_step == TUTOR_SETTINGS_CATEGORY);

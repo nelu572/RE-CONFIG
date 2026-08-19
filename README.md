@@ -9,12 +9,12 @@ This build is intentionally limited to Room 00 and Room 01. It is for checking w
 - Two 16:9 fixed-screen onboarding rooms
 - No camera movement
 - Rounded abstract player
-- Dark geometric solid platforms
+- Red geometric solid platforms
 - Room 00: player, flat floor, EXIT only
 - Room 01: player, BRICK wall, EXIT only
-- Purple frame exit
+- Red arched EXIT frame
 - Two-pane Korean settings menu appears over the room instead of replacing the screen
-- Room 01 system settings: `중력`, `A 타입 충돌`
+- Room 01 system settings: planned `중력 방향`, implemented `BRICK 충돌`
 - Reset restores player position, settings, and room state
 
 ## Controls
