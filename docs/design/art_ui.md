@@ -35,7 +35,7 @@
 | BRICK WALL | Base `#CB4855`, Pattern `#E78D96` | `BRICK 충돌` 설정의 영향을 받는 벽/블록 계열 오브젝트. Main Color와 같은 Hue의 명도/채도 variation 및 벽돌 표면 문법으로 식별한다. |
 | EXIT | `#F04A5B` | EXIT 프레임. 목적지 역할이므로 플랫폼보다 한 단계 선명하게 강조한다. |
 | EXIT 내부 | `#A83540` | EXIT 문 내부 파생색 |
-| Focus Accent | `#35CFC3` | SETTINGS에서 현재 사용자가 조작 중인 포커스. 튜토리얼 유도는 이 색 자체가 아니라 얇은 underline/marker 점멸로 보조한다. |
+| Focus Accent | `#35CFC3` | SETTINGS에서 현재 사용자가 조작 중인 포커스. 튜토리얼 유도는 이 색 자체가 아니라 대상 텍스트의 작은 pulse로 보조한다. |
 | Off / Neutral | `#9A908D` | OFF, 비활성 상태 텍스트 |
 
 BRICK은 플레이어에게 막는 벽/블록 계열 오브젝트로 인식되는 기믹 명칭이다. 내부 구현에는 `type_a` 명칭이 남아 있을 수 있지만, 플레이어 노출 명칭과 기획 문서에서는 `BRICK WALL`, `BRICK 충돌`을 기준으로 쓴다. A 글자, 경고표시, 아이콘, 큰 X는 사용하지 않는다.
@@ -100,7 +100,8 @@ BRICK COLLISION이 OFF일 때도 ON 상태의 OFFSET BRICK 기본 좌표와 40x4
 - Cyan `#35CFC3`은 현재 사용자가 조작 중인 포커스에만 사용한다.
 - CATEGORY 포커스에서는 현재 카테고리 이름과 좌측 indicator가 Cyan이 된다.
 - SETTING 포커스에서는 현재 설정 항목, 작은 좌측 marker, 얇은 underline, 값/컨트롤 일부가 Cyan이 된다.
-- 포커스가 없는 반대 열은 Text Dim 계열로 낮추되, disabled 상태처럼 보이지 않도록 정상적으로 읽히는 밝기를 유지한다.
+- CATEGORY 포커스에서는 오른쪽 SETTING 영역 전체를 살짝 어둡게 낮춘다. SETTING 포커스로 이동하면 오른쪽 영역을 정상 밝기로 올리고, 다시 CATEGORY 포커스로 돌아가면 다시 낮춘다.
+- 포커스가 없는 반대 열은 Text Dim 계열로 낮추되, disabled 상태처럼 보이지 않도록 읽을 수 있는 밝기를 유지한다.
 - 값 변경 가능 항목은 기존 좌우 삼각형 `< >` 아이콘으로 조작 가능성을 표시하고, 값과 화살표가 하나의 컨트롤로 읽히도록 간격을 좁힌다.
 - 방향 값은 텍스트 화살표 대신 도형 화살표 아이콘으로 렌더링한다.
 
@@ -108,7 +109,7 @@ BRICK COLLISION이 OFF일 때도 ON 상태의 OFFSET BRICK 기본 좌표와 40x4
 
 - Cyan `#35CFC3`는 튜토리얼 타겟 전용 색이 아니라 현재 포커스 색이다.
 - ROOM 01에서 BRICK에 막힌 뒤 `X` 힌트가 나오고, SETTINGS 내부에서는 `시스템` CATEGORY와 `BRICK 충돌` SETTING을 순서대로 강조한다.
-- 튜토리얼 유도는 기존처럼 대상 텍스트의 작은 pulse와 짧은 underline 점멸을 사용한다. 이 효과는 포커스가 CATEGORY/SETTING 어디에 있든 `BRICK 충돌`을 OFF로 만들어 튜토리얼이 완료될 때까지 유지한다.
+- 튜토리얼 유도는 대상 텍스트의 작은 pulse를 사용한다. 별도 underline은 사용하지 않는다. 이 효과는 포커스가 CATEGORY/SETTING 어디에 있든 `BRICK 충돌`을 OFF로 만들어 튜토리얼이 완료될 때까지 유지한다.
 
 남은 확인:
 

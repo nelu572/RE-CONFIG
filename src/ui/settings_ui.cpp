@@ -626,18 +626,6 @@ static void DrawSettingsCategoryIndicator(int x, int y, int focused, float selec
 
 static int SettingsEstimateTextWidth(const wchar_t* text, int size);
 
-static void DrawTutorialTargetUnderline(int x, int y, const wchar_t* text, int size, float fade) {
-    int width = SettingsEstimateTextWidth(text, size);
-    if (width > 52) {
-        width -= 8;
-    }
-    if (width < 18) {
-        width = 18;
-    }
-    float pulse = 0.38f + SettingsPulse01(g_settings_tutorial_pulse_seconds) * 0.34f;
-    DrawRect(g_settings_render, x, y, width, 1, SettingsFadeColor(COL_TUTORIAL_TARGET, fade * pulse));
-}
-
 static void DrawSettingsCategoryRow(int x, int y, SettingsCategory category, float selected_alpha, int tutorial_target, const SettingsUiColors* colors) {
     float fade = SettingsSmooth01(g_settings_fade);
     int focused = g_settings_focus == SETTINGS_FOCUS_CATEGORY && selected_alpha > 0.985f;
@@ -659,9 +647,6 @@ static void DrawSettingsCategoryRow(int x, int y, SettingsCategory category, flo
         draw_y -= size_delta / 2;
     }
     DrawTextUi(draw_x, draw_y, SettingsCategoryAt(category)->name, text_size, SettingsFadeColor(color, fade), bold);
-    if (tutorial_target) {
-        DrawTutorialTargetUnderline(x, y + 28, SettingsCategoryAt(category)->name, 23, fade);
-    }
 }
 
 static uint32_t SettingsItemTextColor(float selected_alpha, const SettingsUiColors* colors) {
@@ -768,8 +753,8 @@ static void DrawSettingsItemRow(int x, int y, int w, const SettingsItemDef* item
     float fade = SettingsSmooth01(g_settings_fade);
     float selected_alpha = SelectedItemAlpha(item_index);
     int focused = g_settings_focus == SETTINGS_FOCUS_ITEM && selected_alpha > 0.985f;
-    float area_strength = g_settings_focus == SETTINGS_FOCUS_ITEM ? 1.0f : 0.76f;
-    uint32_t name_base = g_settings_focus == SETTINGS_FOCUS_ITEM ? SettingsFadeColor(colors->text_dim, 0.72f) : colors->text_dim;
+    float area_strength = g_settings_focus == SETTINGS_FOCUS_ITEM ? 1.0f : 0.54f;
+    uint32_t name_base = g_settings_focus == SETTINGS_FOCUS_ITEM ? colors->text_dim : SettingsFadeColor(colors->text_dim, 0.62f);
     uint32_t name_focus = focused ? COL_TUTORIAL_TARGET : SettingsItemTextColor(selected_alpha, colors);
     float mix = selected_alpha * area_strength;
     uint32_t name_color = SettingsFadeColor(SettingsLerpColor(name_base, name_focus, mix), fade);
@@ -785,9 +770,6 @@ static void DrawSettingsItemRow(int x, int y, int w, const SettingsItemDef* item
         draw_y -= size_delta / 2;
     }
     DrawTextUi(draw_x, draw_y, item->name, text_size, name_color, 0);
-    if (tutorial_target) {
-        DrawTutorialTargetUnderline(x, y + 29, item->name, 23, fade);
-    }
     DrawSettingsValue(x + w - 236, y - 2, item, area_strength, focused, colors);
 }
 
