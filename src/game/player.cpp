@@ -83,10 +83,10 @@ static void PlayerTangentVector(int gravity_x, int gravity_y, int* x, int* y) {
 
 RectF PlayerCollisionRect(const Player* player) {
     RectF r;
-    r.x = player->x + 8.0f;
-    r.y = player->y + 5.0f;
-    r.w = 38.0f;
-    r.h = 50.0f;
+    r.x = player->x;
+    r.y = player->y;
+    r.w = 40.0f;
+    r.h = 40.0f;
     return r;
 }
 
