@@ -208,24 +208,15 @@ void GameUpdateStage(GameState* state, float dt, int use_static_cache) {
         }
         return;
     }
-    if (SettingsUiOverlayVisible()) {
-        if (InputWasPressed(KEY_R)) {
-            GameResetStage(state);
-            return;
-        }
-        TutorialUiUpdate(dt,
-                         state->current_room,
-                         GameFeatureActive(state, FEATURE_COLLISION_TYPE_A),
-                         state->type_a_blocked_this_frame);
-        return;
-    }
-
     if (InputWasPressed(KEY_R)) {
         GameResetStage(state);
         return;
     }
 
-    GameControlInput control = GameReadControlInput(state->gravity_direction);
+    GameControlInput control = {};
+    if (!SettingsUiIsOpen()) {
+        control = GameReadControlInput(state->gravity_direction);
+    }
 
     PlayerMovementFeedback movement_feedback;
     movement_feedback.type_a_contacted = state->type_a_contacted;
