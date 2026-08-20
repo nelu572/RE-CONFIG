@@ -281,6 +281,111 @@ static void DrawTypeAWall(const StageRenderState* state, const RectF* wall, int 
     }
 }
 
+static void DrawSpeakerSlot(RenderContext* render, int x, int y, int w, int h, uint32_t color) {
+    int radius = h / 2;
+    DrawRect(render, x + radius, y, w - radius * 2, h, color);
+    FillCircle(render, x + radius, y + radius, radius, color);
+    FillCircle(render, x + w - radius - 1, y + radius, radius, color);
+}
+
+static void DrawSpeakerDriver(RenderContext* render,
+                              int cx,
+                              int cy,
+                              int radius,
+                              uint32_t bright,
+                              uint32_t dark,
+                              uint32_t body_light,
+                              uint32_t deep_dark) {
+    FillCircle(render, cx, cy, radius, bright);
+    FillCircle(render, cx, cy, radius * 88 / 100, dark);
+    FillCircle(render, cx, cy, radius * 62 / 100, body_light);
+    FillCircle(render, cx, cy, radius * 28 / 100, deep_dark);
+}
+
+static void DrawSmallSpeakerDriver(RenderContext* render,
+                                   int cx,
+                                   int cy,
+                                   int radius,
+                                   uint32_t bright,
+                                   uint32_t dark,
+                                   uint32_t body_light,
+                                   uint32_t deep_dark) {
+    FillCircle(render, cx, cy, radius, bright);
+    FillCircle(render, cx, cy, radius * 83 / 100, dark);
+    FillCircle(render, cx, cy, radius * 56 / 100, body_light);
+    FillCircle(render, cx, cy, radius * 27 / 100, deep_dark);
+}
+
+static void DrawSpeakerDevice(const StageRenderState* state, const SpeakerDevice* speaker) {
+    static const uint32_t SPEAKER_BODY = 0x00a93643;
+    static const uint32_t SPEAKER_BODY_LIGHT = 0x00c94a58;
+    static const uint32_t SPEAKER_BRIGHT = 0x00e66b76;
+    static const uint32_t SPEAKER_HIGHLIGHT = 0x00f08a92;
+    static const uint32_t SPEAKER_DARK = 0x0070272f;
+    static const uint32_t SPEAKER_DEEP_DARK = 0x004b2428;
+    static const uint32_t SPEAKER_BRACKET = 0x007b2b34;
+
+    RenderContext* render = state->render;
+    int x = WorldX(render, speaker->x);
+    int y = WorldY(render, speaker->y);
+    int w = (int)(speaker->width + 0.5f);
+    int h = (int)(speaker->height + 0.5f);
+    int body_right = x + w;
+    int side_w = StageMaxI(12, w * 10 / 100);
+    int front_w = w - side_w;
+    int wall_x = WorldX(render, state->room->bounds.x + state->room->bounds.w - 120.0f);
+    int plate_w = StageMaxI(14, w * 9 / 100);
+    int plate_x = wall_x - plate_w / 2;
+    int plate_y = y + h * 31 / 100;
+    int plate_h = h * 58 / 100;
+    int upper_support_y = y + h * 36 / 100;
+    int lower_support_y = y + h * 67 / 100;
+    int support_h = StageMaxI(8, h * 5 / 100);
+
+    DrawRect(render, body_right - 2, upper_support_y - support_h / 2, plate_x - body_right + plate_w / 2, support_h, SPEAKER_BRACKET);
+    DrawRect(render, body_right - 2, lower_support_y - support_h / 2, plate_x - body_right + plate_w / 2, support_h, SPEAKER_BRACKET);
+    DrawThickLine(render,
+                  body_right + support_h / 2,
+                  lower_support_y - support_h / 2,
+                  plate_x + plate_w / 2,
+                  upper_support_y + support_h / 2,
+                  support_h,
+                  SPEAKER_BRACKET);
+
+    DrawRect(render, x, y, w, h, SPEAKER_BODY);
+    DrawRect(render, x, y, w, StageMaxI(3, h * 1 / 100), SPEAKER_BODY_LIGHT);
+    DrawRect(render, x, y, StageMaxI(3, w * 2 / 100), h, SPEAKER_BODY_LIGHT);
+    DrawRect(render, body_right - side_w, y, side_w, h, SPEAKER_DARK);
+    DrawRectOutline(render, x, y, w, h, SPEAKER_DEEP_DARK);
+
+    int slot_x = x + w * 12 / 100;
+    int slot_y = y + h * 14 / 100;
+    int slot_w = w * 23 / 100;
+    int slot_h = StageMaxI(7, h * 3 / 100);
+    int slot_gap = StageMaxI(15, h * 6 / 100);
+    for (int i = 0; i < 4; ++i) {
+        DrawSpeakerSlot(render, slot_x, slot_y + i * slot_gap, slot_w, slot_h, SPEAKER_DARK);
+    }
+
+    int small_cx = x + w * 64 / 100;
+    int small_cy = y + h * 23 / 100;
+    int big_cx = x + front_w / 2;
+    int big_cy = y + h * 66 / 100;
+    DrawSmallSpeakerDriver(render, small_cx, small_cy, h * 11 / 100, SPEAKER_HIGHLIGHT, SPEAKER_DARK, SPEAKER_BRIGHT, SPEAKER_DEEP_DARK);
+    DrawSpeakerDriver(render, big_cx, big_cy, h * 22 / 100, SPEAKER_HIGHLIGHT, SPEAKER_DARK, SPEAKER_BRIGHT, SPEAKER_DEEP_DARK);
+
+    int screw_r = StageMaxI(5, w * 3 / 100);
+    int screw_inset = StageMaxI(20, w * 12 / 100);
+    FillCircle(render, x + screw_inset, y + screw_inset, screw_r, SPEAKER_DARK);
+    FillCircle(render, x + front_w - screw_inset, y + screw_inset, screw_r, SPEAKER_DARK);
+    FillCircle(render, x + screw_inset, y + h - screw_inset, screw_r, SPEAKER_DARK);
+    FillCircle(render, x + front_w - screw_inset, y + h - screw_inset, screw_r, SPEAKER_DARK);
+
+    DrawRect(render, plate_x, plate_y + plate_w / 2, plate_w, plate_h - plate_w, SPEAKER_BRACKET);
+    FillCircle(render, plate_x + plate_w / 2, plate_y + plate_w / 2, plate_w / 2, SPEAKER_BRACKET);
+    FillCircle(render, plate_x + plate_w / 2, plate_y + plate_h - plate_w / 2 - 1, plate_w / 2, SPEAKER_BRACKET);
+}
+
 static void DrawSettingsMenu(const StageRenderState* state) {
     SettingsUiColors colors;
     colors.bg = state->bg_color;
@@ -306,6 +411,9 @@ void StageRenderDrawStatic(const StageRenderState* state) {
     }
     for (int i = 0; i < state->room->type_a_count; ++i) {
         DrawTypeAWall(state, &state->room->type_a_walls[i], 0);
+    }
+    for (int i = 0; i < state->room->speaker_count; ++i) {
+        DrawSpeakerDevice(state, &state->room->speakers[i]);
     }
 }
 

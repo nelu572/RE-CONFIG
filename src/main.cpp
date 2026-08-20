@@ -48,6 +48,7 @@ static WINDOWPLACEMENT g_windowed_placement = { sizeof(g_windowed_placement) };
 static GameState g_game;
 static RenderContext g_render = { 0, &g_game.camera, RENDER_W, RENDER_H, RENDER_SCALE };
 static int g_overlay_redraw_pending = 0;
+static constexpr int START_ROOM_INDEX = 3;
 
 static uint32_t COL_BG = 0x00292324;
 static const uint32_t COL_STAGE_SOFT = 0x006f3038;
@@ -403,6 +404,7 @@ extern "C" void WinMainCRTStartup() {
 
     g_game.camera.x = 0.0f;
     g_game.camera.y = 0.0f;
+    g_game.current_room = START_ROOM_INDEX;
     ResetStage();
     SettingsUiColors settings_colors = CurrentSettingsColors();
     SettingsUiBuildMenuCache(&settings_colors);

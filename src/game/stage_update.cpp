@@ -258,6 +258,11 @@ void GameUpdateStage(GameState* state, float dt, int use_static_cache) {
             SettingsUiMarkFullDirty();
             return;
         }
+        if (state->current_room == 2) {
+            ExitSequenceStartTransition(3);
+            SettingsUiMarkFullDirty();
+            return;
+        }
         ExitSequenceSetRoomSolved(1);
     }
 
