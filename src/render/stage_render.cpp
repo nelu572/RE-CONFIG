@@ -26,8 +26,8 @@ static uint32_t StageLerpColor(uint32_t a, uint32_t b, float t) {
 }
 
 static void DrawPlatform(const StageRenderState* state, const RectF* r) {
-    int x = (int)(r->x + 0.5f);
-    int y = (int)(r->y + 0.5f);
+    int x = WorldX(state->render, r->x);
+    int y = WorldY(state->render, r->y);
     int w = (int)(r->w + 0.5f);
     int h = (int)(r->h + 0.5f);
     DrawRect(state->render, x, y, w, h, state->platform_color);
@@ -128,8 +128,8 @@ static void DrawTypeATilePattern(const StageRenderState* state, int x, int y, in
 static void DrawTypeAWall(const StageRenderState* state, const RectF* wall, int highlight);
 
 static void DrawBrickRect(const StageRenderState* state, const RectF* wall, uint32_t base_color, uint32_t pattern_color) {
-    int x = (int)(wall->x + 0.5f);
-    int y = (int)(wall->y + 0.5f);
+    int x = WorldX(state->render, wall->x);
+    int y = WorldY(state->render, wall->y);
     int w = (int)(wall->w + 0.5f);
     int h = (int)(wall->h + 0.5f);
     DrawRect(state->render, x, y, w, h, base_color);
@@ -206,8 +206,8 @@ static void DrawTypeABrickTileWireTrace(const StageRenderState* state,
 }
 
 static void DrawTypeAOffAnimatedTrace(const StageRenderState* state, const RectF* wall, uint32_t pattern_color) {
-    int x = (int)(wall->x + 0.5f);
-    int y = (int)(wall->y + 0.5f);
+    int x = WorldX(state->render, wall->x);
+    int y = WorldY(state->render, wall->y);
     int w = (int)(wall->w + 0.5f);
     int h = (int)(wall->h + 0.5f);
     const int tile_size = 40;
@@ -317,10 +317,13 @@ void StageRenderDrawDynamic(const StageRenderState* state) {
     }
     ExitSequenceDrawExit(state->render, &state->room->exit);
     DrawPlayerParticles(state->render, state->player_particles, state->player_particle_count, state->effect_color);
-    DrawPlayer(state->render,
-               state->player,
-               state->player_color,
-               StageLerpColor(state->bg_color, state->platform_color, 0.78f));
+    if (state->player_visible) {
+        DrawPlayer(state->render,
+                   state->player,
+                   state->player_color,
+                   StageLerpColor(state->bg_color, state->platform_color, 0.78f),
+                   state->gravity_direction);
+    }
 
     DrawContextUi(state);
     if (state->settings_overlay_visible) {

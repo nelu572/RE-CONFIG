@@ -19,6 +19,7 @@ static const int SETTINGS_UI_MAX_ITEMS = 16;
 static RenderContext* g_settings_render;
 static SettingsUiFeatureActiveCallback g_feature_active;
 static SettingsUiToggleFeatureCallback g_toggle_feature;
+static SettingsUiSetItemValueCallback g_set_item_value;
 static SettingsUiDrawContextTextCallback g_draw_context_text;
 static int g_settings_open = 0;
 static SettingsFocus g_settings_focus = SETTINGS_FOCUS_CATEGORY;
@@ -304,11 +305,30 @@ static void SettingsRegisterInteraction() {
 void SettingsUiInit(RenderContext* render,
                     SettingsUiFeatureActiveCallback feature_active,
                     SettingsUiToggleFeatureCallback toggle_feature,
+                    SettingsUiSetItemValueCallback set_item_value,
                     SettingsUiDrawContextTextCallback draw_context_text) {
     g_settings_render = render;
     g_feature_active = feature_active;
     g_toggle_feature = toggle_feature;
+    g_set_item_value = set_item_value;
     g_draw_context_text = draw_context_text;
+}
+
+void SettingsUiSetItemValue(int item_index, int value) {
+    if (item_index < 0 || item_index >= SETTINGS_UI_MAX_ITEMS || item_index >= SettingsItemTotalCount()) {
+        return;
+    }
+    const SettingsItemDef* item = SettingsItemAt(item_index);
+    if (!item || item->value_count <= 0) {
+        return;
+    }
+    if (value < 0) value = 0;
+    if (value >= item->value_count) value = item->value_count - 1;
+    if (g_settings_value_index[item_index] == value) {
+        return;
+    }
+    g_settings_value_index[item_index] = value;
+    SettingsRegisterInteraction();
 }
 
 void SettingsUiReset() {
@@ -525,6 +545,9 @@ static void SettingsStepCurrentValue(const SettingsItemDef* item, int item_index
         return;
     }
     g_settings_value_index[item_index] = value;
+    if (item->status == SETTINGS_ITEM_IMPLEMENTED && g_set_item_value) {
+        g_set_item_value(item_index, value);
+    }
 }
 
 void SettingsUiUpdateInput(int use_static_cache) {

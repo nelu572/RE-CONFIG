@@ -21,6 +21,7 @@ PlayerMovementResult UpdatePlayerMovement(Player* player,
                                           int jump_pressed,
                                           int jump_active,
                                           int gravity_active,
+                                          GravityDirection gravity_direction,
                                           int type_a_collision_active,
                                           double now_seconds,
                                           PlayerMovementFeedback* feedback);

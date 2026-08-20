@@ -23,6 +23,45 @@ static const RectF* SolidAt(const RoomDef* room, int index) {
     return &room->type_a_walls[index - room->platform_count];
 }
 
+static void MovementGravityVector(GravityDirection direction, int* x, int* y) {
+    *x = 0;
+    *y = 1;
+    if (direction == GRAVITY_UP) {
+        *y = -1;
+    } else if (direction == GRAVITY_RIGHT) {
+        *x = 1;
+        *y = 0;
+    } else if (direction == GRAVITY_LEFT) {
+        *x = -1;
+        *y = 0;
+    }
+}
+
+static void MovementTangentVector(int gravity_x, int gravity_y, int* x, int* y) {
+    if (gravity_y != 0) {
+        *x = 1;
+        *y = 0;
+    } else {
+        *x = 0;
+        *y = 1;
+    }
+}
+
+static float MovementVelocityOnAxis(const Player* player, int axis_x, int axis_y) {
+    return player->vx * (float)axis_x + player->vy * (float)axis_y;
+}
+
+static void MovementSetVelocity(Player* player,
+                                int tangent_x,
+                                int tangent_y,
+                                float tangent_speed,
+                                int gravity_x,
+                                int gravity_y,
+                                float gravity_speed) {
+    player->vx = (float)tangent_x * tangent_speed + (float)gravity_x * gravity_speed;
+    player->vy = (float)tangent_y * tangent_speed + (float)gravity_y * gravity_speed;
+}
+
 static void RegisterTypeAContact(PlayerMovementFeedback* feedback, double now_seconds, int blocked) {
     if (!feedback->type_a_contacted) {
         feedback->type_a_bump_until = now_seconds + 0.22;
@@ -33,49 +72,57 @@ static void RegisterTypeAContact(PlayerMovementFeedback* feedback, double now_se
     }
 }
 
-static void ResolveHorizontal(Player* player, const RoomDef* room, int type_a_collision_active, double now_seconds, PlayerMovementFeedback* feedback, RectF* p) {
+static void ResolveAxis(Player* player,
+                        const RoomDef* room,
+                        int type_a_collision_active,
+                        double now_seconds,
+                        PlayerMovementFeedback* feedback,
+                        RectF* p,
+                        int axis_x,
+                        int axis_y,
+                        int gravity_x,
+                        int gravity_y,
+                        int gravity_axis) {
     int platform_count = PlatformSolidCount(room);
     int total_count = TotalSolidCount(room, type_a_collision_active);
     for (int i = 0; i < total_count; ++i) {
         const RectF* solid = SolidAt(room, i);
         if (!RectsOverlap(p, solid)) continue;
         if (i >= platform_count) {
-            RegisterTypeAContact(feedback, now_seconds, 1);
+            RegisterTypeAContact(feedback, now_seconds, !gravity_axis);
         }
-        if (player->vx > 0.0f) {
-            p->x = solid->x - p->w;
-        } else if (player->vx < 0.0f) {
-            p->x = solid->x + solid->w;
+        if (axis_x != 0) {
+            if (player->vx > 0.0f) {
+                p->x = solid->x - p->w;
+                if (gravity_axis && gravity_x > 0) player->grounded = 1;
+            } else if (player->vx < 0.0f) {
+                p->x = solid->x + solid->w;
+                if (gravity_axis && gravity_x < 0) player->grounded = 1;
+            }
+            player->x = p->x;
+            player->vx = 0.0f;
+        } else if (axis_y != 0) {
+            if (player->vy > 0.0f) {
+                p->y = solid->y - p->h;
+                if (gravity_axis && gravity_y > 0) player->grounded = 1;
+            } else if (player->vy < 0.0f) {
+                p->y = solid->y + solid->h;
+                if (gravity_axis && gravity_y < 0) player->grounded = 1;
+            }
+            player->y = p->y;
+            player->vy = 0.0f;
         }
-        player->x = p->x - 8.0f;
-        player->vx = 0.0f;
     }
 }
 
-static void ResolveVertical(Player* player, const RoomDef* room, int type_a_collision_active, double now_seconds, PlayerMovementFeedback* feedback, RectF* p) {
-    int platform_count = PlatformSolidCount(room);
-    int total_count = TotalSolidCount(room, type_a_collision_active);
-    player->grounded = 0;
-    for (int i = 0; i < total_count; ++i) {
-        const RectF* solid = SolidAt(room, i);
-        if (!RectsOverlap(p, solid)) continue;
-        if (i >= platform_count) {
-            RegisterTypeAContact(feedback, now_seconds, 0);
-        }
-        if (player->vy > 0.0f) {
-            p->y = solid->y - p->h;
-            player->grounded = 1;
-        } else if (player->vy < 0.0f) {
-            p->y = solid->y + solid->h;
-        }
-        player->y = p->y - 5.0f;
-        player->vy = 0.0f;
-    }
-}
-
-static int HasGroundSupport(const Player* player, const RoomDef* room, int type_a_collision_active) {
+static int HasGroundSupport(const Player* player,
+                            const RoomDef* room,
+                            int type_a_collision_active,
+                            int gravity_x,
+                            int gravity_y) {
     RectF probe = PlayerCollisionRect(player);
-    probe.y += 1.0f;
+    probe.x += (float)gravity_x;
+    probe.y += (float)gravity_y;
     int total_count = TotalSolidCount(room, type_a_collision_active);
     for (int i = 0; i < total_count; ++i) {
         const RectF* solid = SolidAt(room, i);
@@ -93,6 +140,7 @@ PlayerMovementResult UpdatePlayerMovement(Player* player,
                                           int jump_pressed,
                                           int jump_active,
                                           int gravity_active,
+                                          GravityDirection gravity_direction,
                                           int type_a_collision_active,
                                           double now_seconds,
                                           PlayerMovementFeedback* feedback) {
@@ -102,36 +150,55 @@ PlayerMovementResult UpdatePlayerMovement(Player* player,
 
     feedback->type_a_blocked_this_frame = 0;
 
+    int gravity_x;
+    int gravity_y;
+    int tangent_x;
+    int tangent_y;
+    MovementGravityVector(gravity_direction, &gravity_x, &gravity_y);
+    MovementTangentVector(gravity_x, gravity_y, &tangent_x, &tangent_y);
+
     int was_grounded = player->grounded;
     int jump_started = 0;
-    player->vx = move * speed;
+    float gravity_speed = MovementVelocityOnAxis(player, gravity_x, gravity_y);
+    float tangent_speed = move * speed;
     if (jump_active &&
         jump_pressed &&
         player->grounded) {
-        player->vy = jump;
+        gravity_speed = jump;
         player->grounded = 0;
         jump_started = 1;
     }
 
     if (gravity_active) {
-        player->vy += gravity * dt;
+        gravity_speed += gravity * dt;
     }
-    player->vy = MovementClampF(player->vy, -900.0f, 1100.0f);
-    float vertical_speed_before_resolve = player->vy;
+    gravity_speed = MovementClampF(gravity_speed, -900.0f, 1100.0f);
+    float gravity_speed_before_resolve = gravity_speed;
+    MovementSetVelocity(player, tangent_x, tangent_y, tangent_speed, gravity_x, gravity_y, gravity_speed);
 
-    player->x += player->vx * dt;
+    if (tangent_x != 0) {
+        player->x += player->vx * dt;
+    } else {
+        player->y += player->vy * dt;
+    }
     RectF pr = PlayerCollisionRect(player);
-    ResolveHorizontal(player, room, type_a_collision_active, now_seconds, feedback, &pr);
+    ResolveAxis(player, room, type_a_collision_active, now_seconds, feedback, &pr, tangent_x, tangent_y, gravity_x, gravity_y, 0);
 
-    player->y += player->vy * dt;
+    player->grounded = 0;
+    if (gravity_x != 0) {
+        player->x += player->vx * dt;
+    } else {
+        player->y += player->vy * dt;
+    }
     pr = PlayerCollisionRect(player);
-    ResolveVertical(player, room, type_a_collision_active, now_seconds, feedback, &pr);
-    if (!player->grounded && player->vy >= 0.0f && HasGroundSupport(player, room, type_a_collision_active)) {
+    ResolveAxis(player, room, type_a_collision_active, now_seconds, feedback, &pr, gravity_x, gravity_y, gravity_x, gravity_y, 1);
+    gravity_speed = MovementVelocityOnAxis(player, gravity_x, gravity_y);
+    if (!player->grounded && gravity_speed >= 0.0f && HasGroundSupport(player, room, type_a_collision_active, gravity_x, gravity_y)) {
         player->grounded = 1;
     }
 
     PlayerMovementResult result;
     result.jump_started = jump_started;
-    result.landed = !was_grounded && player->grounded && vertical_speed_before_resolve > 80.0f;
+    result.landed = !was_grounded && player->grounded && gravity_speed_before_resolve > 80.0f;
     return result;
 }

@@ -299,11 +299,11 @@ RectF ExitSequenceVisualRect(const RectF* exit_rect) {
     return visual;
 }
 
-RectI ExitSequenceDirtyRect(const RectF* exit_rect) {
+RectI ExitSequenceDirtyRect(RenderContext* render, const RectF* exit_rect) {
     RectF visual = ExitSequenceVisualRect(exit_rect);
     RectI rect = {
-        (int)(visual.x + 0.5f) - 14,
-        (int)(visual.y + 0.5f) - 14,
+        WorldX(render, visual.x) - 14,
+        WorldY(render, visual.y) - 14,
         (int)(visual.w + 0.5f) + 28,
         (int)(visual.h + 0.5f) + 28
     };
@@ -312,8 +312,8 @@ RectI ExitSequenceDirtyRect(const RectF* exit_rect) {
 
 void ExitSequenceDrawExit(RenderContext* render, const RectF* exit_rect) {
     RectF visual = ExitSequenceVisualRect(exit_rect);
-    int x = (int)(visual.x + 0.5f);
-    int y = (int)(visual.y + 0.5f);
+    int x = WorldX(render, visual.x);
+    int y = WorldY(render, visual.y);
     int w = (int)(visual.w + 0.5f);
     int h = (int)(visual.h + 0.5f);
     int thickness = 8;

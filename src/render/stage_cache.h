@@ -20,6 +20,9 @@ struct StageCacheState {
     int settings_dirty;
     int room_solved;
     int transition_visible;
+    int player_dead;
+    float camera_x;
+    float camera_y;
     unsigned int bg_color;
 };
 

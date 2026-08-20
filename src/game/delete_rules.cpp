@@ -50,7 +50,7 @@ static const SettingsItemDef g_settings_items[] = {
     { SETTINGS_VIDEO, FEATURE_COUNT, L"무채색", SETTINGS_VALUE_TOGGLE, SETTINGS_ITEM_PLANNED, g_toggle_values, 2, 1 },
     { SETTINGS_VIDEO, FEATURE_COUNT, L"카메라 크기", SETTINGS_VALUE_CHOICES, SETTINGS_ITEM_PLANNED, g_camera_values, 3, 1 },
     { SETTINGS_VIDEO, FEATURE_COUNT, L"해상도 / 화면비", SETTINGS_VALUE_PENDING, SETTINGS_ITEM_PLANNED, 0, 0, 0 },
-    { SETTINGS_SYSTEM, FEATURE_COUNT, L"중력 방향", SETTINGS_VALUE_CHOICES, SETTINGS_ITEM_PLANNED, g_gravity_direction_values, 4, 2 },
+    { SETTINGS_SYSTEM, FEATURE_COUNT, L"중력 방향", SETTINGS_VALUE_CHOICES, SETTINGS_ITEM_IMPLEMENTED, g_gravity_direction_values, 4, GRAVITY_DOWN },
     { SETTINGS_SYSTEM, FEATURE_COLLISION_TYPE_A, L"BRICK 충돌", SETTINGS_VALUE_TOGGLE, SETTINGS_ITEM_IMPLEMENTED, g_toggle_values, 2, 0 },
 };
 
@@ -84,6 +84,18 @@ int SettingsItemIndex(SettingsCategory category, int category_index) {
                 return i;
             }
             ++at;
+        }
+    }
+    return -1;
+}
+
+int SettingsGravityDirectionItemIndex() {
+    for (int i = 0; i < SettingsItemTotalCount(); ++i) {
+        const SettingsItemDef* item = SettingsItemAt(i);
+        if (item->category == SETTINGS_SYSTEM &&
+            item->value_view == SETTINGS_VALUE_CHOICES &&
+            item->values == g_gravity_direction_values) {
+            return i;
         }
     }
     return -1;

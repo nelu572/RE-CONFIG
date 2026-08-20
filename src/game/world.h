@@ -1,5 +1,7 @@
 #pragma once
 
+#include "delete_rules.h"
+
 struct RectF {
     float x;
     float y;
@@ -15,6 +17,10 @@ struct RoomDef {
     RectF exit;
     float player_x;
     float player_y;
+    RectF bounds;
+    float death_margin;
+    GravityDirection initial_gravity;
+    DeleteState initial_delete_state;
 };
 
 const RoomDef* GetRoom(int index);

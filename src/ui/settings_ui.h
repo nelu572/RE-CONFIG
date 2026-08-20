@@ -8,6 +8,7 @@
 
 typedef int (*SettingsUiFeatureActiveCallback)(DeleteFeature feature);
 typedef void (*SettingsUiToggleFeatureCallback)(DeleteFeature feature);
+typedef void (*SettingsUiSetItemValueCallback)(int item_index, int value);
 typedef void (*SettingsUiDrawContextTextCallback)(int x, int y, const char* text, int scale, uint32_t color);
 
 struct SettingsUiColors {
@@ -31,8 +32,10 @@ struct SettingsUiTutorialState {
 void SettingsUiInit(RenderContext* render,
                     SettingsUiFeatureActiveCallback feature_active,
                     SettingsUiToggleFeatureCallback toggle_feature,
+                    SettingsUiSetItemValueCallback set_item_value,
                     SettingsUiDrawContextTextCallback draw_context_text);
 void SettingsUiReset();
+void SettingsUiSetItemValue(int item_index, int value);
 void SettingsUiInvalidateCache();
 void SettingsUiMarkDirty();
 void SettingsUiMarkFullDirty();

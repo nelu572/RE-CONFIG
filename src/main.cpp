@@ -45,9 +45,8 @@ static HWND g_window;
 static int g_running = 1;
 static int g_fullscreen = 0;
 static WINDOWPLACEMENT g_windowed_placement = { sizeof(g_windowed_placement) };
-static Camera g_camera;
-static RenderContext g_render = { 0, &g_camera, RENDER_W, RENDER_H, RENDER_SCALE };
 static GameState g_game;
+static RenderContext g_render = { 0, &g_game.camera, RENDER_W, RENDER_H, RENDER_SCALE };
 static int g_overlay_redraw_pending = 0;
 
 static uint32_t COL_BG = 0x00292324;
@@ -158,6 +157,12 @@ static void ToggleFeature(DeleteFeature feature) {
     GameToggleFeature(&g_game, feature);
 }
 
+static void SetSettingsItemValue(int item_index, int value) {
+    if (item_index == SettingsGravityDirectionItemIndex()) {
+        GameSetGravityDirection(&g_game, (GravityDirection)value);
+    }
+}
+
 static void DrawTextSmallCallback(int x, int y, const char* text, int scale, uint32_t color) {
     UiTextSmallDraw(&g_render, x, y, text, scale, color);
 }
@@ -205,6 +210,8 @@ static StageRenderState CurrentStageRenderState() {
     state.player = &g_game.player;
     state.player_particles = g_game.player_particles;
     state.player_particle_count = PLAYER_PARTICLE_COUNT;
+    state.player_visible = !g_game.player_dead;
+    state.gravity_direction = g_game.gravity_direction;
     state.bg_color = COL_BG;
     state.platform_color = COL_PLATFORM;
     state.player_color = COL_PLAYER;
@@ -263,6 +270,9 @@ static StageCacheState CurrentStageCacheState() {
     state.settings_dirty = SettingsUiIsDirty();
     state.room_solved = ExitSequenceRoomSolved();
     state.transition_visible = ExitSequenceTransitionVisible();
+    state.player_dead = g_game.player_dead;
+    state.camera_x = g_game.camera.x;
+    state.camera_y = g_game.camera.y;
     state.bg_color = COL_BG;
     return state;
 }
@@ -389,10 +399,10 @@ extern "C" void WinMainCRTStartup() {
     UiTextEnsureSurface();
     UiTextWarmSettingsFonts();
     UiTextWarmSettingsTextCache();
-    SettingsUiInit(&g_render, FeatureActive, ToggleFeature, DrawContextText);
+    SettingsUiInit(&g_render, FeatureActive, ToggleFeature, SetSettingsItemValue, DrawContextText);
 
-    g_camera.x = 0.0f;
-    g_camera.y = 0.0f;
+    g_game.camera.x = 0.0f;
+    g_game.camera.y = 0.0f;
     ResetStage();
     SettingsUiColors settings_colors = CurrentSettingsColors();
     SettingsUiBuildMenuCache(&settings_colors);

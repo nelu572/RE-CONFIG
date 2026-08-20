@@ -14,6 +14,8 @@ struct StageRenderState {
     const Player* player;
     const PlayerParticle* player_particles;
     int player_particle_count;
+    int player_visible;
+    GravityDirection gravity_direction;
     uint32_t bg_color;
     uint32_t platform_color;
     uint32_t player_color;

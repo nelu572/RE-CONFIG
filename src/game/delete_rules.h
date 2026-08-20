@@ -7,6 +7,13 @@ enum DeleteFeature {
     FEATURE_COUNT
 };
 
+enum GravityDirection {
+    GRAVITY_UP,
+    GRAVITY_RIGHT,
+    GRAVITY_DOWN,
+    GRAVITY_LEFT
+};
+
 struct DeleteState {
     unsigned char deleted[FEATURE_COUNT];
 };
@@ -51,3 +58,4 @@ const SettingsItemDef* SettingsItemAt(int index);
 int SettingsItemTotalCount();
 int SettingsItemCount(SettingsCategory category);
 int SettingsItemIndex(SettingsCategory category, int category_index);
+int SettingsGravityDirectionItemIndex();

@@ -18,7 +18,7 @@ int ExitSequenceTransitionVisible();
 void ExitSequenceSetRoomSolved(int solved);
 int ExitSequenceRoomSolved();
 RectF ExitSequenceVisualRect(const RectF* exit_rect);
-RectI ExitSequenceDirtyRect(const RectF* exit_rect);
+RectI ExitSequenceDirtyRect(RenderContext* render, const RectF* exit_rect);
 void ExitSequenceDrawExit(RenderContext* render, const RectF* exit_rect);
 void ExitSequenceDrawSolvedUi(RenderContext* render, uint32_t text_color, ExitSequenceDrawTextSmallCallback draw_text_small);
 void ExitSequenceDrawTransition(RenderContext* render);
