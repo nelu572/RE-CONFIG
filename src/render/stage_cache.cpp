@@ -76,6 +76,38 @@ static RectI TypeAContextDirtyRect(RenderContext* render, const RoomDef* room) {
     return FramebufferClampRect(rect);
 }
 
+static RectI SpeakerWavesDirtyRect(RenderContext* render, const RoomDef* room) {
+    if (room->speaker_count <= 0) {
+        return { 0, 0, 0, 0 };
+    }
+
+    const SpeakerDevice* speaker = &room->speakers[0];
+    RectI rect = {
+        WorldX(render, speaker->x - 1160.0f) - 32,
+        WorldY(render, speaker->y + speaker->height * 0.66f - 480.0f) - 32,
+        1500,
+        1024
+    };
+    for (int i = 1; i < room->speaker_count; ++i) {
+        speaker = &room->speakers[i];
+        int x = WorldX(render, speaker->x - 1160.0f) - 32;
+        int y = WorldY(render, speaker->y + speaker->height * 0.66f - 480.0f) - 32;
+        int w = 1500;
+        int h = 1024;
+        int x2 = rect.x + rect.w;
+        int y2 = rect.y + rect.h;
+        int sx2 = x + w;
+        int sy2 = y + h;
+        if (x < rect.x) rect.x = x;
+        if (y < rect.y) rect.y = y;
+        if (sx2 > x2) x2 = sx2;
+        if (sy2 > y2) y2 = sy2;
+        rect.w = x2 - rect.x;
+        rect.h = y2 - rect.y;
+    }
+    return FramebufferClampRect(rect);
+}
+
 static void CaptureCachedFrameState(const StageCacheState* state) {
     g_prev_player_dirty = PlayerDirtyRect(state->render, state->player);
     g_prev_menu_open = state->settings_overlay_visible;
@@ -131,6 +163,7 @@ void StageCacheDrawCached(const StageCacheState* state, StageCacheDrawCallback d
         dirty[count++] = g_prev_player_dirty;
         dirty[count++] = PlayerDirtyRect(state->render, state->player);
         dirty[count++] = ExitSequenceDirtyRect(state->render, &state->room->exit);
+        dirty[count++] = SpeakerWavesDirtyRect(state->render, state->room);
     }
     if (state->player_dead || g_prev_player_dead) {
         dirty[count++] = { 0, 0, FB_W, FB_H };
