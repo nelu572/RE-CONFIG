@@ -23,5 +23,7 @@ PlayerMovementResult UpdatePlayerMovement(Player* player,
                                           int gravity_active,
                                           GravityDirection gravity_direction,
                                           int type_a_collision_active,
+                                          float external_vx,
+                                          float external_vy,
                                           double now_seconds,
                                           PlayerMovementFeedback* feedback);

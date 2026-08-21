@@ -142,6 +142,8 @@ PlayerMovementResult UpdatePlayerMovement(Player* player,
                                           int gravity_active,
                                           GravityDirection gravity_direction,
                                           int type_a_collision_active,
+                                          float external_vx,
+                                          float external_vy,
                                           double now_seconds,
                                           PlayerMovementFeedback* feedback) {
     const float speed = 360.0f;
@@ -161,6 +163,8 @@ PlayerMovementResult UpdatePlayerMovement(Player* player,
     int jump_started = 0;
     float gravity_speed = MovementVelocityOnAxis(player, gravity_x, gravity_y);
     float tangent_speed = move * speed;
+    tangent_speed += external_vx * (float)tangent_x + external_vy * (float)tangent_y;
+    gravity_speed += external_vx * (float)gravity_x + external_vy * (float)gravity_y;
     if (jump_active &&
         jump_pressed &&
         player->grounded) {

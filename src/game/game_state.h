@@ -26,4 +26,7 @@ struct GameState {
     double type_a_bump_until;
     double type_a_setting_feedback_until;
     double gravity_setting_feedback_until;
+    double room_started_at_seconds;
+    float speaker_push_vx;
+    float speaker_push_vy;
 };

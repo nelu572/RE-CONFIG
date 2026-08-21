@@ -221,12 +221,14 @@ static StageRenderState CurrentStageRenderState() {
     state.type_a_off_color = COL_TYPE_A_OFF;
     state.type_a_off_pattern_color = COL_TYPE_A_OFF_PATTERN;
     state.render_time_seconds = g_type_a_phase_lock_seconds >= 0.0 ? g_type_a_phase_lock_seconds : PerfNowSeconds();
+    state.speaker_time_seconds = PerfNowSeconds() - g_game.room_started_at_seconds;
     state.type_a_off_line_thickness = g_type_a_off_line_thickness;
     state.type_a_off_visible_path_len = g_type_a_off_visible_path_len;
     state.effect_color = COL_EFFECT;
     state.text_color = COL_TEXT;
     state.text_dim_color = COL_TEXT_DIM;
     state.type_a_active = FeatureActive(FEATURE_COLLISION_TYPE_A);
+    state.speaker_volume = SettingsUiAudioVolume();
     state.highlight_type_a = SettingsHighlightsTypeA();
     state.type_a_bump_visible = TypeABumpVisible();
     state.type_a_setting_feedback_visible = TypeASettingFeedbackVisible();

@@ -421,9 +421,9 @@ static const uint32_t SPEAKER_HIGHLIGHT = 0x00f08a92;
 static const uint32_t SPEAKER_DARK = 0x0070272f;
 static const uint32_t SPEAKER_DEEP_DARK = 0x004b2428;
 static const uint32_t SPEAKER_BRACKET = 0x007b2b34;
-static constexpr float SPEAKER_WAVE_SPACING = 220.0f;
+static constexpr float SPEAKER_WAVE_SPACING = 240.0f;
 static constexpr float SPEAKER_WAVE_SPEED = 520.0f;
-static constexpr float SPEAKER_WAVE_RANGE = 1120.0f;
+static constexpr float SPEAKER_WAVE_RANGE = 1080.0f;
 static constexpr float SPEAKER_WAVE_START_RADIUS = 42.0f;
 
 struct SpeakerAnimation {
@@ -435,7 +435,8 @@ struct SpeakerAnimation {
     int small_radius_extra;
 };
 
-static SpeakerAnimation SpeakerAnimationForTime(double time_seconds) {
+static SpeakerAnimation SpeakerAnimationForTime(double time_seconds, float volume) {
+    volume = StageClampF(volume, 0.0f, 1.0f);
     float wave_distance = (float)time_seconds * SPEAKER_WAVE_SPEED - SPEAKER_WAVE_START_RADIUS;
     float phase = StageWrap01(wave_distance / SPEAKER_WAVE_SPACING);
     float primary = StageClampF(1.0f - phase / 0.18f, 0.0f, 1.0f);
@@ -453,12 +454,12 @@ static SpeakerAnimation SpeakerAnimationForTime(double time_seconds) {
     kick *= kick;
 
     SpeakerAnimation anim;
-    anim.body_x = -(int)(kick * 1.0f + 0.5f);
-    anim.body_y = -(int)(rebound * 1.0f + 0.5f);
-    anim.body_w_extra = (int)(primary * 24.0f + rebound * 10.0f + kick * 7.0f + 0.5f);
-    anim.body_h_extra = (int)(primary * 18.0f + rebound * 8.0f + kick * 6.0f + 0.5f);
-    anim.big_radius_extra = (int)(primary * 18.0f + rebound * 8.0f + kick * 6.0f + 0.5f);
-    anim.small_radius_extra = (int)(primary * 10.0f + rebound * 4.0f + kick * 3.0f + 0.5f);
+    anim.body_x = -(int)((kick * 1.0f) * volume + 0.5f);
+    anim.body_y = -(int)((rebound * 1.0f) * volume + 0.5f);
+    anim.body_w_extra = (int)((primary * 24.0f + rebound * 10.0f + kick * 7.0f) * volume + 0.5f);
+    anim.body_h_extra = (int)((primary * 18.0f + rebound * 8.0f + kick * 6.0f) * volume + 0.5f);
+    anim.big_radius_extra = (int)((primary * 18.0f + rebound * 8.0f + kick * 6.0f) * volume + 0.5f);
+    anim.small_radius_extra = (int)((primary * 10.0f + rebound * 4.0f + kick * 3.0f) * volume + 0.5f);
     return anim;
 }
 
@@ -499,7 +500,7 @@ static void DrawSmallSpeakerDriver(RenderContext* render,
 
 static void DrawSpeakerDevice(const StageRenderState* state, const SpeakerDevice* speaker) {
     RenderContext* render = state->render;
-    SpeakerAnimation anim = SpeakerAnimationForTime(state->render_time_seconds);
+    SpeakerAnimation anim = SpeakerAnimationForTime(state->speaker_time_seconds, state->speaker_volume);
     int base_x = WorldX(render, speaker->x);
     int base_y = WorldY(render, speaker->y);
     int base_w = (int)(speaker->width + 0.5f);
@@ -641,7 +642,12 @@ static void DrawSpeakerWaveCircle(const StageRenderState* state,
 }
 
 static void DrawSpeakerWaves(const StageRenderState* state, const SpeakerDevice* speaker) {
-    float travel = StageWrap01((float)state->render_time_seconds * SPEAKER_WAVE_SPEED / SPEAKER_WAVE_SPACING) * SPEAKER_WAVE_SPACING;
+    float volume = StageClampF(state->speaker_volume, 0.0f, 1.0f);
+    if (volume <= 0.001f) {
+        return;
+    }
+
+    float travel = StageWrap01((float)state->speaker_time_seconds * SPEAKER_WAVE_SPEED / SPEAKER_WAVE_SPACING) * SPEAKER_WAVE_SPACING;
     float source_x = speaker->x + speaker->width * 0.45f;
     float source_y = speaker->y + speaker->height * 0.66f;
     for (int i = 0; i < 6; ++i) {
@@ -653,9 +659,9 @@ static void DrawSpeakerWaves(const StageRenderState* state, const SpeakerDevice*
             continue;
         }
         float fade = StageClampF(1.0f - radius / SPEAKER_WAVE_RANGE, 0.0f, 1.0f);
-        int thickness = 3 + (int)(fade * 5.0f + 0.5f);
+        int thickness = 1 + (int)((2.0f + fade * 5.0f) * volume + 0.5f);
         uint32_t wave_color = (i & 1) ? SPEAKER_BRIGHT : SPEAKER_HIGHLIGHT;
-        DrawSpeakerWaveCircle(state, source_x, source_y, (int)(radius + 0.5f), thickness, wave_color, fade * 0.82f);
+        DrawSpeakerWaveCircle(state, source_x, source_y, (int)(radius + 0.5f), thickness, wave_color, fade * 0.82f * volume);
     }
 }
 

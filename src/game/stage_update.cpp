@@ -10,10 +10,13 @@
 #include "tutorial_ui.h"
 
 static constexpr float GAME_DEATH_RESPAWN_DELAY = 0.58f;
-static constexpr float SPEAKER_WAVE_SPACING = 220.0f;
-static constexpr float SPEAKER_WAVE_SPEED = 520.0f;
-static constexpr float SPEAKER_WAVE_RANGE = 1120.0f;
-static constexpr float SPEAKER_PUSH_SPEED = 1180.0f;
+static constexpr float SPEAKER_WAVE_RANGE = 1080.0f;
+static constexpr float SPEAKER_PUSH_SPEED = 2200.0f;
+static constexpr float SPEAKER_BASE_PUSH_STRENGTH = 0.10f;
+static constexpr float SPEAKER_CLOSE_PUSH_BOOST = 3.25f;
+static constexpr float SPEAKER_VERTICAL_PUSH_SCALE = 0.35f;
+static constexpr float SPEAKER_AIR_PUSH_SCALE = 1.35f;
+static constexpr float SPEAKER_PUSH_SMOOTH_SPEED = 18.0f;
 
 int GameFeatureActive(const GameState* state, DeleteFeature feature) {
     return state->delete_state.deleted[feature] == 0;
@@ -109,6 +112,9 @@ void GameResetStage(GameState* state) {
     state->type_a_bump_until = 0.0;
     state->type_a_setting_feedback_until = 0.0;
     state->gravity_setting_feedback_until = 0.0;
+    state->room_started_at_seconds = PerfNowSeconds();
+    state->speaker_push_vx = 0.0f;
+    state->speaker_push_vy = 0.0f;
     StageCacheInvalidate();
 }
 
@@ -127,6 +133,32 @@ static float GameClampF(float value, float lo, float hi) {
     if (value < lo) return lo;
     if (value > hi) return hi;
     return value;
+}
+
+static float GameAbsF(float value) {
+    return value < 0.0f ? -value : value;
+}
+
+static float GameApproxLength(float x, float y) {
+    float ax = GameAbsF(x);
+    float ay = GameAbsF(y);
+    float hi = ax > ay ? ax : ay;
+    float lo = ax > ay ? ay : ax;
+    return hi + lo * 0.375f;
+}
+
+static void GameGravityVector(GravityDirection direction, int* x, int* y) {
+    *x = 0;
+    *y = 1;
+    if (direction == GRAVITY_UP) {
+        *y = -1;
+    } else if (direction == GRAVITY_RIGHT) {
+        *x = 1;
+        *y = 0;
+    } else if (direction == GRAVITY_LEFT) {
+        *x = -1;
+        *y = 0;
+    }
 }
 
 static void GameStartPlayerDeath(GameState* state) {
@@ -153,89 +185,107 @@ static void GameStartPlayerDeath(GameState* state) {
                               state->gravity_direction);
 }
 
-static float GameWrapDistance(double now_seconds) {
-    double raw = now_seconds * (double)SPEAKER_WAVE_SPEED;
-    int whole = (int)(raw / (double)SPEAKER_WAVE_SPACING);
-    return (float)(raw - (double)whole * (double)SPEAKER_WAVE_SPACING);
-}
+struct GameSpeakerPushVelocity {
+    float vx;
+    float vy;
+};
 
-static int GameRoomSolidCount(const RoomDef* room, int type_a_collision_active) {
-    return room->platform_count + (type_a_collision_active ? room->type_a_count : 0);
-}
-
-static const RectF* GameRoomSolidAt(const RoomDef* room, int index) {
-    if (index < room->platform_count) {
-        return &room->platforms[index];
+static GameSpeakerPushVelocity GameSmoothSpeakerPush(GameState* state, GameSpeakerPushVelocity target, float dt) {
+    if ((target.vx > -0.001f && target.vx < 0.001f) &&
+        (target.vy > -0.001f && target.vy < 0.001f)) {
+        state->speaker_push_vx = 0.0f;
+        state->speaker_push_vy = 0.0f;
+    } else {
+        float t = GameClampF(dt * SPEAKER_PUSH_SMOOTH_SPEED, 0.0f, 1.0f);
+        state->speaker_push_vx += (target.vx - state->speaker_push_vx) * t;
+        state->speaker_push_vy += (target.vy - state->speaker_push_vy) * t;
     }
-    return &room->type_a_walls[index - room->platform_count];
+
+    GameSpeakerPushVelocity result;
+    result.vx = state->speaker_push_vx;
+    result.vy = state->speaker_push_vy;
+    return result;
 }
 
-static void GameResolvePlayerAfterLeftPush(GameState* state, int type_a_collision_active) {
-    const RoomDef* room = GameCurrentRoom(state);
-    RectF pr = GamePlayerRect(state);
-    int solid_count = GameRoomSolidCount(room, type_a_collision_active);
-    for (int i = 0; i < solid_count; ++i) {
-        const RectF* solid = GameRoomSolidAt(room, i);
-        if (!RectsOverlap(&pr, solid)) {
-            continue;
-        }
-        pr.x = solid->x + solid->w;
-        state->player.x = pr.x;
-        if (state->player.vx < 0.0f) {
-            state->player.vx = 0.0f;
-        }
-    }
-}
-
-static void GameApplySpeakerWaves(GameState* state, float dt, double now_seconds) {
+static GameSpeakerPushVelocity GameComputeSpeakerPushVelocity(const GameState* state) {
+    GameSpeakerPushVelocity result = {};
     const RoomDef* room = GameCurrentRoom(state);
     if (room->speaker_count <= 0) {
-        return;
+        return result;
+    }
+    float volume = SettingsUiAudioVolume();
+    if (volume <= 0.001f) {
+        return result;
     }
 
     RectF pr = GamePlayerRect(state);
     float player_cx = pr.x + pr.w * 0.5f;
     float player_cy = pr.y + pr.h * 0.5f;
-    float best_push = 0.0f;
-    float travel = GameWrapDistance(now_seconds);
+    float best_speed = 0.0f;
+    float best_dir_x = -1.0f;
+    float best_dir_y = 0.0f;
     for (int speaker_index = 0; speaker_index < room->speaker_count; ++speaker_index) {
         const SpeakerDevice* speaker = &room->speakers[speaker_index];
         float source_x = speaker->x + speaker->width * 0.45f;
         float source_y = speaker->y + speaker->height * 0.66f;
-        for (int i = 0; i < 6; ++i) {
-            float radius = travel + (float)i * SPEAKER_WAVE_SPACING;
-            if (radius > SPEAKER_WAVE_RANGE) {
-                continue;
+        float dx = player_cx - source_x;
+        float dy = player_cy - source_y;
+        float dist_sq = dx * dx + dy * dy;
+        if (dist_sq > SPEAKER_WAVE_RANGE * SPEAKER_WAVE_RANGE) {
+            continue;
+        }
+
+        float dist = GameApproxLength(dx, dy);
+        float falloff = 1.0f - dist / SPEAKER_WAVE_RANGE;
+        float close_strength = falloff * falloff * falloff;
+        float strength = GameClampF(SPEAKER_BASE_PUSH_STRENGTH + close_strength * SPEAKER_CLOSE_PUSH_BOOST, 0.0f, 3.35f);
+        float speed = SPEAKER_PUSH_SPEED * volume * strength;
+        if (speed > best_speed) {
+            if (dist > 0.001f) {
+                best_dir_x = dx / dist;
+                best_dir_y = dy / dist;
+            } else {
+                best_dir_x = -1.0f;
+                best_dir_y = 0.0f;
             }
-            if (radius < 42.0f) {
-                continue;
-            }
-            float dx = player_cx - source_x;
-            float dy = player_cy - source_y;
-            float dist_sq = dx * dx + dy * dy;
-            float wave_half_width = 42.0f;
-            float inner = radius - wave_half_width;
-            if (inner < 0.0f) inner = 0.0f;
-            float outer = radius + wave_half_width;
-            if (dist_sq < inner * inner || dist_sq > outer * outer) {
-                continue;
-            }
-            float strength = 1.0f - radius / SPEAKER_WAVE_RANGE;
-            strength = GameClampF(strength, 0.32f, 1.0f);
-            float push = SPEAKER_PUSH_SPEED * strength * dt;
-            if (push > best_push) {
-                best_push = push;
-            }
+            best_speed = speed;
         }
     }
 
-    if (best_push <= 0.0f) {
-        return;
+    if (best_speed <= 0.0f) {
+        return result;
     }
 
-    state->player.x -= best_push;
-    state->player.vx = GameClampF(state->player.vx - SPEAKER_PUSH_SPEED * 0.75f * dt, -860.0f, 860.0f);
-    GameResolvePlayerAfterLeftPush(state, GameFeatureActive(state, FEATURE_COLLISION_TYPE_A));
+    best_dir_y *= SPEAKER_VERTICAL_PUSH_SCALE;
+    float speaker_dir_len = GameApproxLength(best_dir_x, best_dir_y);
+    if (speaker_dir_len <= 0.001f) {
+        return result;
+    }
+    best_dir_x /= speaker_dir_len;
+    best_dir_y /= speaker_dir_len;
+
+    if (state->player.grounded) {
+        int gravity_x;
+        int gravity_y;
+        GameGravityVector(state->gravity_direction, &gravity_x, &gravity_y);
+        float into_ground = best_dir_x * (float)gravity_x + best_dir_y * (float)gravity_y;
+        if (into_ground > 0.0f) {
+            best_dir_x -= (float)gravity_x * into_ground;
+            best_dir_y -= (float)gravity_y * into_ground;
+            float dir_len = GameApproxLength(best_dir_x, best_dir_y);
+            if (dir_len <= 0.001f) {
+                return result;
+            }
+            best_dir_x /= dir_len;
+            best_dir_y /= dir_len;
+        }
+    }
+
+    float air_scale = state->player.grounded ? 1.0f : SPEAKER_AIR_PUSH_SCALE;
+    best_speed *= air_scale;
+    result.vx = best_dir_x * best_speed;
+    result.vy = best_dir_y * best_speed;
+    return result;
 }
 
 struct GameControlInput {
@@ -307,6 +357,8 @@ void GameUpdateStage(GameState* state, float dt, int use_static_cache) {
         control = GameReadControlInput(state->gravity_direction);
     }
 
+    GameSpeakerPushVelocity speaker_push = GameSmoothSpeakerPush(state, GameComputeSpeakerPushVelocity(state), dt);
+
     PlayerMovementFeedback movement_feedback;
     movement_feedback.type_a_contacted = state->type_a_contacted;
     movement_feedback.type_a_blocked_this_frame = state->type_a_blocked_this_frame;
@@ -320,12 +372,13 @@ void GameUpdateStage(GameState* state, float dt, int use_static_cache) {
                                                           GameFeatureActive(state, FEATURE_GRAVITY),
                                                           state->gravity_direction,
                                                           GameFeatureActive(state, FEATURE_COLLISION_TYPE_A),
+                                                          speaker_push.vx,
+                                                          speaker_push.vy,
                                                           PerfNowSeconds(),
                                                           &movement_feedback);
     state->type_a_contacted = movement_feedback.type_a_contacted;
     state->type_a_blocked_this_frame = movement_feedback.type_a_blocked_this_frame;
     state->type_a_bump_until = movement_feedback.type_a_bump_until;
-    GameApplySpeakerWaves(state, dt, PerfNowSeconds());
     UpdatePlayerPresentation(&state->player,
                              state->player_particles,
                              PLAYER_PARTICLE_COUNT,

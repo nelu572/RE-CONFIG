@@ -24,12 +24,14 @@ struct StageRenderState {
     uint32_t type_a_off_color;
     uint32_t type_a_off_pattern_color;
     double render_time_seconds;
+    double speaker_time_seconds;
     int type_a_off_line_thickness;
     int type_a_off_visible_path_len;
     uint32_t effect_color;
     uint32_t text_color;
     uint32_t text_dim_color;
     int type_a_active;
+    float speaker_volume;
     int highlight_type_a;
     int type_a_bump_visible;
     int type_a_setting_feedback_visible;

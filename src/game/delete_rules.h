@@ -58,4 +58,5 @@ const SettingsItemDef* SettingsItemAt(int index);
 int SettingsItemTotalCount();
 int SettingsItemCount(SettingsCategory category);
 int SettingsItemIndex(SettingsCategory category, int category_index);
+int SettingsAudioVolumeItemIndex();
 int SettingsGravityDirectionItemIndex();

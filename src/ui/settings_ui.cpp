@@ -331,6 +331,30 @@ void SettingsUiSetItemValue(int item_index, int value) {
     SettingsRegisterInteraction();
 }
 
+int SettingsUiItemValue(int item_index) {
+    if (item_index < 0 || item_index >= SETTINGS_UI_MAX_ITEMS || item_index >= SettingsItemTotalCount()) {
+        return 0;
+    }
+    const SettingsItemDef* item = SettingsItemAt(item_index);
+    if (!item || item->value_count <= 0) {
+        return 0;
+    }
+    int value = g_settings_value_index[item_index];
+    if (value < 0 || value >= item->value_count) {
+        value = SettingsItemValueDefault(item);
+    }
+    return value;
+}
+
+float SettingsUiAudioVolume() {
+    int item_index = SettingsAudioVolumeItemIndex();
+    const SettingsItemDef* item = item_index >= 0 ? SettingsItemAt(item_index) : 0;
+    if (!item || item->value_count <= 1) {
+        return 1.0f;
+    }
+    return (float)SettingsUiItemValue(item_index) / (float)(item->value_count - 1);
+}
+
 void SettingsUiReset() {
     g_settings_open = 0;
     g_settings_focus = SETTINGS_FOCUS_CATEGORY;
@@ -725,6 +749,44 @@ static void DrawSmallStepMarks(int x, int y, const SettingsItemDef* item, int va
     }
 }
 
+static int SettingsItemIsAudioVolume(const SettingsItemDef* item) {
+    int volume_index = SettingsAudioVolumeItemIndex();
+    return volume_index >= 0 && item == SettingsItemAt(volume_index);
+}
+
+static void DrawVolumeStepMeter(int x,
+                                int y,
+                                const SettingsItemDef* item,
+                                int value_index,
+                                float fade,
+                                float area_strength,
+                                int focused,
+                                const SettingsUiColors* colors) {
+    if (!item || item->value_count <= 1) {
+        return;
+    }
+
+    const int step_count = 10;
+    const int block_w = 10;
+    const int block_gap = 5;
+    const int base_h = 7;
+    int filled = value_index;
+    if (filled < 0) filled = 0;
+    if (filled > step_count) filled = step_count;
+
+    uint32_t empty_color = SettingsLerpColor(colors->type_a, colors->text_dim, 0.16f);
+    uint32_t fill_color = focused ? COL_TUTORIAL_TARGET : colors->bright_red;
+    for (int i = 0; i < step_count; ++i) {
+        int h = base_h + i * 2;
+        int bx = x + i * (block_w + block_gap);
+        int by = y + (base_h + (step_count - 1) * 2) - h;
+        int active = i < filled;
+        float alpha = fade * area_strength * (active ? 0.88f : 0.24f);
+        uint32_t color = active ? fill_color : empty_color;
+        DrawRect(g_settings_render, bx, by, block_w, h, SettingsFadeColor(color, alpha));
+    }
+}
+
 static int SettingsEstimateTextWidth(const wchar_t* text, int size) {
     int width = 0;
     for (const wchar_t* at = text; at && *at; ++at) {
@@ -756,6 +818,21 @@ static void DrawSettingsValue(int x, int y, const SettingsItemDef* item, float a
         control_color = COL_TUTORIAL_TARGET;
     }
     value_color = SettingsLerpColor(colors->text_dim, value_color, area_strength);
+
+    if (SettingsItemIsAudioVolume(item)) {
+        const int meter_w = 145;
+        const int meter_x = x + 46;
+        const int meter_y = y + 4;
+        uint32_t arrow_color = SettingsFadeColor(control_color, fade * (focused ? 0.78f : (0.34f + area_strength * 0.32f)));
+        if (interactive) {
+            DrawTriangleLeft(meter_x - 22, y + 11, 8, 12, arrow_color);
+            DrawTriangleRight(meter_x + meter_w + 22, y + 11, 8, 12, arrow_color);
+        }
+        DrawVolumeStepMeter(meter_x, meter_y, item, value_index, fade, area_strength, focused, colors);
+        int text_x = meter_x + meter_w + 62;
+        DrawTextUi(text_x, y + 4, value_text, 18, SettingsFadeColor(value_color, fade), item && item->status == SETTINGS_ITEM_IMPLEMENTED);
+        return;
+    }
 
     if (interactive) {
         uint32_t arrow_color = SettingsFadeColor(control_color, fade * (focused ? 0.78f : (0.34f + area_strength * 0.32f)));

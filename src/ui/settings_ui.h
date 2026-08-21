@@ -51,6 +51,8 @@ int SettingsUiIsDirty();
 int SettingsUiSelectedCategory();
 int SettingsUiCategoryFocusActive();
 int SettingsUiItemFocusActive();
+int SettingsUiItemValue(int item_index);
+float SettingsUiAudioVolume();
 DeleteFeature SettingsUiSelectedFeature();
 int SettingsUiHighlightsFeature(DeleteFeature feature);
 RectI SettingsUiMenuDirtyRect();
