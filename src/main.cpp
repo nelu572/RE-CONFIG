@@ -3,6 +3,7 @@
 #include <windows.h>
 
 #include "game_config.h"
+#include "audio.h"
 #include "perf.h"
 #include "exit_sequence.h"
 #include "framebuffer.h"
@@ -186,6 +187,10 @@ static void ResetStage() {
 
 static void UpdateStage(float dt) {
     GameUpdateStage(&g_game, dt, !g_perf_config.disable_static_cache);
+    const RoomDef* room = CurrentRoom();
+    AudioUpdateSpeaker(PerfNowSeconds() - g_game.room_started_at_seconds,
+                       SettingsUiAudioVolume(),
+                       room && room->speaker_count > 0);
 }
 
 static int SettingsHighlightsTypeA() {
@@ -561,6 +566,7 @@ extern "C" void WinMainCRTStartup() {
     if (frame_timer) {
         CloseHandle(frame_timer);
     }
+    AudioShutdown();
     PerfWriteReport();
     ExitProcess(0);
 }

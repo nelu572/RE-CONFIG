@@ -40,7 +40,7 @@ if not exist build mkdir build
 if not exist dist mkdir dist
 
 set CFLAGS=/nologo /std:c++17 /utf-8 /O1 /Os /Oi /GS- /GR- /Gw /Gy /DWIN32_LEAN_AND_MEAN /DNOMINMAX /Isrc\core /Isrc\platform /Isrc\render /Isrc\game /Isrc\ui
-set LFLAGS=/link /SUBSYSTEM:WINDOWS /NODEFAULTLIB /ENTRY:WinMainCRTStartup /INCREMENTAL:NO /OPT:REF /OPT:ICF kernel32.lib user32.lib gdi32.lib
+set LFLAGS=/link /SUBSYSTEM:WINDOWS /NODEFAULTLIB /ENTRY:WinMainCRTStartup /INCREMENTAL:NO /OPT:REF /OPT:ICF kernel32.lib user32.lib gdi32.lib winmm.lib
 
 where cl.exe >nul 2>nul
 if errorlevel 1 goto mingw_build
@@ -48,7 +48,7 @@ if "%INCLUDE%"=="" goto mingw_build
 if not exist "%VCToolsInstallDir%include\stddef.h" goto mingw_build
 if not exist "%WindowsSdkDir%Include\%WindowsSDKVersion%um\windows.h" goto mingw_build
 
-cl %CFLAGS% /Febuild\reconfig.exe /Fobuild\ src\main.cpp src\core\math_util.cpp src\core\perf.cpp src\platform\input.cpp src\render\camera.cpp src\render\render.cpp src\render\framebuffer.cpp src\render\stage_render.cpp src\render\stage_cache.cpp src\game\world.cpp src\game\delete_rules.cpp src\game\player.cpp src\game\collision.cpp src\game\player_movement.cpp src\game\exit_sequence.cpp src\game\stage_update.cpp src\ui\ui_text.cpp src\ui\ui_text_small.cpp src\ui\settings_ui.cpp src\ui\tutorial_ui.cpp %LFLAGS%
+cl %CFLAGS% /Febuild\reconfig.exe /Fobuild\ src\main.cpp src\core\math_util.cpp src\core\perf.cpp src\platform\input.cpp src\platform\audio.cpp src\render\camera.cpp src\render\render.cpp src\render\framebuffer.cpp src\render\stage_render.cpp src\render\stage_cache.cpp src\game\world.cpp src\game\delete_rules.cpp src\game\player.cpp src\game\collision.cpp src\game\player_movement.cpp src\game\exit_sequence.cpp src\game\stage_update.cpp src\ui\ui_text.cpp src\ui\ui_text_small.cpp src\ui\settings_ui.cpp src\ui\tutorial_ui.cpp %LFLAGS%
 if errorlevel 1 goto mingw_build
 goto copy_dist
 
@@ -60,6 +60,7 @@ g++.exe -std=c++17 -Os -s ^
     -DWIN32_LEAN_AND_MEAN -DNOMINMAX ^
     -Isrc\core -Isrc\platform -Isrc\render -Isrc\game -Isrc\ui ^
     src\main.cpp src\core\math_util.cpp src\core\perf.cpp src\platform\input.cpp ^
+    src\platform\audio.cpp ^
     src\render\camera.cpp src\render\render.cpp src\render\framebuffer.cpp ^
     src\render\stage_render.cpp src\render\stage_cache.cpp ^
     src\game\world.cpp src\game\delete_rules.cpp src\game\player.cpp ^
@@ -67,7 +68,7 @@ g++.exe -std=c++17 -Os -s ^
     src\game\stage_update.cpp src\ui\ui_text.cpp src\ui\ui_text_small.cpp ^
     src\ui\settings_ui.cpp src\ui\tutorial_ui.cpp ^
     -mwindows -nostdlib -Wl,-e,WinMainCRTStartup ^
-    -lkernel32 -luser32 -lgdi32 -o build\reconfig.exe
+    -lkernel32 -luser32 -lgdi32 -lwinmm -o build\reconfig.exe
 if errorlevel 1 exit /b 1
 
 :copy_dist
