@@ -10,6 +10,8 @@ static constexpr int PLAYER_PARTICLE_COUNT = 64;
 struct Player {
     float x;
     float y;
+    float collision_w;
+    float collision_h;
     float vx;
     float vy;
     float visual_sx;
@@ -34,9 +36,11 @@ struct PlayerParticle {
 };
 
 RectF PlayerCollisionRect(const Player* player);
+void PlayerSetCollisionSizeAnchored(Player* player, float tangent_size, float gravity_size, GravityDirection size_direction, GravityDirection anchor_direction);
+void PlayerSetCollisionSize(Player* player, float tangent_size, float gravity_size, GravityDirection gravity_direction);
 void ResetPlayerPresentation(Player* player, PlayerParticle* particles, int particle_count);
 void SpawnPlayerDeathParticles(PlayerParticle* particles, int particle_count, float x, float y, GravityDirection gravity_direction);
 void UpdatePlayerParticles(PlayerParticle* particles, int particle_count, float dt, GravityDirection gravity_direction);
-void UpdatePlayerPresentation(Player* player, PlayerParticle* particles, int particle_count, float dt, float move, int jump_started, int landed, GravityDirection gravity_direction);
+void UpdatePlayerPresentation(Player* player, PlayerParticle* particles, int particle_count, float dt, float move, int jump_started, int landed, int stretch_blocked, GravityDirection gravity_direction);
 void DrawPlayerParticles(RenderContext* render, const PlayerParticle* particles, int particle_count, uint32_t effect_color);
 void DrawPlayer(RenderContext* render, const Player* player, uint32_t player_color, uint32_t face_color, GravityDirection gravity_direction);

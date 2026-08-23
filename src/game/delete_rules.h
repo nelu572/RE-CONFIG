@@ -37,6 +37,13 @@ enum SettingsValueView {
     SETTINGS_VALUE_PENDING
 };
 
+enum SettingsFlexibilityValue {
+    SETTINGS_FLEXIBILITY_HARD,
+    SETTINGS_FLEXIBILITY_NORMAL,
+    SETTINGS_FLEXIBILITY_SOFT,
+    SETTINGS_FLEXIBILITY_COUNT
+};
+
 enum SettingsItemStatus {
     SETTINGS_ITEM_IMPLEMENTED,
     SETTINGS_ITEM_PLANNED
@@ -58,5 +65,6 @@ const SettingsItemDef* SettingsItemAt(int index);
 int SettingsItemTotalCount();
 int SettingsItemCount(SettingsCategory category);
 int SettingsItemIndex(SettingsCategory category, int category_index);
+int SettingsFlexibilityItemIndex();
 int SettingsAudioVolumeItemIndex();
 int SettingsGravityDirectionItemIndex();

@@ -52,7 +52,7 @@ static const wchar_t* const g_speed_values[] = {
 };
 
 static const SettingsItemDef g_settings_items[] = {
-    { SETTINGS_GAMEPLAY, FEATURE_COUNT, L"캐릭터 유연성", SETTINGS_VALUE_CHOICES, SETTINGS_ITEM_PLANNED, g_flex_values, 3, 1 },
+    { SETTINGS_GAMEPLAY, FEATURE_COUNT, L"캐릭터 유연성", SETTINGS_VALUE_CHOICES, SETTINGS_ITEM_IMPLEMENTED, g_flex_values, SETTINGS_FLEXIBILITY_COUNT, SETTINGS_FLEXIBILITY_NORMAL },
     { SETTINGS_GAMEPLAY, FEATURE_COUNT, L"게임 속도", SETTINGS_VALUE_STEPS, SETTINGS_ITEM_PLANNED, g_speed_values, 3, 1 },
     { SETTINGS_AUDIO, FEATURE_COUNT, L"음량", SETTINGS_VALUE_STEPS, SETTINGS_ITEM_IMPLEMENTED, g_volume_values, 11, 10 },
     { SETTINGS_VIDEO, FEATURE_COUNT, L"무채색", SETTINGS_VALUE_TOGGLE, SETTINGS_ITEM_PLANNED, g_toggle_values, 2, 1 },
@@ -92,6 +92,18 @@ int SettingsItemIndex(SettingsCategory category, int category_index) {
                 return i;
             }
             ++at;
+        }
+    }
+    return -1;
+}
+
+int SettingsFlexibilityItemIndex() {
+    for (int i = 0; i < SettingsItemTotalCount(); ++i) {
+        const SettingsItemDef* item = SettingsItemAt(i);
+        if (item->category == SETTINGS_GAMEPLAY &&
+            item->value_view == SETTINGS_VALUE_CHOICES &&
+            item->values == g_flex_values) {
+            return i;
         }
     }
     return -1;
