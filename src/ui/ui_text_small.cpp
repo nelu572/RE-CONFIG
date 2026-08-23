@@ -39,6 +39,7 @@ static unsigned char GlyphBits(char ch, int row) {
     static const unsigned char x[7]     = { 17, 17, 10, 4, 10, 17, 17 };
     static const unsigned char y[7]     = { 17, 17, 10, 4, 4, 4, 4 };
     static const unsigned char z[7]     = { 31, 1, 2, 4, 8, 16, 31 };
+    static const unsigned char colon[7] = { 0, 4, 4, 0, 4, 4, 0 };
     static const unsigned char lbr[7]   = { 14, 8, 8, 8, 8, 8, 14 };
     static const unsigned char rbr[7]   = { 14, 2, 2, 2, 2, 2, 14 };
 
@@ -81,6 +82,7 @@ static unsigned char GlyphBits(char ch, int row) {
         case 'X': glyph = x; break;
         case 'Y': glyph = y; break;
         case 'Z': glyph = z; break;
+        case ':': glyph = colon; break;
         case '[': glyph = lbr; break;
         case ']': glyph = rbr; break;
     }

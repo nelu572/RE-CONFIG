@@ -8,6 +8,7 @@
 #include "exit_sequence.h"
 #include "framebuffer.h"
 #include "input.h"
+#include "main_menu.h"
 #include "render.h"
 #include "settings_ui.h"
 #include "stage_cache.h"
@@ -48,8 +49,16 @@ static int g_fullscreen = 0;
 static WINDOWPLACEMENT g_windowed_placement = { sizeof(g_windowed_placement) };
 static GameState g_game;
 static RenderContext g_render = { 0, &g_game.camera, RENDER_W, RENDER_H, RENDER_SCALE };
+static MainMenuState g_main_menu;
 static int g_overlay_redraw_pending = 0;
 static constexpr int START_ROOM_INDEX = 4;
+
+enum AppState {
+    APP_STATE_MAIN_MENU,
+    APP_STATE_GAME
+};
+
+static AppState g_app_state = APP_STATE_MAIN_MENU;
 
 static uint32_t COL_BG = 0x00292324;
 static const uint32_t COL_STAGE_SOFT = 0x006f3038;
@@ -62,6 +71,7 @@ static const uint32_t COL_PLAYER_DARK = 0x00292324;
 static uint32_t COL_TEXT = 0x00f7f0e5;
 static uint32_t COL_TEXT_DIM = 0x00d8b9b4;
 static const uint32_t COL_TEXT_DARK = 0x006f3038;
+static const uint32_t COL_MENU_CYAN = 0x003ffcff;
 static uint32_t COL_TYPE_A = 0x006f3038;
 static uint32_t COL_TYPE_A_PATTERN = 0x00c2a4a8;
 static uint32_t COL_TYPE_A_OFF = 0x00cb4855;
@@ -265,6 +275,16 @@ static void DrawTypeAArtTest() {
     StageRenderDrawTypeAArtTest(&state, g_type_a_art_test);
 }
 
+static MainMenuColors CurrentMainMenuColors() {
+    MainMenuColors colors;
+    colors.fallback_bg = COL_BG;
+    colors.title_red = 0x00cb4855;
+    colors.title_text = COL_PLAYER;
+    colors.selected = COL_MENU_CYAN;
+    colors.inactive = COL_TEXT_DIM;
+    return colors;
+}
+
 static StageCacheState CurrentStageCacheState() {
     StageCacheState state;
     state.render = &g_render;
@@ -410,6 +430,8 @@ extern "C" void WinMainCRTStartup() {
     UiTextWarmSettingsFonts();
     UiTextWarmSettingsTextCache();
     SettingsUiInit(&g_render, FeatureActive, ToggleFeature, SetSettingsItemValue, DrawContextText);
+    MainMenuInit(&g_main_menu);
+    MainMenuLoadBackground();
 
     g_game.camera.x = 0.0f;
     g_game.camera.y = 0.0f;
@@ -453,6 +475,25 @@ extern "C" void WinMainCRTStartup() {
 
         if (g_type_a_art_test) {
             DrawTypeAArtTest();
+            FramebufferDownsampleRenderTarget();
+            FramebufferPresent(COL_BG);
+            WaitUntilSeconds(frame_timer, PerfNowSeconds() + target_frame_seconds);
+            if (g_perf_config.enabled) {
+                PerfAddFrame(target_frame_seconds * 1000.0);
+                if (g_perf_config.bench_frames > 0 && g_perf_stats.frames >= g_perf_config.bench_frames) {
+                    g_running = 0;
+                }
+            }
+            continue;
+        }
+        if (g_app_state == APP_STATE_MAIN_MENU) {
+            MainMenuUpdate(&g_main_menu);
+            if (g_main_menu.action == MAIN_MENU_ACTION_EXIT) {
+                g_running = 0;
+            }
+
+            MainMenuColors menu_colors = CurrentMainMenuColors();
+            MainMenuDraw(&g_render, &g_main_menu, &menu_colors);
             FramebufferDownsampleRenderTarget();
             FramebufferPresent(COL_BG);
             WaitUntilSeconds(frame_timer, PerfNowSeconds() + target_frame_seconds);
