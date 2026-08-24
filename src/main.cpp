@@ -55,6 +55,19 @@ static constexpr int START_ROOM_INDEX = 4;
 static constexpr int DEBUG_ROOM_00_INDEX = 0;
 static constexpr int DEBUG_ROOM_01_INDEX = 1;
 static int g_stage_select_index = 0;
+static float g_stage_select_world_offset = 0.0f;
+static float g_stage_select_target_offset = 0.0f;
+static float g_stage_select_start_offset = 0.0f;
+static float g_stage_select_player_y = 0.0f;
+static float g_stage_select_start_player_y = 0.0f;
+static float g_stage_select_target_player_y = 0.0f;
+static float g_stage_select_anim_seconds = 0.0f;
+static float g_stage_select_platform_grow_seconds = 0.0f;
+static float g_stage_select_player_move_dir = 0.0f;
+static float g_stage_select_player_face_dir = 0.0f;
+static float g_stage_select_player_visual_sx = 1.0f;
+static float g_stage_select_player_visual_sy = 1.0f;
+static double g_stage_select_last_seconds = 0.0;
 
 enum AppState {
     APP_STATE_MAIN_MENU,
@@ -212,6 +225,9 @@ static int ClampRoomIndex(int room_index) {
     return room_index;
 }
 
+static float StageSelectPlayerYForStage(int stage_index);
+static float StageSelectTargetOffset(int stage_index);
+
 static void EnterMainMenu() {
     SettingsUiClose();
     g_app_state = APP_STATE_MAIN_MENU;
@@ -221,6 +237,19 @@ static void EnterMainMenu() {
 static void EnterStageSelect() {
     SettingsUiClose();
     g_stage_select_index = DEBUG_ROOM_00_INDEX;
+    g_stage_select_target_offset = StageSelectTargetOffset(g_stage_select_index);
+    g_stage_select_world_offset = g_stage_select_target_offset;
+    g_stage_select_start_offset = g_stage_select_world_offset;
+    g_stage_select_target_player_y = StageSelectPlayerYForStage(g_stage_select_index);
+    g_stage_select_player_y = g_stage_select_target_player_y;
+    g_stage_select_start_player_y = g_stage_select_player_y;
+    g_stage_select_anim_seconds = 0.36f;
+    g_stage_select_platform_grow_seconds = 0.16f;
+    g_stage_select_player_move_dir = 0.0f;
+    g_stage_select_player_face_dir = 0.0f;
+    g_stage_select_player_visual_sx = 1.0f;
+    g_stage_select_player_visual_sy = 1.0f;
+    g_stage_select_last_seconds = PerfNowSeconds();
     g_app_state = APP_STATE_STAGE_SELECT;
 }
 
@@ -343,47 +372,369 @@ static StageCacheState CurrentStageCacheState() {
     return state;
 }
 
+static constexpr float STAGE_SELECT_CENTER_X = FB_W * 0.5f;
+static constexpr float STAGE_SELECT_PLAYER_W = 40.0f;
+static constexpr float STAGE_SELECT_PLAYER_H = 40.0f;
+static constexpr int STAGE_SELECT_DEFAULT_INDEX = 2;
+static constexpr int STAGE_SELECT_DISPLAY_COUNT = 32;
+static constexpr float STAGE_SELECT_MOVE_SECONDS = 0.36f;
+static constexpr float STAGE_SELECT_JUMP_ARC_HEIGHT = 220.0f;
+static constexpr float STAGE_SELECT_PLATFORM_GROW_SECONDS = 0.16f;
+
+static int StageSelectClampInt(int value, int min_value, int max_value) {
+    if (value < min_value) return min_value;
+    if (value > max_value) return max_value;
+    return value;
+}
+
+static float StageSelectClamp01(float value) {
+    if (value < 0.0f) return 0.0f;
+    if (value > 1.0f) return 1.0f;
+    return value;
+}
+
+static float StageSelectAbsF(float value) {
+    return value < 0.0f ? -value : value;
+}
+
+static float StageSelectEase(float value) {
+    value = StageSelectClamp01(value);
+    return value * value * value * (value * (value * 6.0f - 15.0f) + 10.0f);
+}
+
+static float StageSelectLerp(float a, float b, float t) {
+    return a + (b - a) * t;
+}
+
+static float StageSelectFollow(float current, float target, float dt, float rate) {
+    return StageSelectLerp(current, target, StageSelectEase(dt * rate));
+}
+
+static uint32_t StageSelectRgb(int r, int g, int b) {
+    r = StageSelectClampInt(r, 0, 255);
+    g = StageSelectClampInt(g, 0, 255);
+    b = StageSelectClampInt(b, 0, 255);
+    return (uint32_t)((r << 16) | (g << 8) | b);
+}
+
+static uint32_t StageSelectBrighten(uint32_t color, int amount) {
+    int r = (int)((color >> 16) & 255) + amount;
+    int g = (int)((color >> 8) & 255) + amount;
+    int b = (int)(color & 255) + amount;
+    return StageSelectRgb(r, g, b);
+}
+
+static uint32_t StageSelectDim(uint32_t color, int amount) {
+    int r = (int)((color >> 16) & 255) - amount;
+    int g = (int)((color >> 8) & 255) - amount;
+    int b = (int)(color & 255) - amount;
+    return StageSelectRgb(r, g, b);
+}
+
+static float StageSelectStageGap(int edge_index) {
+    static const float gaps[] = { 430.0f, 468.0f, 406.0f, 448.0f, 396.0f, 458.0f };
+    int count = (int)(sizeof(gaps) / sizeof(gaps[0]));
+    int index = edge_index % count;
+    if (index < 0) index += count;
+    return gaps[index];
+}
+
+static float StageSelectWorldX(int stage_index) {
+    float x = STAGE_SELECT_CENTER_X;
+    if (stage_index > STAGE_SELECT_DEFAULT_INDEX) {
+        for (int i = STAGE_SELECT_DEFAULT_INDEX; i < stage_index; ++i) {
+            x += StageSelectStageGap(i);
+        }
+    } else if (stage_index < STAGE_SELECT_DEFAULT_INDEX) {
+        for (int i = stage_index; i < STAGE_SELECT_DEFAULT_INDEX; ++i) {
+            x -= StageSelectStageGap(i);
+        }
+    }
+    return x;
+}
+
+static float StageSelectTargetOffset(int stage_index) {
+    return STAGE_SELECT_CENTER_X - StageSelectWorldX(stage_index);
+}
+
+static int StageSelectStageDataIndex(int stage_index) {
+    static const int count = 5;
+    int index = stage_index % count;
+    return index < 0 ? index + count : index;
+}
+
+static int StageSelectPlatformBaseWidth(int stage_index) {
+    (void)stage_index;
+    return 300;
+}
+
+static int StageSelectPlatformY(int stage_index) {
+    static const int platform_y_by_stage[] = { 780, 622, 648, 622, 780 };
+    return platform_y_by_stage[StageSelectStageDataIndex(stage_index)];
+}
+
+static float StageSelectPlayerYForStage(int stage_index) {
+    return (float)StageSelectPlatformY(stage_index) - STAGE_SELECT_PLAYER_H;
+}
+static void StageSelectBeginMoveTo(int stage_index) {
+    g_stage_select_start_offset = g_stage_select_world_offset;
+    g_stage_select_start_player_y = g_stage_select_player_y;
+    g_stage_select_target_offset = StageSelectTargetOffset(stage_index);
+    g_stage_select_target_player_y = StageSelectPlayerYForStage(stage_index);
+    g_stage_select_player_move_dir = g_stage_select_target_offset < g_stage_select_start_offset ? 1.0f : -1.0f;
+    g_stage_select_player_visual_sx = 1.14f;
+    g_stage_select_player_visual_sy = 0.84f;
+    g_stage_select_anim_seconds = 0.0f;
+    g_stage_select_platform_grow_seconds = 0.0f;
+}
+static int StageSelectScreenX(float world_x, float parallax) {
+    float x = world_x + g_stage_select_world_offset * parallax;
+    return x >= 0.0f ? (int)(x + 0.5f) : (int)(x - 0.5f);
+}
+
+static void StageSelectDrawPoly4(int x0, int y0, int x1, int y1,
+                                 int x2, int y2, int x3, int y3,
+                                 uint32_t color) {
+    int xs[4] = { x0, x1, x2, x3 };
+    int ys[4] = { y0, y1, y2, y3 };
+    int min_y = ys[0];
+    int max_y = ys[0];
+    for (int i = 1; i < 4; ++i) {
+        if (ys[i] < min_y) min_y = ys[i];
+        if (ys[i] > max_y) max_y = ys[i];
+    }
+
+    min_y = StageSelectClampInt(min_y, 0, FB_H - 1);
+    max_y = StageSelectClampInt(max_y, 0, FB_H - 1);
+    for (int y = min_y; y <= max_y; ++y) {
+        float scan_y = (float)y + 0.5f;
+        float hits[4];
+        int hit_count = 0;
+        for (int i = 0; i < 4; ++i) {
+            int j = (i + 1) & 3;
+            float ay = (float)ys[i];
+            float by = (float)ys[j];
+            if ((ay <= scan_y && by > scan_y) || (by <= scan_y && ay > scan_y)) {
+                float t = (scan_y - ay) / (by - ay);
+                hits[hit_count++] = (float)xs[i] + ((float)xs[j] - (float)xs[i]) * t;
+            }
+        }
+
+        if (hit_count >= 2) {
+            if (hits[0] > hits[1]) {
+                float tmp = hits[0];
+                hits[0] = hits[1];
+                hits[1] = tmp;
+            }
+            int draw_x0 = StageSelectClampInt((int)(hits[0] + 0.5f), 0, FB_W);
+            int draw_x1 = StageSelectClampInt((int)(hits[1] + 0.5f), 0, FB_W);
+            if (draw_x1 > draw_x0) {
+                DrawRect(&g_render, draw_x0, y, draw_x1 - draw_x0, 1, color);
+            }
+        }
+    }
+}
+
+static uint32_t StageSelectBlend(uint32_t src, uint32_t dst, int alpha) {
+    alpha = StageSelectClampInt(alpha, 0, 255);
+    int inv = 255 - alpha;
+    int sr = (int)((src >> 16) & 255);
+    int sg = (int)((src >> 8) & 255);
+    int sb = (int)(src & 255);
+    int dr = (int)((dst >> 16) & 255);
+    int dg = (int)((dst >> 8) & 255);
+    int db = (int)(dst & 255);
+    return StageSelectRgb((sr * alpha + dr * inv) / 255,
+                          (sg * alpha + dg * inv) / 255,
+                          (sb * alpha + db * inv) / 255);
+}
+
+static void StageSelectDrawBgTriangle(float parallax,
+                                      int x0, int y0,
+                                      int x1, int y1,
+                                      int x2, int y2,
+                                      uint32_t color,
+                                      int alpha) {
+    uint32_t blended = StageSelectBlend(color, 0x00100b0d, alpha);
+    StageSelectDrawPoly4(StageSelectScreenX((float)x0, parallax), y0,
+                         StageSelectScreenX((float)x1, parallax), y1,
+                         StageSelectScreenX((float)x2, parallax), y2,
+                         StageSelectScreenX((float)x2, parallax), y2,
+                         blended);
+}
+
+static void StageSelectDrawBgQuad(float parallax,
+                                  int x0, int y0,
+                                  int x1, int y1,
+                                  int x2, int y2,
+                                  int x3, int y3,
+                                  uint32_t color,
+                                  int alpha) {
+    uint32_t blended = StageSelectBlend(color, 0x00100b0d, alpha);
+    StageSelectDrawPoly4(StageSelectScreenX((float)x0, parallax), y0,
+                         StageSelectScreenX((float)x1, parallax), y1,
+                         StageSelectScreenX((float)x2, parallax), y2,
+                         StageSelectScreenX((float)x3, parallax), y3,
+                         blended);
+}
+
+static void StageSelectDrawBackground() {
+    RenderClear(&g_render, 0x00100b0d);
+
+    StageSelectDrawBgTriangle(0.02f, -180, 228, 430, 92, 520, 162, 0x00332328, 86);
+    StageSelectDrawBgTriangle(0.035f, 1280, 204, 1670, 142, 1548, 354, 0x00422a30, 76);
+    StageSelectDrawBgQuad(0.045f, 1740, 555, 2060, 506, 2160, 680, 1800, 754, 0x00332328, 82);
+    StageSelectDrawBgTriangle(0.06f, 80, 900, 455, 762, 326, 1088, 0x00251a1d, 122);
+
+    StageSelectDrawBgTriangle(0.20f, 1500, 12, 2380, -178, 2250, 84, 0x00cb4855, 112);
+    StageSelectDrawBgQuad(0.38f, 1605, -218, 2390, -285, 2340, 64, 1760, 216, 0x00f04a5b, 219);
+
+    StageSelectDrawBgTriangle(0.24f, -420, 1120, 260, 842, 500, 1180, 0x007b2b33, 143);
+    StageSelectDrawBgQuad(0.52f, -560, 1260, 860, 982, 2360, 1168, 2360, 1420, 0x00cb4855, 199);
+}
+static int StageSelectStageLocked(int stage_index) {
+    return stage_index >= RoomCount();
+}
+
+static int StageSelectStageCleared(int stage_index) {
+    return stage_index == 1;
+}
+
+static void StageSelectDrawStageNode(int stage_index) {
+    float world_x = StageSelectWorldX(stage_index);
+    float screen_center_x = (float)StageSelectScreenX(world_x, 1.0f);
+    int selected = stage_index == g_stage_select_index;
+    int locked = StageSelectStageLocked(stage_index);
+    float selected_scale = selected ? StageSelectEase(g_stage_select_platform_grow_seconds / STAGE_SELECT_PLATFORM_GROW_SECONDS) : 0.0f;
+    int selected_alpha = (int)(selected_scale * 255.0f + 0.5f);
+    int platform_w = StageSelectPlatformBaseWidth(stage_index) + (int)(22.0f * selected_scale + 0.5f);
+    int platform_h = 34 + (int)(8.0f * selected_scale + 0.5f);
+    int platform_x = (int)(screen_center_x - (float)platform_w * 0.5f);
+    int platform_y = StageSelectPlatformY(stage_index);
+    uint32_t platform_base_color = locked ? 0x00513036 : 0x00cb4855;
+    uint32_t platform_selected_color = locked ? StageSelectBrighten(platform_base_color, 10) : StageSelectBrighten(0x00f04a5b, 8);
+    uint32_t platform_color = selected ? StageSelectBlend(platform_selected_color, platform_base_color, selected_alpha) : platform_base_color;
+
+    DrawRect(&g_render, platform_x, platform_y, platform_w, platform_h, platform_color);
+
+    char label[16];
+    wsprintfA(label, "STAGE %02d", stage_index);
+    int text_scale = selected_scale > 0.0f ? 4 : 3;
+    int text_w = 8 * 6 * text_scale;
+    uint32_t text_base_color = locked ? 0x008a7774 : COL_TEXT;
+    uint32_t text_color = selected ? StageSelectBlend(0x0039cfc3, text_base_color, selected_alpha) : text_base_color;
+    int base_label_y = platform_y + platform_h + 18;
+    int selected_label_y = platform_y + platform_h + 26;
+    int label_y = selected ? (int)(StageSelectLerp((float)base_label_y, (float)selected_label_y, selected_scale) + 0.5f) : base_label_y;
+    UiTextSmallDraw(&g_render, (int)(screen_center_x - text_w * 0.5f), label_y, label, text_scale, text_color);
+
+    if (StageSelectStageCleared(stage_index)) {
+        DrawRect(&g_render, (int)(screen_center_x + text_w * 0.5f + 16), label_y + 8, 10, 10, 0x0039cfc3);
+    }
+}
+static void StageSelectDrawPlayer() {
+    Player player = {};
+    player.x = STAGE_SELECT_CENTER_X - STAGE_SELECT_PLAYER_W * 0.5f;
+    player.y = g_stage_select_player_y;
+    player.collision_w = STAGE_SELECT_PLAYER_W;
+    player.collision_h = STAGE_SELECT_PLAYER_H;
+    int moving = g_stage_select_anim_seconds < STAGE_SELECT_MOVE_SECONDS;
+    player.visual_sx = g_stage_select_player_visual_sx;
+    player.visual_sy = g_stage_select_player_visual_sy;
+    player.face_dir = g_stage_select_player_face_dir;
+    player.grounded = moving ? 0 : 1;
+
+    Camera old_camera = *g_render.camera;
+    g_render.camera->x = 0.0f;
+    g_render.camera->y = 0.0f;
+    DrawPlayer(&g_render, &player, COL_PLAYER, StageSelectDim(COL_PLATFORM, 36), GRAVITY_DOWN);
+    *g_render.camera = old_camera;
+}
+
 static void UpdateStageSelect() {
-    int room_count = RoomCount();
-    if (InputWasPressed(KEY_UP)) {
+    double now = PerfNowSeconds();
+    float dt = g_stage_select_last_seconds > 0.0 ? (float)(now - g_stage_select_last_seconds) : 0.016f;
+    if (dt > 0.050f) dt = 0.050f;
+    if (dt < 0.0f) dt = 0.0f;
+    g_stage_select_last_seconds = now;
+    g_stage_select_anim_seconds += dt;
+    float move_t = StageSelectClamp01(g_stage_select_anim_seconds / STAGE_SELECT_MOVE_SECONDS);
+    float t = StageSelectEase(move_t);
+    float top_y = g_stage_select_start_player_y < g_stage_select_target_player_y ? g_stage_select_start_player_y : g_stage_select_target_player_y;
+    float peak_y = top_y - STAGE_SELECT_JUMP_ARC_HEIGHT;
+    float inv_t = 1.0f - move_t;
+    g_stage_select_world_offset = StageSelectLerp(g_stage_select_start_offset, g_stage_select_target_offset, t);
+    g_stage_select_player_y = inv_t * inv_t * g_stage_select_start_player_y +
+                              2.0f * inv_t * move_t * peak_y +
+                              move_t * move_t * g_stage_select_target_player_y;
+
+    int moving = g_stage_select_anim_seconds < STAGE_SELECT_MOVE_SECONDS;
+    float jump_arc = 4.0f * move_t * (1.0f - move_t);
+    float target_face_dir = moving ? g_stage_select_player_move_dir : 0.0f;
+    float target_visual_sx;
+    float target_visual_sy;
+    if (moving) {
+        target_visual_sx = 0.96f - 0.06f * jump_arc;
+        target_visual_sy = 1.08f + 0.14f * jump_arc;
+    } else {
+        float land_t = StageSelectClamp01(g_stage_select_platform_grow_seconds / STAGE_SELECT_PLATFORM_GROW_SECONDS);
+        float land_squash = 1.0f - StageSelectEase(land_t);
+        target_visual_sx = 1.0f + 0.24f * land_squash;
+        target_visual_sy = 1.0f - 0.20f * land_squash;
+    }
+    g_stage_select_player_face_dir = StageSelectFollow(g_stage_select_player_face_dir, target_face_dir, dt, moving ? 13.0f : 7.0f);
+    g_stage_select_player_visual_sx = StageSelectFollow(g_stage_select_player_visual_sx, target_visual_sx, dt, 15.0f);
+    g_stage_select_player_visual_sy = StageSelectFollow(g_stage_select_player_visual_sy, target_visual_sy, dt, 15.0f);
+
+    if (g_stage_select_anim_seconds >= STAGE_SELECT_MOVE_SECONDS) {
+        g_stage_select_world_offset = g_stage_select_target_offset;
+        g_stage_select_player_y = g_stage_select_target_player_y;
+        g_stage_select_start_offset = g_stage_select_world_offset;
+        g_stage_select_start_player_y = g_stage_select_player_y;
+        g_stage_select_platform_grow_seconds += dt;
+        if (g_stage_select_platform_grow_seconds > STAGE_SELECT_PLATFORM_GROW_SECONDS) {
+            g_stage_select_platform_grow_seconds = STAGE_SELECT_PLATFORM_GROW_SECONDS;
+        }
+    } else {
+        g_stage_select_platform_grow_seconds = 0.0f;
+    }
+
+    if (g_stage_select_anim_seconds < STAGE_SELECT_MOVE_SECONDS) {
+        return;
+    }
+
+    int room_count = STAGE_SELECT_DISPLAY_COUNT;
+    int previous_index = g_stage_select_index;
+    int move_left = InputIsDown(KEY_LEFT) && !InputIsDown(KEY_RIGHT);
+    int move_right = InputIsDown(KEY_RIGHT) && !InputIsDown(KEY_LEFT);
+    if (move_left && g_stage_select_index > 0) {
         --g_stage_select_index;
-        if (g_stage_select_index < 0) {
-            g_stage_select_index = room_count - 1;
-        }
-    }
-    if (InputWasPressed(KEY_DOWN)) {
+    } else if (move_right && g_stage_select_index < room_count - 1) {
         ++g_stage_select_index;
-        if (g_stage_select_index >= room_count) {
-            g_stage_select_index = 0;
-        }
     }
-    if (InputWasPressed(KEY_X)) {
+    if (g_stage_select_index != previous_index) {
+        StageSelectBeginMoveTo(g_stage_select_index);
+        return;
+    }
+
+    if (InputWasPressed(KEY_X) && !StageSelectStageLocked(g_stage_select_index)) {
         EnterStage(g_stage_select_index);
+        return;
     }
 }
-
 static void DrawStageSelect() {
-    RenderClear(&g_render, COL_BG);
-    DrawTextUi(160, 180, L"스테이지 선택", 42, COL_TEXT, 0);
+    StageSelectDrawBackground();
 
-    const int list_x = 240;
-    const int list_y = 330;
-    const int row_h = 64;
-    for (int i = 0; i < RoomCount(); ++i) {
-        int y = list_y + i * row_h;
-        int selected = i == g_stage_select_index;
-        uint32_t color = selected ? COL_MENU_CYAN : COL_TEXT_DIM;
-        if (selected) {
-            DrawRect(&g_render, list_x - 44, y + 3, 8, 40, COL_MENU_CYAN);
-            DrawRectOutline(&g_render, list_x - 64, y - 12, 350, 60, COL_PLATFORM_EDGE);
+    int room_count = STAGE_SELECT_DISPLAY_COUNT;
+    for (int i = 0; i < room_count; ++i) {
+        int sx = StageSelectScreenX(StageSelectWorldX(i), 1.0f);
+        if (sx < -520 || sx > FB_W + 520) {
+            continue;
         }
-
-        char label[16];
-        wsprintfA(label, "STAGE %02d", i);
-        UiTextSmallDraw(&g_render, list_x, y, label, 6, color);
+        StageSelectDrawStageNode(i);
     }
+StageSelectDrawPlayer();
 }
-
 static void ToggleFullscreen() {
     DWORD style = GetWindowLongA(g_window, GWL_STYLE);
     if (!g_fullscreen) {
