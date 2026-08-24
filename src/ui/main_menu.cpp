@@ -175,71 +175,123 @@ static void MainMenuLogoColon(RenderContext* render, int x, int y, int t, uint32
     MainMenuDrawPoly4(render, x + 2, y + 45, x + t + 2, y + 51, x + t, y + 63, x, y + 57, color);
 }
 
+static void MainMenuLogoStroke(RenderContext* render, int x, int y, int w, int h, uint32_t color) {
+    DrawRect(render, x, y, w, h, color);
+}
+
+static void MainMenuLogoTopBar(RenderContext* render, int x, int y, int w, int t,
+                               int left_bevel, int right_bevel, uint32_t color) {
+    MainMenuDrawPoly4(render,
+                      x + left_bevel, y,
+                      x + w - right_bevel, y,
+                      x + w, y + t,
+                      x, y + t,
+                      color);
+}
+
+static void MainMenuLogoBottomBar(RenderContext* render, int x, int y, int w, int t,
+                                  int left_bevel, int right_bevel, uint32_t color) {
+    MainMenuDrawPoly4(render,
+                      x, y,
+                      x + w, y,
+                      x + w - right_bevel, y + t,
+                      x + left_bevel, y + t,
+                      color);
+}
+
+static void MainMenuLogoDiagDown(RenderContext* render, int x, int y, int len, int t, uint32_t color) {
+    MainMenuDrawPoly4(render,
+                      x, y,
+                      x + t, y,
+                      x + t + len, y + len,
+                      x + len, y + len,
+                      color);
+}
+
 static int MainMenuLogoGlyph(RenderContext* render, int x, int y, char glyph, uint32_t color) {
-    const int w = 78;
-    const int h = 72;
-    const int t = 11;
-    const int slant = 14;
+    const int h = 66;
+    const int t = 8;
+    const int bevel = t;
+    const int mid_y = 31;
+    const int bottom_y = h - t;
 
     switch (glyph) {
-    case 'R':
-        MainMenuLogoV(render, x, y, h, t, slant, color);
-        MainMenuLogoH(render, x, y, w - 8, t, slant, color);
-        MainMenuLogoH(render, x, y + 31, w - 13, t, slant, color);
-        MainMenuLogoV(render, x + w - t - 8, y + 4, 36, t, slant, color);
-        MainMenuLogoBackslash(render, x + 38, y + 39, 35, 33, t, color);
-        return 86;
-    case 'E':
-        MainMenuLogoV(render, x, y, h, t, slant, color);
-        MainMenuLogoH(render, x, y, w, t, slant, color);
-        MainMenuLogoH(render, x, y + 31, w - 11, t, slant, color);
-        MainMenuLogoH(render, x, y + h - t, w, t, slant, color);
-        return 86;
-    case 'C':
-        MainMenuLogoV(render, x, y + 2, h - 4, t, slant, color);
-        MainMenuLogoH(render, x, y, w, t, slant, color);
-        MainMenuLogoH(render, x, y + h - t, w, t, slant, color);
-        return 86;
-    case 'O':
-        MainMenuLogoV(render, x, y + 2, h - 4, t, slant, color);
-        MainMenuLogoV(render, x + w - t, y + 2, h - 4, t, slant, color);
-        MainMenuLogoH(render, x, y, w, t, slant, color);
-        MainMenuLogoH(render, x, y + h - t, w, t, slant, color);
-        return 88;
-    case 'N': {
-        const int nw = 72;
-        MainMenuLogoV(render, x, y, h, t, slant, color);
-        MainMenuLogoV(render, x + nw - t, y, h, t, slant, color);
-        MainMenuDrawPoly4(render,
-                          x + t - 1, y,
-                          x + t + 15, y,
-                          x + nw - t + 1, y + h,
-                          x + nw - t - 15, y + h,
-                          color);
+    case 'R': {
+        const int w = 57;
+        MainMenuLogoStroke(render, x, y, t, h, color);
+        MainMenuLogoStroke(render, x, y, w, t, color);
+        MainMenuLogoStroke(render, x + w - t, y + t, t, mid_y - t, color);
+        MainMenuLogoBottomBar(render, x, y + mid_y, w, t, 0, bevel, color);
+        MainMenuLogoDiagDown(render, x + 23, y + mid_y + t, 26, t, color);
         return 82;
     }
-    case 'F':
-        MainMenuLogoV(render, x, y, h, t, slant, color);
-        MainMenuLogoH(render, x, y, w, t, slant, color);
-        MainMenuLogoH(render, x, y + 31, w - 10, t, slant, color);
-        return 84;
-    case 'I':
-        MainMenuLogoH(render, x, y, 58, t, slant, color);
-        DrawRect(render, x + 23, y + 9, t + 1, h - 18, color);
-        MainMenuLogoH(render, x, y + h - t, 58, t, slant, color);
-        return 66;
-    case 'G':
-        MainMenuLogoV(render, x, y + 2, h - 4, t, slant, color);
-        MainMenuLogoV(render, x + w - t, y + 40, h - 40, t, slant, color);
-        MainMenuLogoH(render, x, y, w, t, slant, color);
-        MainMenuLogoH(render, x, y + h - t, w, t, slant, color);
-        MainMenuLogoH(render, x + 37, y + 36, w - 37, t, slant, color);
-        return 88;
+    case 'E': {
+        const int w = 57;
+        MainMenuLogoStroke(render, x, y, t, h, color);
+        MainMenuLogoStroke(render, x, y, w, t, color);
+        MainMenuLogoStroke(render, x, y + mid_y, w - 5, t, color);
+        MainMenuLogoStroke(render, x, y + bottom_y, w, t, color);
+        return 87;
+    }
     case ':':
-        MainMenuLogoColon(render, x + 10, y + 2, t, color);
-        return 42;
+        MainMenuLogoStroke(render, x, y + 13, 10, 11, color);
+        MainMenuLogoStroke(render, x, y + 47, 10, 11, color);
+        return 39;
+    case 'C': {
+        const int w = 57;
+        MainMenuLogoTopBar(render, x, y, w, t, bevel, 0, color);
+        MainMenuLogoStroke(render, x, y + t, t, bottom_y - t, color);
+        MainMenuLogoBottomBar(render, x, y + bottom_y, w, t, bevel, 0, color);
+        return 81;
+    }
+    case 'O': {
+        const int w = 60;
+        MainMenuLogoTopBar(render, x, y, w, t, bevel, bevel, color);
+        MainMenuLogoStroke(render, x, y + t, t, bottom_y - t, color);
+        MainMenuLogoStroke(render, x + w - t, y + t, t, bottom_y - t, color);
+        MainMenuLogoBottomBar(render, x, y + bottom_y, w, t, bevel, bevel, color);
+        return 84;
+    }
+    case 'N': {
+        const int w = 57;
+        MainMenuLogoStroke(render, x, y, t, h, color);
+        MainMenuLogoStroke(render, x + w - t, y, t, h, color);
+        MainMenuDrawPoly4(render,
+                          x + t - 2, y,
+                          x + t * 2 + 2, y,
+                          x + w - t + 2, y + h,
+                          x + w - t * 2 - 2, y + h,
+                          color);
+        return 81;
+    }
+    case 'F': {
+        const int w = 58;
+        MainMenuLogoStroke(render, x, y, t, h, color);
+        MainMenuLogoStroke(render, x, y, w, t, color);
+        MainMenuLogoStroke(render, x, y + mid_y, w - 8, t, color);
+        return 83;
+    }
+    case 'I':
+        MainMenuLogoStroke(render, x, y, 40, t, color);
+        MainMenuLogoStroke(render, x + 16, y, t, h, color);
+        MainMenuLogoStroke(render, x, y + bottom_y, 40, t, color);
+        return 64;
+    case 'G': {
+        const int w = 58;
+        MainMenuLogoTopBar(render, x, y, w, t, bevel, bevel, color);
+        MainMenuLogoStroke(render, x, y + t, t, bottom_y - t, color);
+        MainMenuLogoBottomBar(render, x, y + bottom_y, w, t, bevel, bevel, color);
+        MainMenuLogoStroke(render, x + w - t, y + mid_y + t, t, bottom_y - mid_y - t, color);
+        MainMenuDrawPoly4(render,
+                          x + 37, y + mid_y,
+                          x + w, y + mid_y,
+                          x + w, y + mid_y + t,
+                          x + 29, y + mid_y + t,
+                          color);
+        return 58;
+    }
     default:
-        return 32;
+        return 24;
     }
 }
 
@@ -386,13 +438,14 @@ static void MainMenuDrawBackground(RenderContext* render, uint32_t fallback_bg) 
 }
 
 static void MainMenuDrawTitle(RenderContext* render, const MainMenuColors* colors) {
-    const int title_x = 152;
-    const int title_y = 386;
-    const uint32_t shadow = 0x000c0909;
-    MainMenuDrawLogoText(render, title_x + 5, title_y + 7, "RE:", shadow);
-    MainMenuDrawLogoText(render, title_x + 5 + 214, title_y + 7, "CONFIG", shadow);
-    MainMenuDrawLogoText(render, title_x, title_y, "RE:", colors->title_red);
-    MainMenuDrawLogoText(render, title_x + 214, title_y, "CONFIG", colors->title_text);
+    const int title_y = 430;
+    const int re_x = 164;
+    const int config_x = 366;
+    const uint32_t shadow = 0x00100b0b;
+    MainMenuDrawLogoText(render, re_x + 3, title_y + 4, "RE:", shadow);
+    MainMenuDrawLogoText(render, config_x + 3, title_y + 4, "CONFIG", shadow);
+    MainMenuDrawLogoText(render, re_x, title_y, "RE:", colors->title_red);
+    MainMenuDrawLogoText(render, config_x, title_y, "CONFIG", colors->title_text);
 }
 
 static float MainMenuEase01(float t) {
