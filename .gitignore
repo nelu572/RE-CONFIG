@@ -2,6 +2,7 @@ build/
 dist/
 .vs/
 chaos_ai_v0.9.0/
+captures/
 screenshots/
 verification/
 *.png

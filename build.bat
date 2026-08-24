@@ -73,6 +73,7 @@ if errorlevel 1 exit /b 1
 
 :copy_dist
 copy /Y build\reconfig.exe dist\reconfig.exe >nul
+if exist dist\assets rmdir /S /Q dist\assets
 call size_check.bat
 endlocal
 exit /b 0

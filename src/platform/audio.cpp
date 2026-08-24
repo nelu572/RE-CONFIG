@@ -1,4 +1,5 @@
 #include "audio.h"
+#include "speaker_kick_embedded_wav.h"
 
 #include <stdint.h>
 #include <stddef.h>
@@ -177,6 +178,11 @@ static int AudioLoadSpeakerKick() {
     }
     g_speaker_kick_load_attempted = 1;
 
+    if (AudioParseWav(kSpeakerKickEmbeddedWav, (DWORD)sizeof(kSpeakerKickEmbeddedWav), &g_speaker_kick)) {
+        g_speaker_kick_loaded = 1;
+        return 1;
+    }
+
     char path[MAX_PATH];
     if (!AudioFindSpeakerKickPath(path, (int)sizeof(path))) {
         return 0;
@@ -197,7 +203,6 @@ static int AudioLoadSpeakerKick() {
     g_speaker_kick_loaded = 1;
     return 1;
 }
-
 static int AudioEnsureWaveOut() {
     if (g_wave_out) {
         return 1;
