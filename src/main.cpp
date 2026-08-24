@@ -52,9 +52,11 @@ static RenderContext g_render = { 0, &g_game.camera, RENDER_W, RENDER_H, RENDER_
 static MainMenuState g_main_menu;
 static int g_overlay_redraw_pending = 0;
 static constexpr int START_ROOM_INDEX = 4;
+static int g_stage_select_index = 0;
 
 enum AppState {
     APP_STATE_MAIN_MENU,
+    APP_STATE_STAGE_SELECT,
     APP_STATE_GAME
 };
 
@@ -197,6 +199,30 @@ static void ResetStage() {
     GameResetStage(&g_game);
 }
 
+static int ClampRoomIndex(int room_index) {
+    if (room_index < 0) {
+        return 0;
+    }
+    int room_count = RoomCount();
+    if (room_index >= room_count) {
+        return room_count - 1;
+    }
+    return room_index;
+}
+
+static void EnterStageSelect() {
+    SettingsUiClose();
+    g_stage_select_index = 0;
+    g_app_state = APP_STATE_STAGE_SELECT;
+}
+
+static void EnterStage(int room_index) {
+    SettingsUiClose();
+    g_game.current_room = ClampRoomIndex(room_index);
+    g_app_state = APP_STATE_GAME;
+    ResetStage();
+}
+
 static void UpdateStage(float dt) {
     GameUpdateStage(&g_game, dt, !g_perf_config.disable_static_cache);
     const RoomDef* room = CurrentRoom();
@@ -305,6 +331,47 @@ static StageCacheState CurrentStageCacheState() {
     state.camera_y = g_game.camera.y;
     state.bg_color = COL_BG;
     return state;
+}
+
+static void UpdateStageSelect() {
+    int room_count = RoomCount();
+    if (InputWasPressed(KEY_UP)) {
+        --g_stage_select_index;
+        if (g_stage_select_index < 0) {
+            g_stage_select_index = room_count - 1;
+        }
+    }
+    if (InputWasPressed(KEY_DOWN)) {
+        ++g_stage_select_index;
+        if (g_stage_select_index >= room_count) {
+            g_stage_select_index = 0;
+        }
+    }
+    if (InputWasPressed(KEY_X)) {
+        EnterStage(g_stage_select_index);
+    }
+}
+
+static void DrawStageSelect() {
+    RenderClear(&g_render, COL_BG);
+    DrawTextUi(160, 180, L"스테이지 선택", 42, COL_TEXT, 0);
+
+    const int list_x = 240;
+    const int list_y = 330;
+    const int row_h = 64;
+    for (int i = 0; i < RoomCount(); ++i) {
+        int y = list_y + i * row_h;
+        int selected = i == g_stage_select_index;
+        uint32_t color = selected ? COL_MENU_CYAN : COL_TEXT_DIM;
+        if (selected) {
+            DrawRect(&g_render, list_x - 44, y + 3, 8, 40, COL_MENU_CYAN);
+            DrawRectOutline(&g_render, list_x - 64, y - 12, 350, 60, COL_PLATFORM_EDGE);
+        }
+
+        char label[16];
+        wsprintfA(label, "STAGE %02d", i);
+        UiTextSmallDraw(&g_render, list_x, y, label, 6, color);
+    }
 }
 
 static void ToggleFullscreen() {
@@ -488,12 +555,29 @@ extern "C" void WinMainCRTStartup() {
         }
         if (g_app_state == APP_STATE_MAIN_MENU) {
             MainMenuUpdate(&g_main_menu);
+            if (g_main_menu.action == MAIN_MENU_ACTION_START) {
+                EnterStageSelect();
+            }
             if (g_main_menu.action == MAIN_MENU_ACTION_EXIT) {
                 g_running = 0;
             }
 
             MainMenuColors menu_colors = CurrentMainMenuColors();
             MainMenuDraw(&g_render, &g_main_menu, &menu_colors);
+            FramebufferDownsampleRenderTarget();
+            FramebufferPresent(COL_BG);
+            WaitUntilSeconds(frame_timer, PerfNowSeconds() + target_frame_seconds);
+            if (g_perf_config.enabled) {
+                PerfAddFrame(target_frame_seconds * 1000.0);
+                if (g_perf_config.bench_frames > 0 && g_perf_stats.frames >= g_perf_config.bench_frames) {
+                    g_running = 0;
+                }
+            }
+            continue;
+        }
+        if (g_app_state == APP_STATE_STAGE_SELECT) {
+            UpdateStageSelect();
+            DrawStageSelect();
             FramebufferDownsampleRenderTarget();
             FramebufferPresent(COL_BG);
             WaitUntilSeconds(frame_timer, PerfNowSeconds() + target_frame_seconds);
