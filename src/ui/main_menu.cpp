@@ -7,7 +7,6 @@
 #include "perf.h"
 #include "render.h"
 #include "ui_text.h"
-#include "ui_text_small.h"
 
 static uint32_t g_main_menu_background[FB_W * FB_H];
 static unsigned char g_main_menu_bmp_row[FB_W * 4];
@@ -27,6 +26,12 @@ static uint32_t MainMenuReadU32(const unsigned char* p) {
 
 static int32_t MainMenuReadI32(const unsigned char* p) {
     return (int32_t)MainMenuReadU32(p);
+}
+
+static int MainMenuClampInt(int value, int min_value, int max_value) {
+    if (value < min_value) return min_value;
+    if (value > max_value) return max_value;
+    return value;
 }
 
 static float MainMenuFrac(double value) {
@@ -56,6 +61,21 @@ static uint32_t MainMenuBrighten(uint32_t color, int amount) {
     if (b > 255) b = 255;
     return (uint32_t)((r << 16) | (g << 8) | b);
 }
+static uint32_t MainMenuBlendColor(uint32_t a, uint32_t b, float t) {
+    if (t < 0.0f) t = 0.0f;
+    if (t > 1.0f) t = 1.0f;
+    int ar = (int)((a >> 16) & 255);
+    int ag = (int)((a >> 8) & 255);
+    int ab = (int)(a & 255);
+    int br = (int)((b >> 16) & 255);
+    int bg = (int)((b >> 8) & 255);
+    int bb = (int)(b & 255);
+    int r = ar + (int)(((float)(br - ar) * t) + 0.5f);
+    int g = ag + (int)(((float)(bg - ag) * t) + 0.5f);
+    int bl = ab + (int)(((float)(bb - ab) * t) + 0.5f);
+    return (uint32_t)((r << 16) | (g << 8) | bl);
+}
+
 
 static void MainMenuBlendRawPixel(RenderContext* render, int x, int y, uint32_t color, int alpha) {
     if ((unsigned)x >= (unsigned)render->width || (unsigned)y >= (unsigned)render->height || alpha <= 0) {
@@ -79,7 +99,7 @@ static void MainMenuBlendRawPixel(RenderContext* render, int x, int y, uint32_t 
     *dst = (uint32_t)((nr << 16) | (ng << 8) | nb);
 }
 
-static void MainMenuBlendRect(RenderContext* render, int x, int y, int w, int h, uint32_t color, int alpha) {
+static void MainMenuBlendRectRaw(RenderContext* render, int x, int y, int w, int h, uint32_t color, int alpha) {
     int s = render->scale;
     int x0 = x * s;
     int y0 = y * s;
@@ -93,6 +113,140 @@ static void MainMenuBlendRect(RenderContext* render, int x, int y, int w, int h,
         for (int xx = x0; xx < x1; ++xx) {
             MainMenuBlendRawPixel(render, xx, yy, color, alpha);
         }
+    }
+}
+
+static void MainMenuDrawPoly4(RenderContext* render, int x0, int y0, int x1, int y1,
+                              int x2, int y2, int x3, int y3, uint32_t color) {
+    int xs[4] = { x0, x1, x2, x3 };
+    int ys[4] = { y0, y1, y2, y3 };
+    int min_y = ys[0];
+    int max_y = ys[0];
+    for (int i = 1; i < 4; ++i) {
+        if (ys[i] < min_y) min_y = ys[i];
+        if (ys[i] > max_y) max_y = ys[i];
+    }
+
+    min_y = MainMenuClampInt(min_y, 0, FB_H - 1);
+    max_y = MainMenuClampInt(max_y, 0, FB_H - 1);
+    for (int y = min_y; y <= max_y; ++y) {
+        float scan_y = (float)y + 0.5f;
+        float hits[4];
+        int hit_count = 0;
+        for (int i = 0; i < 4; ++i) {
+            int j = (i + 1) & 3;
+            float ay = (float)ys[i];
+            float by = (float)ys[j];
+            if ((ay <= scan_y && by > scan_y) || (by <= scan_y && ay > scan_y)) {
+                float t = (scan_y - ay) / (by - ay);
+                hits[hit_count++] = (float)xs[i] + ((float)xs[j] - (float)xs[i]) * t;
+            }
+        }
+
+        if (hit_count >= 2) {
+            if (hits[0] > hits[1]) {
+                float tmp = hits[0];
+                hits[0] = hits[1];
+                hits[1] = tmp;
+            }
+            int draw_x0 = MainMenuClampInt((int)(hits[0] + 0.5f), 0, FB_W);
+            int draw_x1 = MainMenuClampInt((int)(hits[1] + 0.5f), 0, FB_W);
+            if (draw_x1 > draw_x0) {
+                DrawRect(render, draw_x0, y, draw_x1 - draw_x0, 1, color);
+            }
+        }
+    }
+}
+
+static void MainMenuLogoH(RenderContext* render, int x, int y, int w, int t, int slant, uint32_t color) {
+    MainMenuDrawPoly4(render, x + slant, y, x + w, y, x + w - slant, y + t, x, y + t, color);
+}
+
+static void MainMenuLogoV(RenderContext* render, int x, int y, int h, int t, int slant, uint32_t color) {
+    MainMenuDrawPoly4(render, x, y + slant, x + t, y, x + t, y + h - slant, x, y + h, color);
+}
+
+static void MainMenuLogoBackslash(RenderContext* render, int x, int y, int w, int h, int t, uint32_t color) {
+    MainMenuDrawPoly4(render, x, y, x + t, y, x + w, y + h, x + w - t, y + h, color);
+}
+
+static void MainMenuLogoColon(RenderContext* render, int x, int y, int t, uint32_t color) {
+    MainMenuDrawPoly4(render, x + 2, y + 12, x + t + 2, y + 18, x + t, y + 30, x, y + 24, color);
+    MainMenuDrawPoly4(render, x + 2, y + 45, x + t + 2, y + 51, x + t, y + 63, x, y + 57, color);
+}
+
+static int MainMenuLogoGlyph(RenderContext* render, int x, int y, char glyph, uint32_t color) {
+    const int w = 78;
+    const int h = 72;
+    const int t = 11;
+    const int slant = 14;
+
+    switch (glyph) {
+    case 'R':
+        MainMenuLogoV(render, x, y, h, t, slant, color);
+        MainMenuLogoH(render, x, y, w - 8, t, slant, color);
+        MainMenuLogoH(render, x, y + 31, w - 13, t, slant, color);
+        MainMenuLogoV(render, x + w - t - 8, y + 4, 36, t, slant, color);
+        MainMenuLogoBackslash(render, x + 38, y + 39, 35, 33, t, color);
+        return 86;
+    case 'E':
+        MainMenuLogoV(render, x, y, h, t, slant, color);
+        MainMenuLogoH(render, x, y, w, t, slant, color);
+        MainMenuLogoH(render, x, y + 31, w - 11, t, slant, color);
+        MainMenuLogoH(render, x, y + h - t, w, t, slant, color);
+        return 86;
+    case 'C':
+        MainMenuLogoV(render, x, y + 2, h - 4, t, slant, color);
+        MainMenuLogoH(render, x, y, w, t, slant, color);
+        MainMenuLogoH(render, x, y + h - t, w, t, slant, color);
+        return 86;
+    case 'O':
+        MainMenuLogoV(render, x, y + 2, h - 4, t, slant, color);
+        MainMenuLogoV(render, x + w - t, y + 2, h - 4, t, slant, color);
+        MainMenuLogoH(render, x, y, w, t, slant, color);
+        MainMenuLogoH(render, x, y + h - t, w, t, slant, color);
+        return 88;
+    case 'N': {
+        const int nw = 72;
+        MainMenuLogoV(render, x, y, h, t, slant, color);
+        MainMenuLogoV(render, x + nw - t, y, h, t, slant, color);
+        MainMenuDrawPoly4(render,
+                          x + t - 1, y,
+                          x + t + 15, y,
+                          x + nw - t + 1, y + h,
+                          x + nw - t - 15, y + h,
+                          color);
+        return 82;
+    }
+    case 'F':
+        MainMenuLogoV(render, x, y, h, t, slant, color);
+        MainMenuLogoH(render, x, y, w, t, slant, color);
+        MainMenuLogoH(render, x, y + 31, w - 10, t, slant, color);
+        return 84;
+    case 'I':
+        MainMenuLogoH(render, x, y, 58, t, slant, color);
+        DrawRect(render, x + 23, y + 9, t + 1, h - 18, color);
+        MainMenuLogoH(render, x, y + h - t, 58, t, slant, color);
+        return 66;
+    case 'G':
+        MainMenuLogoV(render, x, y + 2, h - 4, t, slant, color);
+        MainMenuLogoV(render, x + w - t, y + 40, h - 40, t, slant, color);
+        MainMenuLogoH(render, x, y, w, t, slant, color);
+        MainMenuLogoH(render, x, y + h - t, w, t, slant, color);
+        MainMenuLogoH(render, x + 37, y + 36, w - 37, t, slant, color);
+        return 88;
+    case ':':
+        MainMenuLogoColon(render, x + 10, y + 2, t, color);
+        return 42;
+    default:
+        return 32;
+    }
+}
+
+static void MainMenuDrawLogoText(RenderContext* render, int x, int y, const char* text, uint32_t color) {
+    int cursor = x;
+    for (const char* p = text; *p; ++p) {
+        cursor += MainMenuLogoGlyph(render, cursor, y, *p, color);
     }
 }
 
@@ -180,6 +334,8 @@ static int MainMenuLoadBmp(const char* path) {
 
 void MainMenuInit(MainMenuState* menu) {
     menu->selected_index = 0;
+    menu->selection_from_index = 0;
+    menu->selection_changed_at = -1000.0;
     menu->action = MAIN_MENU_ACTION_NONE;
 }
 
@@ -198,7 +354,9 @@ void MainMenuLoadBackground() {
 void MainMenuUpdate(MainMenuState* menu) {
     menu->action = MAIN_MENU_ACTION_NONE;
     if (InputWasPressed(KEY_UP) || InputWasPressed(KEY_DOWN)) {
+        menu->selection_from_index = menu->selected_index;
         menu->selected_index = menu->selected_index == 0 ? 1 : 0;
+        menu->selection_changed_at = PerfNowSeconds();
     }
 
     if (InputWasPressed(KEY_X)) {
@@ -227,45 +385,61 @@ static void MainMenuDrawBackground(RenderContext* render, uint32_t fallback_bg) 
     }
 }
 
-static void MainMenuDrawTitle(RenderContext* render, double time, const MainMenuColors* colors) {
-    const int title_x = 160;
-    const int title_y = 388;
-    const int title_scale = 9;
-    float glitch_phase = MainMenuFrac(time * 0.32);
-    int glitch = glitch_phase < 0.045f ? (glitch_phase < 0.022f ? -4 : 4) : 0;
-    if (glitch) {
-        UiTextSmallDraw(render, title_x - glitch, title_y + 2, "RE:", title_scale, 0x006f3038);
-    }
-    UiTextSmallDraw(render, title_x + glitch, title_y, "RE:", title_scale, colors->title_red);
-    UiTextSmallDraw(render, title_x + 18 * title_scale, title_y, "CONFIG", title_scale, colors->title_text);
+static void MainMenuDrawTitle(RenderContext* render, const MainMenuColors* colors) {
+    const int title_x = 152;
+    const int title_y = 386;
+    const uint32_t shadow = 0x000c0909;
+    MainMenuDrawLogoText(render, title_x + 5, title_y + 7, "RE:", shadow);
+    MainMenuDrawLogoText(render, title_x + 5 + 214, title_y + 7, "CONFIG", shadow);
+    MainMenuDrawLogoText(render, title_x, title_y, "RE:", colors->title_red);
+    MainMenuDrawLogoText(render, title_x + 214, title_y, "CONFIG", colors->title_text);
 }
 
-static void MainMenuDrawSelectionBar(RenderContext* render, int x, int y, uint32_t color, double time) {
-    int pulse = MainMenuPulse(time, 0.9, 0, 36);
-    uint32_t bright = MainMenuBrighten(color, pulse);
-    MainMenuBlendRect(render, x - 5, y - 4, 15, 50, bright, 36);
-    MainMenuBlendRect(render, x, y, 6, 42, bright, 205 + pulse);
+static float MainMenuEase01(float t) {
+    if (t < 0.0f) t = 0.0f;
+    if (t > 1.0f) t = 1.0f;
+    return 1.0f - (1.0f - t) * (1.0f - t);
+}
 
-    int scan_y = y + 4 + (int)(MainMenuFrac(time * 1.35) * 28.0f);
-    MainMenuBlendRect(render, x - 1, scan_y, 8, 10, 0x00f7f0e5, 150);
+static int MainMenuLerpInt(int a, int b, float t) {
+    return a + (int)(((float)(b - a) * t) + (b >= a ? 0.5f : -0.5f));
+}
+
+static void MainMenuDrawSelectionBar(RenderContext* render, int x, int center_y, uint32_t color, double time) {
+    uint32_t bright = MainMenuBrighten(color, MainMenuPulse(time, 0.82, 0, 14));
+    int y = center_y - 21;
+    MainMenuBlendRectRaw(render, x - 3, y - 3, 10, 48, bright, 28);
+    DrawRect(render, x, y, 5, 42, bright);
+}
+
+static void MainMenuDrawMenuText(int x, int center_y, const wchar_t* text, float hover, const MainMenuColors* colors, uint32_t selected_color) {
+    int size = 32 + (int)(hover * 10.0f + 0.5f);
+    int y = center_y - size / 2 - 5;
+    uint32_t color = MainMenuBlendColor(colors->inactive, selected_color, hover);
+    DrawTextUi(x + 2, y + 3, text, size, 0x00070506, 1);
+    DrawTextUi(x, y, text, size, color, 1);
 }
 
 void MainMenuDraw(RenderContext* render, const MainMenuState* menu, const MainMenuColors* colors) {
     double time = PerfNowSeconds();
     MainMenuDrawBackground(render, colors->fallback_bg);
-    MainMenuDrawTitle(render, time, colors);
+    MainMenuDrawTitle(render, colors);
 
-    const int menu_x = 160;
-    const int text_x = 204;
-    const int start_y = 592;
-    const int exit_y = 674;
-    const int text_size = 36;
+    const int bar_x = 150;
+    const int text_x = 206;
+    const int start_center_y = 544;
+    const int exit_center_y = 614;
+    const float move_duration = 0.075f;
     int start_selected = menu->selected_index == 0;
-    int bar_y = start_selected ? start_y : exit_y;
-    int pulse = MainMenuPulse(time, 0.9, 0, 36);
-    uint32_t selected_color = MainMenuBrighten(colors->selected, pulse);
+    int from_y = menu->selection_from_index == 0 ? start_center_y : exit_center_y;
+    int to_y = start_selected ? start_center_y : exit_center_y;
+    float t = MainMenuEase01((float)((time - menu->selection_changed_at) / move_duration));
+    float start_hover = start_selected ? t : (1.0f - t);
+    float exit_hover = start_selected ? (1.0f - t) : t;
+    int bar_y = MainMenuLerpInt(from_y, to_y, t);
+    uint32_t selected_color = MainMenuBrighten(colors->selected, MainMenuPulse(time, 0.82, 0, 14));
 
-    MainMenuDrawSelectionBar(render, menu_x, bar_y + 1, colors->selected, time);
-    DrawTextUi(text_x, start_y - 5, L"시작", text_size, start_selected ? selected_color : colors->inactive, 0);
-    DrawTextUi(text_x, exit_y - 5, L"종료", text_size, start_selected ? colors->inactive : selected_color, 0);
+    MainMenuDrawSelectionBar(render, bar_x, bar_y, colors->selected, time);
+    MainMenuDrawMenuText(text_x, start_center_y, L"시작", start_hover, colors, selected_color);
+    MainMenuDrawMenuText(text_x, exit_center_y, L"종료", exit_hover, colors, selected_color);
 }

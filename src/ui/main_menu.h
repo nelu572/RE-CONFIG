@@ -12,6 +12,8 @@ enum MainMenuAction {
 
 struct MainMenuState {
     int selected_index;
+    int selection_from_index;
+    double selection_changed_at;
     MainMenuAction action;
 };
 
