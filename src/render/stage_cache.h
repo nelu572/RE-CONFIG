@@ -10,6 +10,8 @@ struct StageCacheState {
     RenderContext* render;
     const RoomDef* room;
     const Player* player;
+    const PlayerParticle* player_particles;
+    int player_particle_count;
     int current_room;
     int type_a_active;
     int type_a_highlighted;

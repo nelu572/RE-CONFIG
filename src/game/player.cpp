@@ -260,7 +260,21 @@ static void SpawnPlayerParticle(PlayerParticle* particles, int particle_count, f
     p->vy = vy;
     p->age = 0.0f;
     p->life = life;
-    p->size = size;
+    p->size = size * PlayerRandomRange(0.78f, 1.14f);
+}
+
+static float PlayerParticleDirectionBias(const Player* player, GravityDirection gravity_direction) {
+    int gravity_x;
+    int gravity_y;
+    int tangent_x;
+    int tangent_y;
+    PlayerGravityVector(gravity_direction, &gravity_x, &gravity_y);
+    PlayerTangentVector(gravity_x, gravity_y, &tangent_x, &tangent_y);
+    float tangent_speed = player->vx * (float)tangent_x + player->vy * (float)tangent_y;
+    if (PlayerAbsF(tangent_speed) < 28.0f) {
+        return 0.0f;
+    }
+    return tangent_speed > 0.0f ? 1.0f : -1.0f;
 }
 
 static void SpawnWalkParticles(Player* player, PlayerParticle* particles, int particle_count, float move_dir, GravityDirection gravity_direction) {
@@ -270,43 +284,71 @@ static void SpawnWalkParticles(Player* player, PlayerParticle* particles, int pa
     float y;
     float vx;
     float vy;
-    PlayerFootPoint(player, gravity_direction, back * (axes.half_tangent + 1.0f), 1.0f, &x, &y);
-    PlayerParticleVelocity(gravity_direction, back * 66.0f, -16.0f, &vx, &vy);
-    SpawnPlayerParticle(particles, particle_count, x, y, vx, vy, 0.11f, 1.8f);
-    PlayerFootPoint(player, gravity_direction, back * (axes.half_tangent + 4.0f), 2.0f, &x, &y);
-    PlayerParticleVelocity(gravity_direction, back * 86.0f, -8.0f, &vx, &vy);
-    SpawnPlayerParticle(particles, particle_count, x, y, vx, vy, 0.09f, 1.1f);
+    PlayerFootPoint(player, gravity_direction, back * (axes.half_tangent + 1.0f), -3.0f, &x, &y);
+    PlayerParticleVelocity(gravity_direction, back * 138.0f, -56.0f, &vx, &vy);
+    SpawnPlayerParticle(particles, particle_count, x, y, vx, vy, 0.42f, 3.4f);
     ++player->run_step;
 }
 
 static void SpawnJumpParticles(Player* player, PlayerParticle* particles, int particle_count, GravityDirection gravity_direction) {
     PlayerVisualAxes axes = PlayerBuildVisualAxes(player, gravity_direction);
-    float x;
-    float y;
-    float vx;
-    float vy;
-    PlayerFootPoint(player, gravity_direction, -axes.half_tangent - 1.0f, 2.0f, &x, &y);
-    PlayerParticleVelocity(gravity_direction, -58.0f, 26.0f, &vx, &vy);
-    SpawnPlayerParticle(particles, particle_count, x, y, vx, vy, 0.11f, 1.6f);
-    PlayerFootPoint(player, gravity_direction, axes.half_tangent + 1.0f, 2.0f, &x, &y);
-    PlayerParticleVelocity(gravity_direction, 58.0f, 26.0f, &vx, &vy);
-    SpawnPlayerParticle(particles, particle_count, x, y, vx, vy, 0.11f, 1.6f);
-}
+    float bias = PlayerParticleDirectionBias(player, gravity_direction);
+    float rear = bias == 0.0f ? -1.0f : -bias;
+    static const float symmetric_offsets[] = { -1.06f, -0.82f, 0.82f, 1.06f };
+    static const float symmetric_speeds[] = { -220.0f, -135.0f, 135.0f, 220.0f };
+    static const float gravity_speeds[] = { -72.0f, -38.0f, -38.0f, -72.0f };
+    static const float sizes[] = { 2.7f, 2.1f, 2.1f, 2.7f };
+    for (int i = 0; i < 4; ++i) {
+        float side_offset = symmetric_offsets[i];
+        float tangent_speed = symmetric_speeds[i];
+        float gravity_speed = gravity_speeds[i];
+        if (bias != 0.0f) {
+            static const float biased_offsets[] = { 1.20f, 1.02f, 0.80f, 0.56f };
+            static const float biased_speeds[] = { 252.0f, 184.0f, 112.0f, 42.0f };
+            static const float biased_gravity_speeds[] = { -138.0f, -58.0f, -28.0f, -48.0f };
+            side_offset = rear * biased_offsets[i];
+            tangent_speed = rear * biased_speeds[i];
+            gravity_speed = biased_gravity_speeds[i];
+        }
 
-static void SpawnLandingParticles(Player* player, PlayerParticle* particles, int particle_count, GravityDirection gravity_direction) {
-    PlayerVisualAxes axes = PlayerBuildVisualAxes(player, gravity_direction);
-    static const float tangent_offsets[] = { -1.0f, -0.66f, -0.32f, 0.32f, 0.66f, 1.0f };
-    static const float tangent_speeds[] = { -160.0f, -118.0f, -72.0f, 72.0f, 118.0f, 160.0f };
-    static const float gravity_speeds[] = { -42.0f, -24.0f, -8.0f, -8.0f, -24.0f, -42.0f };
-    static const float sizes[] = { 2.8f, 2.3f, 1.9f, 1.9f, 2.3f, 2.8f };
-    for (int i = 0; i < 6; ++i) {
         float x;
         float y;
         float vx;
         float vy;
-        PlayerFootPoint(player, gravity_direction, tangent_offsets[i] * (axes.half_tangent + 1.0f), 1.0f, &x, &y);
-        PlayerParticleVelocity(gravity_direction, tangent_speeds[i], gravity_speeds[i], &vx, &vy);
-        SpawnPlayerParticle(particles, particle_count, x, y, vx, vy, i == 0 || i == 5 ? 0.17f : (i == 1 || i == 4 ? 0.15f : 0.13f), sizes[i]);
+        PlayerFootPoint(player, gravity_direction, side_offset * (axes.half_tangent + 2.0f), 2.0f, &x, &y);
+        PlayerParticleVelocity(gravity_direction, tangent_speed, gravity_speed, &vx, &vy);
+        SpawnPlayerParticle(particles, particle_count, x, y, vx, vy, i == 0 || i == 3 ? 0.50f : 0.42f, sizes[i]);
+    }
+}
+
+static void SpawnLandingParticles(Player* player, PlayerParticle* particles, int particle_count, GravityDirection gravity_direction) {
+    PlayerVisualAxes axes = PlayerBuildVisualAxes(player, gravity_direction);
+    float bias = PlayerParticleDirectionBias(player, gravity_direction);
+    float rear = bias == 0.0f ? -1.0f : -bias;
+    static const float symmetric_offsets[] = { -1.10f, -0.86f, 0.86f, 1.10f };
+    static const float symmetric_speeds[] = { -122.0f, -82.0f, 82.0f, 122.0f };
+    static const float gravity_speeds[] = { -78.0f, -44.0f, -44.0f, -78.0f };
+    static const float sizes[] = { 2.9f, 2.1f, 2.1f, 2.9f };
+    for (int i = 0; i < 4; ++i) {
+        float side_offset = symmetric_offsets[i];
+        float tangent_speed = symmetric_speeds[i];
+        float gravity_speed = gravity_speeds[i];
+        if (bias != 0.0f) {
+            static const float biased_offsets[] = { 1.22f, 1.02f, 0.78f, 0.52f };
+            static const float biased_speeds[] = { 150.0f, 108.0f, 62.0f, 24.0f };
+            static const float biased_gravity_speeds[] = { -148.0f, -62.0f, -28.0f, -46.0f };
+            side_offset = rear * biased_offsets[i];
+            tangent_speed = rear * biased_speeds[i];
+            gravity_speed = biased_gravity_speeds[i];
+        }
+
+        float x;
+        float y;
+        float vx;
+        float vy;
+        PlayerFootPoint(player, gravity_direction, side_offset * (axes.half_tangent + 1.0f), -4.0f, &x, &y);
+        PlayerParticleVelocity(gravity_direction, tangent_speed, gravity_speed, &vx, &vy);
+        SpawnPlayerParticle(particles, particle_count, x, y, vx, vy, i == 0 || i == 3 ? 0.46f : 0.36f, sizes[i]);
     }
 }
 
@@ -355,7 +397,63 @@ void ResetPlayerPresentation(Player* player, PlayerParticle* particles, int part
     }
 }
 
-void UpdatePlayerParticles(PlayerParticle* particles, int particle_count, float dt, GravityDirection gravity_direction) {
+static void BouncePlayerParticleOnPlatforms(PlayerParticle* p, const RoomDef* room, float prev_x, float prev_y, int gravity_x, int gravity_y) {
+    if (!room) {
+        return;
+    }
+
+    float radius = p->size + 0.75f;
+    for (int i = 0; i < room->platform_count; ++i) {
+        const RectF* solid = &room->platforms[i];
+        if (gravity_y > 0) {
+            float contact = solid->y - radius;
+            int tangent_overlap = p->x >= solid->x - radius && p->x <= solid->x + solid->w + radius;
+            if (tangent_overlap && p->vy > 0.0f && prev_y <= contact && p->y >= contact) {
+                float rebound = PlayerAbsF(p->vy) * 0.54f;
+                if (rebound < 105.0f) rebound = 105.0f;
+                p->y = contact;
+                p->vy = -rebound;
+                p->vx *= 0.88f;
+                return;
+            }
+        } else if (gravity_y < 0) {
+            float contact = solid->y + solid->h + radius;
+            int tangent_overlap = p->x >= solid->x - radius && p->x <= solid->x + solid->w + radius;
+            if (tangent_overlap && p->vy < 0.0f && prev_y >= contact && p->y <= contact) {
+                float rebound = PlayerAbsF(p->vy) * 0.54f;
+                if (rebound < 105.0f) rebound = 105.0f;
+                p->y = contact;
+                p->vy = rebound;
+                p->vx *= 0.88f;
+                return;
+            }
+        } else if (gravity_x > 0) {
+            float contact = solid->x - radius;
+            int tangent_overlap = p->y >= solid->y - radius && p->y <= solid->y + solid->h + radius;
+            if (tangent_overlap && p->vx > 0.0f && prev_x <= contact && p->x >= contact) {
+                float rebound = PlayerAbsF(p->vx) * 0.54f;
+                if (rebound < 105.0f) rebound = 105.0f;
+                p->x = contact;
+                p->vx = -rebound;
+                p->vy *= 0.88f;
+                return;
+            }
+        } else if (gravity_x < 0) {
+            float contact = solid->x + solid->w + radius;
+            int tangent_overlap = p->y >= solid->y - radius && p->y <= solid->y + solid->h + radius;
+            if (tangent_overlap && p->vx < 0.0f && prev_x >= contact && p->x <= contact) {
+                float rebound = PlayerAbsF(p->vx) * 0.54f;
+                if (rebound < 105.0f) rebound = 105.0f;
+                p->x = contact;
+                p->vx = rebound;
+                p->vy *= 0.88f;
+                return;
+            }
+        }
+    }
+}
+
+void UpdatePlayerParticles(PlayerParticle* particles, int particle_count, const RoomDef* room, float dt, GravityDirection gravity_direction) {
     int gravity_x;
     int gravity_y;
     PlayerGravityVector(gravity_direction, &gravity_x, &gravity_y);
@@ -365,15 +463,18 @@ void UpdatePlayerParticles(PlayerParticle* particles, int particle_count, float 
             continue;
         }
         p->age += dt;
+        p->vx += (float)gravity_x * 980.0f * dt;
+        p->vy += (float)gravity_y * 980.0f * dt;
+        float prev_x = p->x;
+        float prev_y = p->y;
         p->x += p->vx * dt;
         p->y += p->vy * dt;
-        p->vx += (float)gravity_x * 260.0f * dt;
-        p->vy += (float)gravity_y * 260.0f * dt;
+        BouncePlayerParticleOnPlatforms(p, room, prev_x, prev_y, gravity_x, gravity_y);
     }
 }
 
-void UpdatePlayerPresentation(Player* player, PlayerParticle* particles, int particle_count, float dt, float move, int jump_started, int landed, int stretch_blocked, GravityDirection gravity_direction) {
-    UpdatePlayerParticles(particles, particle_count, dt, gravity_direction);
+void UpdatePlayerPresentation(Player* player, PlayerParticle* particles, int particle_count, const RoomDef* room, float dt, float move, int jump_started, int landed, int stretch_blocked, GravityDirection gravity_direction) {
+    UpdatePlayerParticles(particles, particle_count, room, dt, gravity_direction);
     int gravity_x;
     int gravity_y;
     int tangent_x;
@@ -504,8 +605,7 @@ void UpdatePlayerPresentation(Player* player, PlayerParticle* particles, int par
     player->visual_sy = PlayerClampF(player->visual_sy, 0.60f, 1.36f);
 }
 
-void DrawPlayerParticles(RenderContext* render, const PlayerParticle* particles, int particle_count, uint32_t effect_color) {
-    uint32_t particle_color = PlayerLerpColor(effect_color, 0x00f7f0e5, 0.34f);
+void DrawPlayerParticles(RenderContext* render, const PlayerParticle* particles, int particle_count, uint32_t particle_color) {
     for (int i = 0; i < particle_count; ++i) {
         const PlayerParticle* p = &particles[i];
         if (p->age >= p->life || p->life <= 0.0f) {
@@ -513,9 +613,12 @@ void DrawPlayerParticles(RenderContext* render, const PlayerParticle* particles,
         }
         float t = PlayerClampF(p->age / p->life, 0.0f, 1.0f);
         float fade = 1.0f - PlayerSmooth01(t);
-        int radius = (int)(p->size * (1.0f - t * 0.35f) + 0.5f);
-        if (radius < 1) radius = 1;
-        FillCircleBlend(render, WorldX(render, p->x), WorldY(render, p->y), radius, particle_color, fade * 0.92f);
+        float scale = 1.0f - t * 0.62f;
+        int radius = (int)(p->size * scale + 0.5f);
+        if (radius < 1 || fade <= 0.05f) {
+            continue;
+        }
+        FillCircleBlend(render, WorldX(render, p->x), WorldY(render, p->y), radius, particle_color, fade);
     }
 }
 

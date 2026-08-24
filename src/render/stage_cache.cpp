@@ -13,6 +13,7 @@ static int g_static_cache_room = -1;
 static float g_static_cache_camera_x = -999999.0f;
 static float g_static_cache_camera_y = -999999.0f;
 static RectI g_prev_player_dirty = { 0, 0, 0, 0 };
+static RectI g_prev_player_particles_dirty = { 0, 0, 0, 0 };
 static RectI g_prev_tutorial_hint_dirty = { 0, 0, 0, 0 };
 static int g_prev_menu_open = 0;
 static int g_prev_room_solved = 0;
@@ -30,6 +31,44 @@ static RectI PlayerDirtyRect(RenderContext* render, const Player* player) {
     rect.w = 198;
     rect.h = 198;
     return FramebufferClampRect(rect);
+}
+
+static RectI PlayerParticlesDirtyRect(RenderContext* render, const PlayerParticle* particles, int particle_count) {
+    RectI rect = { 0, 0, 0, 0 };
+    if (!particles || particle_count <= 0) {
+        return rect;
+    }
+
+    int active = 0;
+    for (int i = 0; i < particle_count; ++i) {
+        const PlayerParticle* p = &particles[i];
+        if (p->life <= 0.0f || p->age >= p->life) {
+            continue;
+        }
+
+        int pad = 36;
+        int x = WorldX(render, p->x) - pad;
+        int y = WorldY(render, p->y) - pad;
+        int w = pad * 2;
+        int h = pad * 2;
+        if (!active) {
+            rect = { x, y, w, h };
+            active = 1;
+        } else {
+            int x2 = rect.x + rect.w;
+            int y2 = rect.y + rect.h;
+            int px2 = x + w;
+            int py2 = y + h;
+            if (x < rect.x) rect.x = x;
+            if (y < rect.y) rect.y = y;
+            if (px2 > x2) x2 = px2;
+            if (py2 > y2) y2 = py2;
+            rect.w = x2 - rect.x;
+            rect.h = y2 - rect.y;
+        }
+    }
+
+    return active ? FramebufferClampRect(rect) : rect;
 }
 
 static RectI TypeAWallsDirtyRect(RenderContext* render, const RoomDef* room) {
@@ -110,6 +149,7 @@ static RectI SpeakerWavesDirtyRect(RenderContext* render, const RoomDef* room) {
 
 static void CaptureCachedFrameState(const StageCacheState* state) {
     g_prev_player_dirty = PlayerDirtyRect(state->render, state->player);
+    g_prev_player_particles_dirty = PlayerParticlesDirtyRect(state->render, state->player_particles, state->player_particle_count);
     g_prev_menu_open = state->settings_overlay_visible;
     g_prev_room_solved = state->room_solved;
     g_prev_context_room = state->current_room;
@@ -157,11 +197,13 @@ void StageCacheDrawCached(const StageCacheState* state, StageCacheDrawCallback d
         FramebufferCopyStaticToLive();
     }
 
-    RectI dirty[16];
+    RectI dirty[18];
     int count = 0;
     if (!state->settings_overlay_visible) {
         dirty[count++] = g_prev_player_dirty;
         dirty[count++] = PlayerDirtyRect(state->render, state->player);
+        dirty[count++] = g_prev_player_particles_dirty;
+        dirty[count++] = PlayerParticlesDirtyRect(state->render, state->player_particles, state->player_particle_count);
         dirty[count++] = ExitSequenceDirtyRect(state->render, &state->room->exit);
         dirty[count++] = SpeakerWavesDirtyRect(state->render, state->room);
     }

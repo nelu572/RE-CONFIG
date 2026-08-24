@@ -596,6 +596,7 @@ void GameUpdateStage(GameState* state, float dt, int use_static_cache) {
         }
         UpdatePlayerParticles(state->player_particles,
                               PLAYER_PARTICLE_COUNT,
+                              GameCurrentRoom(state),
                               dt,
                               state->gravity_direction);
         state->death_respawn_timer -= dt;
@@ -652,6 +653,7 @@ void GameUpdateStage(GameState* state, float dt, int use_static_cache) {
     UpdatePlayerPresentation(&state->player,
                              state->player_particles,
                              PLAYER_PARTICLE_COUNT,
+                             GameCurrentRoom(state),
                              dt,
                              control.move,
                              movement.jump_started,

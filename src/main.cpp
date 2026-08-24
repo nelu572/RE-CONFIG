@@ -324,6 +324,8 @@ static StageCacheState CurrentStageCacheState() {
     state.render = &g_render;
     state.room = CurrentRoom();
     state.player = &g_game.player;
+    state.player_particles = g_game.player_particles;
+    state.player_particle_count = PLAYER_PARTICLE_COUNT;
     state.current_room = g_game.current_room;
     state.type_a_active = FeatureActive(FEATURE_COLLISION_TYPE_A);
     state.type_a_highlighted = SettingsHighlightsTypeA();

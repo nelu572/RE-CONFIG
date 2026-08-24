@@ -40,7 +40,7 @@ void PlayerSetCollisionSizeAnchored(Player* player, float tangent_size, float gr
 void PlayerSetCollisionSize(Player* player, float tangent_size, float gravity_size, GravityDirection gravity_direction);
 void ResetPlayerPresentation(Player* player, PlayerParticle* particles, int particle_count);
 void SpawnPlayerDeathParticles(PlayerParticle* particles, int particle_count, float x, float y, GravityDirection gravity_direction);
-void UpdatePlayerParticles(PlayerParticle* particles, int particle_count, float dt, GravityDirection gravity_direction);
-void UpdatePlayerPresentation(Player* player, PlayerParticle* particles, int particle_count, float dt, float move, int jump_started, int landed, int stretch_blocked, GravityDirection gravity_direction);
-void DrawPlayerParticles(RenderContext* render, const PlayerParticle* particles, int particle_count, uint32_t effect_color);
+void UpdatePlayerParticles(PlayerParticle* particles, int particle_count, const RoomDef* room, float dt, GravityDirection gravity_direction);
+void UpdatePlayerPresentation(Player* player, PlayerParticle* particles, int particle_count, const RoomDef* room, float dt, float move, int jump_started, int landed, int stretch_blocked, GravityDirection gravity_direction);
+void DrawPlayerParticles(RenderContext* render, const PlayerParticle* particles, int particle_count, uint32_t particle_color);
 void DrawPlayer(RenderContext* render, const Player* player, uint32_t player_color, uint32_t face_color, GravityDirection gravity_direction);

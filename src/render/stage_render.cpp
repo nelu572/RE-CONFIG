@@ -703,7 +703,6 @@ void StageRenderDrawDynamic(const StageRenderState* state) {
         DrawSpeakerDevice(state, &state->room->speakers[i]);
     }
     ExitSequenceDrawExit(state->render, &state->room->exit);
-    DrawPlayerParticles(state->render, state->player_particles, state->player_particle_count, state->effect_color);
     if (state->player_visible) {
         DrawPlayer(state->render,
                    state->player,
@@ -711,6 +710,10 @@ void StageRenderDrawDynamic(const StageRenderState* state) {
                    StageLerpColor(state->bg_color, state->platform_color, 0.78f),
                    state->gravity_direction);
     }
+    DrawPlayerParticles(state->render,
+                        state->player_particles,
+                        state->player_particle_count,
+                        StageLerpColor(state->platform_color, state->type_a_off_pattern_color, 0.48f));
     for (int i = 0; i < state->room->speaker_count; ++i) {
         DrawSpeakerWaves(state, &state->room->speakers[i]);
     }
