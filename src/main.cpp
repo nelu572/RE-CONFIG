@@ -52,6 +52,8 @@ static RenderContext g_render = { 0, &g_game.camera, RENDER_W, RENDER_H, RENDER_
 static MainMenuState g_main_menu;
 static int g_overlay_redraw_pending = 0;
 static constexpr int START_ROOM_INDEX = 4;
+static constexpr int DEBUG_ROOM_00_INDEX = 0;
+static constexpr int DEBUG_ROOM_01_INDEX = 1;
 static int g_stage_select_index = 0;
 
 enum AppState {
@@ -210,9 +212,15 @@ static int ClampRoomIndex(int room_index) {
     return room_index;
 }
 
+static void EnterMainMenu() {
+    SettingsUiClose();
+    g_app_state = APP_STATE_MAIN_MENU;
+    MainMenuInit(&g_main_menu);
+}
+
 static void EnterStageSelect() {
     SettingsUiClose();
-    g_stage_select_index = 0;
+    g_stage_select_index = DEBUG_ROOM_00_INDEX;
     g_app_state = APP_STATE_STAGE_SELECT;
 }
 
@@ -538,6 +546,18 @@ extern "C" void WinMainCRTStartup() {
 
         if (InputWasPressed(KEY_F11)) {
             ToggleFullscreen();
+        }
+        if (InputWasPressed(KEY_1)) {
+            EnterMainMenu();
+        }
+        if (InputWasPressed(KEY_2)) {
+            EnterStageSelect();
+        }
+        if (InputWasPressed(KEY_3)) {
+            EnterStage(DEBUG_ROOM_00_INDEX);
+        }
+        if (InputWasPressed(KEY_4)) {
+            EnterStage(DEBUG_ROOM_01_INDEX);
         }
 
         if (g_type_a_art_test) {
