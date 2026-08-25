@@ -80,6 +80,26 @@ void FramebufferCopyStaticToLive() {
 
 void FramebufferDownsampleRectFromTo(const uint32_t* src_pixels, uint32_t* dst_pixels, RectI rect) {
     rect = FramebufferClampRect(rect);
+#if RENDER_SCALE == 2
+    for (int y = rect.y; y < rect.y + rect.h; ++y) {
+        uint32_t* dst = dst_pixels + y * FB_W + rect.x;
+        const uint32_t* src0 = src_pixels + (y * 2) * RENDER_W + rect.x * 2;
+        const uint32_t* src1 = src0 + RENDER_W;
+        for (int x = 0; x < rect.w; ++x) {
+            uint32_t c0 = src0[x * 2];
+            uint32_t c1 = src0[x * 2 + 1];
+            uint32_t c2 = src1[x * 2];
+            uint32_t c3 = src1[x * 2 + 1];
+            int r = (int)((c0 >> 16) & 255) + (int)((c1 >> 16) & 255) +
+                    (int)((c2 >> 16) & 255) + (int)((c3 >> 16) & 255);
+            int g = (int)((c0 >> 8) & 255) + (int)((c1 >> 8) & 255) +
+                    (int)((c2 >> 8) & 255) + (int)((c3 >> 8) & 255);
+            int bl = (int)(c0 & 255) + (int)(c1 & 255) +
+                     (int)(c2 & 255) + (int)(c3 & 255);
+            *dst++ = (uint32_t)(((r >> 2) << 16) | ((g >> 2) << 8) | (bl >> 2));
+        }
+    }
+#else
     for (int y = rect.y; y < rect.y + rect.h; ++y) {
         uint32_t* dst = dst_pixels + y * FB_W + rect.x;
         for (int x = rect.x; x < rect.x + rect.w; ++x) {
@@ -99,6 +119,7 @@ void FramebufferDownsampleRectFromTo(const uint32_t* src_pixels, uint32_t* dst_p
             *dst++ = (uint32_t)(((r / count) << 16) | ((g / count) << 8) | (bl / count));
         }
     }
+#endif
 }
 
 void FramebufferDownsampleRenderTarget() {

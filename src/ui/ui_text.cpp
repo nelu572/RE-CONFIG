@@ -19,6 +19,7 @@ struct TextCacheEntry {
     int text_quality;
     int copy_w;
     int copy_h;
+    unsigned int last_used;
     wchar_t text[64];
     unsigned char alpha[TEXT_SURFACE_W * TEXT_SURFACE_H];
 };
@@ -34,6 +35,7 @@ static HBITMAP g_text_old_bitmap;
 static uint32_t* g_text_bits;
 static HFONT g_ui_fonts[96];
 static TextCacheEntry g_text_cache[TEXT_CACHE_COUNT];
+static unsigned int g_text_cache_tick;
 
 static void ClearTextBytes(void* dest, size_t count) {
     unsigned char* out = (unsigned char*)dest;
@@ -149,20 +151,25 @@ static TextCacheEntry* FindTextCacheEntry(const wchar_t* text, int size, int bol
             entry->font_mode == g_ui_text_font_mode &&
             entry->text_quality == g_ui_text_quality &&
             TextCacheTextEquals(entry->text, text)) {
+            entry->last_used = ++g_text_cache_tick;
             return entry;
         }
     }
 
     *cache_miss = 1;
     TextCacheEntry* entry = 0;
+    TextCacheEntry* least_recent = &g_text_cache[0];
     for (int i = 0; i < TEXT_CACHE_COUNT; ++i) {
         if (!g_text_cache[i].valid) {
             entry = &g_text_cache[i];
             break;
         }
+        if (g_text_cache[i].last_used < least_recent->last_used) {
+            least_recent = &g_text_cache[i];
+        }
     }
     if (!entry) {
-        entry = &g_text_cache[0];
+        entry = least_recent;
     }
 
     for (int i = 0; i < TEXT_SURFACE_W * TEXT_SURFACE_H; ++i) {
@@ -204,6 +211,7 @@ static TextCacheEntry* FindTextCacheEntry(const wchar_t* text, int size, int bol
     entry->font_mode = g_ui_text_font_mode;
     entry->text_quality = g_ui_text_quality;
     TextCacheCopy(entry->text, text);
+    entry->last_used = ++g_text_cache_tick;
     entry->valid = 1;
     return entry;
 }
