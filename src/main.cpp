@@ -76,6 +76,13 @@ enum AppState {
 };
 
 static AppState g_app_state = APP_STATE_MAIN_MENU;
+static AppState g_app_transition_target_state = APP_STATE_MAIN_MENU;
+static int g_app_transition_pending = 0;
+static int g_app_transition_target_room = 0;
+static float g_app_transition_amount = 0.0f;
+static float g_app_transition_hold_seconds = 0.0f;
+static constexpr float APP_TRANSITION_HOLD_SECONDS = 0.09f;
+static double g_app_transition_last_seconds = 0.0;
 
 static uint32_t COL_BG = 0x00292324;
 static const uint32_t COL_STAGE_SOFT = 0x006f3038;
@@ -228,13 +235,28 @@ static int ClampRoomIndex(int room_index) {
 static float StageSelectPlayerYForStage(int stage_index);
 static float StageSelectTargetOffset(int stage_index);
 
-static void EnterMainMenu() {
+static float AppTransitionApproachF(float value, float target, float step) {
+    if (value < target) {
+        value += step;
+        if (value > target) value = target;
+    } else if (value > target) {
+        value -= step;
+        if (value < target) value = target;
+    }
+    return value;
+}
+
+static int AppTransitionActive() {
+    return g_app_transition_pending || g_app_transition_hold_seconds > 0.001f || g_app_transition_amount > 0.001f;
+}
+
+static void EnterMainMenuNow() {
     SettingsUiClose();
     g_app_state = APP_STATE_MAIN_MENU;
     MainMenuInit(&g_main_menu);
 }
 
-static void EnterStageSelect() {
+static void EnterStageSelectNow() {
     SettingsUiClose();
     g_stage_select_index = DEBUG_ROOM_00_INDEX;
     g_stage_select_target_offset = StageSelectTargetOffset(g_stage_select_index);
@@ -253,11 +275,67 @@ static void EnterStageSelect() {
     g_app_state = APP_STATE_STAGE_SELECT;
 }
 
-static void EnterStage(int room_index) {
+static void EnterStageNow(int room_index) {
     SettingsUiClose();
     g_game.current_room = ClampRoomIndex(room_index);
     g_app_state = APP_STATE_GAME;
     ResetStage();
+}
+
+static void ApplyAppTransitionTarget() {
+    if (g_app_transition_target_state == APP_STATE_MAIN_MENU) {
+        EnterMainMenuNow();
+    } else if (g_app_transition_target_state == APP_STATE_STAGE_SELECT) {
+        EnterStageSelectNow();
+    } else {
+        EnterStageNow(g_app_transition_target_room);
+    }
+}
+
+static void StartAppTransition(AppState target_state, int room_index) {
+    int target_room = ClampRoomIndex(room_index);
+    if (AppTransitionActive()) {
+        return;
+    }
+    if (target_state == g_app_state && (target_state != APP_STATE_GAME || target_room == g_game.current_room)) {
+        return;
+    }
+
+    SettingsUiClose();
+    g_app_transition_target_state = target_state;
+    g_app_transition_target_room = target_room;
+    g_app_transition_pending = 1;
+    g_app_transition_amount = 0.001f;
+    g_app_transition_hold_seconds = 0.0f;
+}
+
+static void UpdateAppTransition(float dt) {
+    if (g_app_transition_pending) {
+        g_app_transition_amount = AppTransitionApproachF(g_app_transition_amount, 1.0f, dt * 3.0f);
+        if (g_app_transition_amount >= 0.999f) {
+            ApplyAppTransitionTarget();
+            g_app_transition_pending = 0;
+            g_app_transition_amount = 1.0f;
+            g_app_transition_hold_seconds = APP_TRANSITION_HOLD_SECONDS;
+        }
+        return;
+    }
+
+    if (g_app_transition_hold_seconds > 0.0f) {
+        g_app_transition_hold_seconds -= dt;
+        if (g_app_transition_hold_seconds < 0.0f) {
+            g_app_transition_hold_seconds = 0.0f;
+        }
+        return;
+    }
+
+    if (g_app_transition_amount > 0.0f) {
+        g_app_transition_amount = AppTransitionApproachF(g_app_transition_amount, 0.0f, dt * 2.6f);
+    }
+}
+
+static void DrawAppTransition() {
+    ExitSequenceDrawTransitionAmount(&g_render, g_app_transition_amount);
 }
 
 static void UpdateStage(float dt) {
@@ -718,7 +796,7 @@ static void UpdateStageSelect() {
     }
 
     if (InputWasPressed(KEY_X) && !StageSelectStageLocked(g_stage_select_index)) {
-        EnterStage(g_stage_select_index);
+        StartAppTransition(APP_STATE_GAME, g_stage_select_index);
         return;
     }
 }
@@ -897,20 +975,29 @@ extern "C" void WinMainCRTStartup() {
             PerfMax(&g_perf_stats.max_input_ms, ms);
         }
 
+        float app_dt = 0.016f;
+        if (g_app_transition_last_seconds > 0.0) {
+            app_dt = (float)(frame_start - g_app_transition_last_seconds);
+            if (app_dt > 0.050f) app_dt = 0.050f;
+            if (app_dt < 0.0f) app_dt = 0.0f;
+        }
+        g_app_transition_last_seconds = frame_start;
+        UpdateAppTransition(app_dt);
+
         if (InputWasPressed(KEY_F11)) {
             ToggleFullscreen();
         }
-        if (InputWasPressed(KEY_1)) {
-            EnterMainMenu();
+        if (!AppTransitionActive() && InputWasPressed(KEY_1)) {
+            StartAppTransition(APP_STATE_MAIN_MENU, g_game.current_room);
         }
-        if (InputWasPressed(KEY_2)) {
-            EnterStageSelect();
+        if (!AppTransitionActive() && InputWasPressed(KEY_2)) {
+            StartAppTransition(APP_STATE_STAGE_SELECT, DEBUG_ROOM_00_INDEX);
         }
-        if (InputWasPressed(KEY_3)) {
-            EnterStage(DEBUG_ROOM_00_INDEX);
+        if (!AppTransitionActive() && InputWasPressed(KEY_3)) {
+            StartAppTransition(APP_STATE_GAME, DEBUG_ROOM_00_INDEX);
         }
-        if (InputWasPressed(KEY_4)) {
-            EnterStage(DEBUG_ROOM_01_INDEX);
+        if (!AppTransitionActive() && InputWasPressed(KEY_4)) {
+            StartAppTransition(APP_STATE_GAME, DEBUG_ROOM_01_INDEX);
         }
 
         if (g_type_a_art_test) {
@@ -927,16 +1014,19 @@ extern "C" void WinMainCRTStartup() {
             continue;
         }
         if (g_app_state == APP_STATE_MAIN_MENU) {
-            MainMenuUpdate(&g_main_menu);
-            if (g_main_menu.action == MAIN_MENU_ACTION_START) {
-                EnterStageSelect();
-            }
-            if (g_main_menu.action == MAIN_MENU_ACTION_EXIT) {
-                g_running = 0;
+            if (!AppTransitionActive()) {
+                MainMenuUpdate(&g_main_menu);
+                if (g_main_menu.action == MAIN_MENU_ACTION_START) {
+                    StartAppTransition(APP_STATE_STAGE_SELECT, DEBUG_ROOM_00_INDEX);
+                }
+                if (g_main_menu.action == MAIN_MENU_ACTION_EXIT) {
+                    g_running = 0;
+                }
             }
 
             MainMenuColors menu_colors = CurrentMainMenuColors();
             MainMenuDraw(&g_render, &g_main_menu, &menu_colors);
+            DrawAppTransition();
             FramebufferDownsampleRenderTarget();
             FramebufferPresent(COL_BG);
             WaitUntilSeconds(frame_timer, PerfNowSeconds() + target_frame_seconds);
@@ -949,8 +1039,11 @@ extern "C" void WinMainCRTStartup() {
             continue;
         }
         if (g_app_state == APP_STATE_STAGE_SELECT) {
-            UpdateStageSelect();
+            if (!AppTransitionActive()) {
+                UpdateStageSelect();
+            }
             DrawStageSelect();
+            DrawAppTransition();
             FramebufferDownsampleRenderTarget();
             FramebufferPresent(COL_BG);
             WaitUntilSeconds(frame_timer, PerfNowSeconds() + target_frame_seconds);
@@ -963,7 +1056,7 @@ extern "C" void WinMainCRTStartup() {
             continue;
         }
 
-        if (g_perf_config.settings_bench) {
+        if (!AppTransitionActive() && g_perf_config.settings_bench) {
             int f = g_perf_stats.frames;
             if (f == 30 || f == 130 || f == 230) {
                 SettingsUiOpen(!g_perf_config.disable_static_cache);
@@ -979,9 +1072,14 @@ extern "C" void WinMainCRTStartup() {
         if (dt < 0.0f) dt = 0.0f;
 
         t0 = g_perf_config.enabled ? PerfNowSeconds() : 0.0;
-        UpdateStage(dt);
-        g_perf_frame_settings_anim = SettingsUiAnimationActive();
-        g_perf_frame_tutorial_fade = TutorialUiFadeActive(g_game.current_room);
+        if (!AppTransitionActive()) {
+            UpdateStage(dt);
+            g_perf_frame_settings_anim = SettingsUiAnimationActive();
+            g_perf_frame_tutorial_fade = TutorialUiFadeActive(g_game.current_room);
+        } else {
+            g_perf_frame_settings_anim = 0;
+            g_perf_frame_tutorial_fade = 0;
+        }
         t1 = g_perf_config.enabled ? PerfNowSeconds() : 0.0;
         if (g_perf_config.enabled) {
             double ms = (t1 - t0) * 1000.0;
@@ -993,13 +1091,15 @@ extern "C" void WinMainCRTStartup() {
         if (overlay_visible) {
             g_overlay_redraw_pending = 1;
         }
-        int force_full_redraw = overlay_visible ||
+        int force_full_redraw = AppTransitionActive() ||
+                                overlay_visible ||
                                 g_overlay_redraw_pending ||
                                 !FeatureActive(FEATURE_COLLISION_TYPE_A);
 
         if (g_perf_config.disable_static_cache || force_full_redraw) {
             t0 = g_perf_config.enabled ? PerfNowSeconds() : 0.0;
             DrawStage();
+            DrawAppTransition();
             t1 = g_perf_config.enabled ? PerfNowSeconds() : 0.0;
             if (g_perf_config.enabled) {
                 double ms = (t1 - t0) * 1000.0;

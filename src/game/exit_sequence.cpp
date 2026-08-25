@@ -7,12 +7,14 @@ static constexpr float EXIT_VISUAL_H = 100.0f;
 static constexpr float EXIT_OPEN_DISTANCE = 120.0f;
 static constexpr float EXIT_DOOR_SPRING_STIFFNESS = 360.0f;
 static constexpr float EXIT_DOOR_SPRING_DAMPING = 26.0f;
+static constexpr float EXIT_TRANSITION_HOLD_SECONDS = 0.09f;
 
 static float g_exit_open_amount = 0.0f;
 static float g_exit_open_velocity = 0.0f;
 static int g_room_solved = 0;
 static float g_room_transition_fade = 0.0f;
 static int g_room_transition_pending = -1;
+static float g_room_transition_hold_seconds = 0.0f;
 static uint32_t g_exit_color = 0x00f04a5b;
 static uint32_t g_exit_door_color = 0x00a83540;
 static uint32_t g_exit_soft_color = 0x006f3038;
@@ -41,6 +43,28 @@ static float ExitApproachF(float value, float target, float step) {
 static float ExitSmooth01(float value) {
     value = ExitClampF(value, 0.0f, 1.0f);
     return value * value * (3.0f - 2.0f * value);
+}
+
+static int ExitFloorSqrtI(int value) {
+    if (value <= 0) {
+        return 0;
+    }
+
+    int result = 0;
+    int bit = 1 << 30;
+    while (bit > value) {
+        bit >>= 2;
+    }
+    while (bit != 0) {
+        if (value >= result + bit) {
+            value -= result + bit;
+            result = (result >> 1) + bit;
+        } else {
+            result >>= 1;
+        }
+        bit >>= 2;
+    }
+    return result;
 }
 
 static uint32_t ExitFadeColor(uint32_t color, float fade) {
@@ -132,41 +156,48 @@ static int CircleSpanAtY(int x, int w, int center_y, int radius, int yy, int* le
     return *right > *left;
 }
 
-static void DrawBlendRect(RenderContext* render, int x, int y, int w, int h, uint32_t color, float alpha) {
-    alpha = ExitClampF(alpha, 0.0f, 1.0f);
-    int a = (int)(alpha * 256.0f + 0.5f);
-    if (a <= 0 || w <= 0 || h <= 0) {
-        return;
-    }
-    if (a > 256) a = 256;
-    int sx = x * render->scale;
-    int sy = y * render->scale;
-    int sw = w * render->scale;
-    int sh = h * render->scale;
-    if (sx < 0) { sw += sx; sx = 0; }
-    if (sy < 0) { sh += sy; sy = 0; }
-    if (sx + sw > render->width) sw = render->width - sx;
-    if (sy + sh > render->height) sh = render->height - sy;
-    if (sw <= 0 || sh <= 0) {
+static void DrawHardCircleOutside(RenderContext* render, int cx, int cy, int radius, uint32_t color) {
+    if (radius <= 0) {
+        DrawRect(render, 0, 0, FB_W, FB_H, color);
         return;
     }
 
-    int sr = (int)((color >> 16) & 255);
-    int sg = (int)((color >> 8) & 255);
-    int sb = (int)(color & 255);
-    int inv = 256 - a;
-    for (int yy = sy; yy < sy + sh; ++yy) {
-        uint32_t* row = render->pixels + yy * render->width + sx;
-        for (int xx = 0; xx < sw; ++xx) {
-            uint32_t dst = row[xx];
-            int dr = (int)((dst >> 16) & 255);
-            int dg = (int)((dst >> 8) & 255);
-            int db = (int)(dst & 255);
-            row[xx] = (uint32_t)((((sr * a + dr * inv) >> 8) << 16) |
-                                 (((sg * a + dg * inv) >> 8) << 8) |
-                                 ((sb * a + db * inv) >> 8));
+    int y0 = cy - radius;
+    int y1 = cy + radius;
+    if (y0 > 0) {
+        DrawRect(render, 0, 0, FB_W, y0, color);
+    }
+    if (y1 < FB_H - 1) {
+        DrawRect(render, 0, y1 + 1, FB_W, FB_H - y1 - 1, color);
+    }
+    if (y0 < 0) y0 = 0;
+    if (y1 >= FB_H) y1 = FB_H - 1;
+
+    int radius_sq = radius * radius;
+    for (int y = y0; y <= y1; ++y) {
+        int dy = y - cy;
+        int half_w = ExitFloorSqrtI(radius_sq - dy * dy);
+        int left = cx - half_w;
+        int right = cx + half_w;
+        if (left > 0) {
+            DrawRect(render, 0, y, left, 1, color);
+        }
+        if (right < FB_W - 1) {
+            int x = right + 1;
+            if (x < 0) x = 0;
+            DrawRect(render, x, y, FB_W - x, 1, color);
         }
     }
+}
+
+static int ExitTransitionCoverRadius(int cx, int cy) {
+    int left = cx;
+    int right = FB_W - 1 - cx;
+    int top = cy;
+    int bottom = FB_H - 1 - cy;
+    int dx = left > right ? left : right;
+    int dy = top > bottom ? top : bottom;
+    return ExitFloorSqrtI(dx * dx + dy * dy) + 2;
 }
 
 static void FillExitDoor(RenderContext* render, int x, int y, int w, int h, int thickness, float open_amount) {
@@ -258,28 +289,39 @@ void ExitSequenceStartTransition(int room) {
     if (room >= 0 && room < RoomCount()) {
         g_room_transition_pending = room;
         g_room_transition_fade = 0.001f;
+        g_room_transition_hold_seconds = 0.0f;
     }
 }
 
 int ExitSequenceUpdateTransition(float dt, int* current_room, ExitSequenceResetStageCallback reset_stage, void* reset_user_data) {
     if (g_room_transition_pending >= 0) {
-        g_room_transition_fade = ExitApproachF(g_room_transition_fade, 1.0f, dt * 5.5f);
+        g_room_transition_fade = ExitApproachF(g_room_transition_fade, 1.0f, dt * 3.0f);
         if (g_room_transition_fade >= 0.999f) {
             *current_room = g_room_transition_pending;
             g_room_transition_pending = -1;
             reset_stage(reset_user_data);
             g_room_transition_fade = 1.0f;
+            g_room_transition_hold_seconds = EXIT_TRANSITION_HOLD_SECONDS;
+        }
+        return 1;
+    }
+    if (g_room_transition_hold_seconds > 0.0f) {
+        g_room_transition_hold_seconds -= dt;
+        if (g_room_transition_hold_seconds < 0.0f) {
+            g_room_transition_hold_seconds = 0.0f;
         }
         return 1;
     }
     if (g_room_transition_fade > 0.0f) {
-        g_room_transition_fade = ExitApproachF(g_room_transition_fade, 0.0f, dt * 4.7f);
+        g_room_transition_fade = ExitApproachF(g_room_transition_fade, 0.0f, dt * 2.6f);
     }
     return g_room_transition_fade > 0.001f;
 }
 
 int ExitSequenceTransitionVisible() {
-    return g_room_transition_pending >= 0 || g_room_transition_fade > 0.001f;
+    return g_room_transition_pending >= 0 ||
+           g_room_transition_hold_seconds > 0.001f ||
+           g_room_transition_fade > 0.001f;
 }
 
 void ExitSequenceSetRoomSolved(int solved) {
@@ -331,9 +373,22 @@ void ExitSequenceDrawSolvedUi(RenderContext* render, uint32_t text_color, ExitSe
     draw_text_small(1602, 52, "CLEAR", 3, text_color);
 }
 
+void ExitSequenceDrawTransitionAmount(RenderContext* render, float amount) {
+    if (amount <= 0.001f) {
+        return;
+    }
+
+    float t = ExitSmooth01(amount);
+    int center_x = FB_W / 2;
+    int center_y = FB_H / 2;
+    int cover_radius = ExitTransitionCoverRadius(center_x, center_y);
+    int radius = (int)((float)cover_radius * (1.0f - t) + 0.5f);
+    DrawHardCircleOutside(render, center_x, center_y, radius, 0x00000000);
+}
+
 void ExitSequenceDrawTransition(RenderContext* render) {
     if (!ExitSequenceTransitionVisible()) {
         return;
     }
-    DrawBlendRect(render, 0, 0, FB_W, FB_H, 0x00292324, ExitSmooth01(g_room_transition_fade));
+    ExitSequenceDrawTransitionAmount(render, g_room_transition_fade);
 }

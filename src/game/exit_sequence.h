@@ -21,4 +21,5 @@ RectF ExitSequenceVisualRect(const RectF* exit_rect);
 RectI ExitSequenceDirtyRect(RenderContext* render, const RectF* exit_rect);
 void ExitSequenceDrawExit(RenderContext* render, const RectF* exit_rect);
 void ExitSequenceDrawSolvedUi(RenderContext* render, uint32_t text_color, ExitSequenceDrawTextSmallCallback draw_text_small);
+void ExitSequenceDrawTransitionAmount(RenderContext* render, float amount);
 void ExitSequenceDrawTransition(RenderContext* render);
