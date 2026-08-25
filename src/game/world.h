@@ -34,3 +34,4 @@ struct RoomDef {
 
 const RoomDef* GetRoom(int index);
 int RoomCount();
+int DevelopedRoomCount();

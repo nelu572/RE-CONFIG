@@ -19,6 +19,7 @@ struct GameState {
     GameRoomStartState room_start_state;
     GravityDirection gravity_direction;
     int current_room;
+    int cleared_room_this_frame;
     int player_dead;
     float death_respawn_timer;
     int type_a_contacted;

@@ -48,7 +48,7 @@ if "%INCLUDE%"=="" goto mingw_build
 if not exist "%VCToolsInstallDir%include\stddef.h" goto mingw_build
 if not exist "%WindowsSdkDir%Include\%WindowsSDKVersion%um\windows.h" goto mingw_build
 
-cl %CFLAGS% /Febuild\reconfig.exe /Fobuild\ src\main.cpp src\core\math_util.cpp src\core\perf.cpp src\platform\input.cpp src\platform\audio.cpp src\render\camera.cpp src\render\render.cpp src\render\framebuffer.cpp src\render\stage_render.cpp src\render\stage_cache.cpp src\game\world.cpp src\game\delete_rules.cpp src\game\player.cpp src\game\collision.cpp src\game\player_movement.cpp src\game\exit_sequence.cpp src\game\stage_update.cpp src\ui\main_menu.cpp src\ui\ui_text.cpp src\ui\ui_text_small.cpp src\ui\settings_ui.cpp src\ui\tutorial_ui.cpp %LFLAGS%
+cl %CFLAGS% /Febuild\reconfig.exe /Fobuild\ src\main.cpp src\core\math_util.cpp src\core\perf.cpp src\platform\input.cpp src\platform\audio.cpp src\render\camera.cpp src\render\render.cpp src\render\framebuffer.cpp src\render\stage_render.cpp src\render\stage_cache.cpp src\game\world.cpp src\game\rooms\room00.cpp src\game\rooms\room01.cpp src\game\rooms\room02.cpp src\game\rooms\room03.cpp src\game\rooms\room04.cpp src\game\delete_rules.cpp src\game\player.cpp src\game\collision.cpp src\game\player_movement.cpp src\game\exit_sequence.cpp src\game\stage_update.cpp src\ui\main_menu.cpp src\ui\ui_text.cpp src\ui\ui_text_small.cpp src\ui\settings_ui.cpp src\ui\tutorial_ui.cpp %LFLAGS%
 if errorlevel 1 goto mingw_build
 goto copy_dist
 
@@ -63,7 +63,7 @@ g++.exe -std=c++17 -Os -s ^
     src\platform\audio.cpp ^
     src\render\camera.cpp src\render\render.cpp src\render\framebuffer.cpp ^
     src\render\stage_render.cpp src\render\stage_cache.cpp ^
-    src\game\world.cpp src\game\delete_rules.cpp src\game\player.cpp ^
+    src\game\world.cpp src\game\rooms\room00.cpp src\game\rooms\room01.cpp src\game\rooms\room02.cpp src\game\rooms\room03.cpp src\game\rooms\room04.cpp src\game\delete_rules.cpp src\game\player.cpp ^
     src\game\collision.cpp src\game\player_movement.cpp src\game\exit_sequence.cpp ^
     src\game\stage_update.cpp src\ui\ui_text.cpp src\ui\ui_text_small.cpp ^
     src\ui\main_menu.cpp src\ui\settings_ui.cpp src\ui\tutorial_ui.cpp ^

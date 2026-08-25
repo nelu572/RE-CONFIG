@@ -356,6 +356,7 @@ void GameResetStage(GameState* state) {
     ResetPlayerPresentation(&state->player, state->player_particles, PLAYER_PARTICLE_COUNT);
     state->delete_state = state->room_start_state.delete_state;
     state->gravity_direction = state->room_start_state.gravity_direction;
+    state->cleared_room_this_frame = -1;
     state->player_dead = 0;
     state->death_respawn_timer = 0.0f;
     SettingsUiReset();
@@ -664,13 +665,10 @@ void GameUpdateStage(GameState* state, float dt, int use_static_cache) {
     RectF pr = GamePlayerRect(state);
     ExitSequenceUpdateDoor(dt, &pr, &GameCurrentRoom(state)->exit);
     if (RectsOverlap(&pr, &GameCurrentRoom(state)->exit)) {
-        int next_room = state->current_room + 1;
-        if (next_room < RoomCount()) {
-            ExitSequenceStartTransition(next_room);
-            SettingsUiMarkFullDirty();
-            return;
-        }
+        state->cleared_room_this_frame = state->current_room;
         ExitSequenceSetRoomSolved(1);
+        SettingsUiMarkFullDirty();
+        return;
     }
 
     if (GamePlayerOutsideRoomBounds(state)) {

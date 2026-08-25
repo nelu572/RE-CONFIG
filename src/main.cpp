@@ -68,7 +68,59 @@ static float g_stage_select_player_face_dir = 0.0f;
 static float g_stage_select_player_visual_sx = 1.0f;
 static float g_stage_select_player_visual_sy = 1.0f;
 static double g_stage_select_last_seconds = 0.0;
+static int g_stage_select_cleared[32];
 
+static constexpr unsigned int STAGE_PROGRESS_MAGIC = 0x31535652u;
+static constexpr unsigned int STAGE_PROGRESS_VERSION = 1u;
+
+static void StageProgressWriteU32(unsigned char* data, int offset, unsigned int value) {
+    data[offset + 0] = (unsigned char)(value & 255u);
+    data[offset + 1] = (unsigned char)((value >> 8) & 255u);
+    data[offset + 2] = (unsigned char)((value >> 16) & 255u);
+    data[offset + 3] = (unsigned char)((value >> 24) & 255u);
+}
+
+static unsigned int StageProgressReadU32(const unsigned char* data, int offset) {
+    return (unsigned int)data[offset + 0] |
+           ((unsigned int)data[offset + 1] << 8) |
+           ((unsigned int)data[offset + 2] << 16) |
+           ((unsigned int)data[offset + 3] << 24);
+}
+
+static void StageProgressSave() {
+    unsigned char data[40];
+    StageProgressWriteU32(data, 0, STAGE_PROGRESS_MAGIC);
+    StageProgressWriteU32(data, 4, STAGE_PROGRESS_VERSION);
+    for (int i = 0; i < (int)(sizeof(g_stage_select_cleared) / sizeof(g_stage_select_cleared[0])); ++i) {
+        data[8 + i] = g_stage_select_cleared[i] ? 1 : 0;
+    }
+
+    HANDLE file = CreateFileA("save.dat", GENERIC_WRITE, 0, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
+    if (file == INVALID_HANDLE_VALUE) {
+        return;
+    }
+    DWORD written = 0;
+    WriteFile(file, data, (DWORD)sizeof(data), &written, 0);
+    CloseHandle(file);
+}
+
+static void StageProgressLoad() {
+    unsigned char data[40];
+    HANDLE file = CreateFileA("save.dat", GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+    if (file == INVALID_HANDLE_VALUE) {
+        return;
+    }
+    DWORD read = 0;
+    int ok = ReadFile(file, data, (DWORD)sizeof(data), &read, 0) && read == (DWORD)sizeof(data);
+    CloseHandle(file);
+    if (!ok || StageProgressReadU32(data, 0) != STAGE_PROGRESS_MAGIC || StageProgressReadU32(data, 4) != STAGE_PROGRESS_VERSION) {
+        return;
+    }
+
+    for (int i = 0; i < (int)(sizeof(g_stage_select_cleared) / sizeof(g_stage_select_cleared[0])); ++i) {
+        g_stage_select_cleared[i] = data[8 + i] ? 1 : 0;
+    }
+}
 enum AppState {
     APP_STATE_MAIN_MENU,
     APP_STATE_STAGE_SELECT,
@@ -225,7 +277,7 @@ static int ClampRoomIndex(int room_index) {
     if (room_index < 0) {
         return 0;
     }
-    int room_count = RoomCount();
+    int room_count = DevelopedRoomCount();
     if (room_index >= room_count) {
         return room_count - 1;
     }
@@ -256,9 +308,9 @@ static void EnterMainMenuNow() {
     MainMenuInit(&g_main_menu);
 }
 
-static void EnterStageSelectNow() {
+static void EnterStageSelectNow(int stage_index) {
     SettingsUiClose();
-    g_stage_select_index = DEBUG_ROOM_00_INDEX;
+    g_stage_select_index = ClampRoomIndex(stage_index);
     g_stage_select_target_offset = StageSelectTargetOffset(g_stage_select_index);
     g_stage_select_world_offset = g_stage_select_target_offset;
     g_stage_select_start_offset = g_stage_select_world_offset;
@@ -283,6 +335,9 @@ static void EnterStageNow(int room_index) {
 }
 
 static void DebugResetDataAndEnterMainMenu() {
+    ClearBytes(g_stage_select_cleared, sizeof(g_stage_select_cleared));
+    StageProgressSave();
+
     g_app_transition_target_state = APP_STATE_MAIN_MENU;
     g_app_transition_target_room = START_ROOM_INDEX;
     g_app_transition_pending = 0;
@@ -299,7 +354,7 @@ static void ApplyAppTransitionTarget() {
     if (g_app_transition_target_state == APP_STATE_MAIN_MENU) {
         EnterMainMenuNow();
     } else if (g_app_transition_target_state == APP_STATE_STAGE_SELECT) {
-        EnterStageSelectNow();
+        EnterStageSelectNow(g_app_transition_target_room);
     } else {
         EnterStageNow(g_app_transition_target_room);
     }
@@ -353,6 +408,16 @@ static void DrawAppTransition() {
 
 static void UpdateStage(float dt) {
     GameUpdateStage(&g_game, dt, !g_perf_config.disable_static_cache);
+    if (g_game.cleared_room_this_frame >= 0 &&
+        g_game.cleared_room_this_frame < (int)(sizeof(g_stage_select_cleared) / sizeof(g_stage_select_cleared[0]))) {
+        int cleared_room = g_game.cleared_room_this_frame;
+        if (!g_stage_select_cleared[g_game.cleared_room_this_frame]) {
+            g_stage_select_cleared[g_game.cleared_room_this_frame] = 1;
+            StageProgressSave();
+        }
+        g_game.cleared_room_this_frame = -1;
+        StartAppTransition(APP_STATE_STAGE_SELECT, cleared_room);
+    }
     const RoomDef* room = CurrentRoom();
     AudioUpdateSpeaker(PerfNowSeconds() - g_game.room_started_at_seconds,
                        SettingsUiAudioVolume(),
@@ -471,6 +536,33 @@ static constexpr int STAGE_SELECT_DISPLAY_COUNT = 32;
 static constexpr float STAGE_SELECT_MOVE_SECONDS = 0.36f;
 static constexpr float STAGE_SELECT_JUMP_ARC_HEIGHT = 220.0f;
 static constexpr float STAGE_SELECT_PLATFORM_GROW_SECONDS = 0.16f;
+
+static int StageSelectStageImplemented(int stage_index) {
+    return stage_index >= 0 && stage_index < DevelopedRoomCount();
+}
+
+static int StageSelectStageCleared(int stage_index) {
+    return stage_index >= 0 &&
+           stage_index < STAGE_SELECT_DISPLAY_COUNT &&
+           g_stage_select_cleared[stage_index];
+}
+
+static int StageSelectPreviousStagesCleared(int stage_index) {
+    for (int i = 0; i < stage_index; ++i) {
+        if (!StageSelectStageCleared(i)) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static int StageSelectStageUnlocked(int stage_index) {
+    return StageSelectStageImplemented(stage_index) && StageSelectPreviousStagesCleared(stage_index);
+}
+
+static int StageSelectStageSelectable(int stage_index) {
+    return StageSelectStageImplemented(stage_index) && StageSelectStageUnlocked(stage_index);
+}
 
 static int StageSelectClampInt(int value, int min_value, int max_value) {
     if (value < min_value) return min_value;
@@ -683,30 +775,28 @@ static void StageSelectDrawBackground() {
     StageSelectDrawBgTriangle(0.24f, -420, 1120, 260, 842, 500, 1180, 0x007b2b33, 143);
     StageSelectDrawBgQuad(0.52f, -560, 1260, 860, 982, 2360, 1168, 2360, 1420, 0x00cb4855, 199);
 }
-static int StageSelectStageLocked(int stage_index) {
-    return stage_index >= RoomCount();
-}
-
-static int StageSelectStageCleared(int stage_index) {
-    return stage_index == 1;
-}
-
 static void StageSelectDrawStageNode(int stage_index) {
     float world_x = StageSelectWorldX(stage_index);
     float screen_center_x = (float)StageSelectScreenX(world_x, 1.0f);
     int selected = stage_index == g_stage_select_index;
-    int locked = StageSelectStageLocked(stage_index);
+    int implemented = StageSelectStageImplemented(stage_index);
+    int unlocked = StageSelectStageUnlocked(stage_index);
+    int locked = !unlocked;
+    int wip = !implemented;
     float selected_scale = selected ? StageSelectEase(g_stage_select_platform_grow_seconds / STAGE_SELECT_PLATFORM_GROW_SECONDS) : 0.0f;
     int selected_alpha = (int)(selected_scale * 255.0f + 0.5f);
     int platform_w = StageSelectPlatformBaseWidth(stage_index) + (int)(22.0f * selected_scale + 0.5f);
     int platform_h = 34 + (int)(8.0f * selected_scale + 0.5f);
     int platform_x = (int)(screen_center_x - (float)platform_w * 0.5f);
     int platform_y = StageSelectPlatformY(stage_index);
-    uint32_t platform_base_color = locked ? 0x00513036 : 0x00cb4855;
+    uint32_t platform_base_color = wip ? 0x00342d34 : (locked ? 0x00513036 : 0x00cb4855);
     uint32_t platform_selected_color = locked ? StageSelectBrighten(platform_base_color, 10) : StageSelectBrighten(0x00f04a5b, 8);
     uint32_t platform_color = selected ? StageSelectBlend(platform_selected_color, platform_base_color, selected_alpha) : platform_base_color;
 
     DrawRect(&g_render, platform_x, platform_y, platform_w, platform_h, platform_color);
+    if (locked) {
+        DrawRect(&g_render, platform_x, platform_y + platform_h - 5, platform_w, 5, 0x00241b1f);
+    }
 
     char label[16];
     wsprintfA(label, "STAGE %02d", stage_index);
@@ -720,7 +810,23 @@ static void StageSelectDrawStageNode(int stage_index) {
     UiTextSmallDraw(&g_render, (int)(screen_center_x - text_w * 0.5f), label_y, label, text_scale, text_color);
 
     if (StageSelectStageCleared(stage_index)) {
-        DrawRect(&g_render, (int)(screen_center_x + text_w * 0.5f + 16), label_y + 8, 10, 10, 0x0039cfc3);
+        int cx = (int)(screen_center_x + text_w * 0.5f + 24);
+        int cy = label_y + 15;
+        DrawThickLine(&g_render, cx - 11, cy, cx - 3, cy + 8, 4, 0x0039cfc3);
+        DrawThickLine(&g_render, cx - 3, cy + 8, cx + 13, cy - 10, 4, 0x0039cfc3);
+    } else if (wip) {
+        int icon_y = label_y + 38;
+        FillDiamond(&g_render, (int)screen_center_x, icon_y + 12, 24, 20, 0x00645b5f);
+        DrawRect(&g_render, (int)screen_center_x - 3, icon_y + 1, 6, 16, 0x00100b0d);
+        DrawRect(&g_render, (int)screen_center_x - 3, icon_y + 20, 6, 5, 0x00100b0d);
+        UiTextSmallDraw(&g_render, (int)screen_center_x - 36, icon_y + 36, "WIP", 3, 0x008a7774);
+    } else if (locked) {
+        int icon_x = (int)screen_center_x;
+        int icon_y = label_y + 38;
+        DrawRectOutline(&g_render, icon_x - 18, icon_y + 16, 36, 24, 0x008a7774);
+        DrawRect(&g_render, icon_x - 10, icon_y + 8, 4, 12, 0x008a7774);
+        DrawRect(&g_render, icon_x + 6, icon_y + 8, 4, 12, 0x008a7774);
+        DrawRect(&g_render, icon_x - 10, icon_y + 8, 20, 4, 0x008a7774);
     }
 }
 static void StageSelectDrawPlayer() {
@@ -798,9 +904,9 @@ static void UpdateStageSelect() {
     int previous_index = g_stage_select_index;
     int move_left = InputIsDown(KEY_LEFT) && !InputIsDown(KEY_RIGHT);
     int move_right = InputIsDown(KEY_RIGHT) && !InputIsDown(KEY_LEFT);
-    if (move_left && g_stage_select_index > 0) {
+    if (move_left && g_stage_select_index > 0 && StageSelectStageSelectable(g_stage_select_index - 1)) {
         --g_stage_select_index;
-    } else if (move_right && g_stage_select_index < room_count - 1) {
+    } else if (move_right && g_stage_select_index < room_count - 1 && StageSelectStageSelectable(g_stage_select_index + 1)) {
         ++g_stage_select_index;
     }
     if (g_stage_select_index != previous_index) {
@@ -808,7 +914,7 @@ static void UpdateStageSelect() {
         return;
     }
 
-    if (InputWasPressed(KEY_X) && !StageSelectStageLocked(g_stage_select_index)) {
+    if (InputWasPressed(KEY_X) && StageSelectStageSelectable(g_stage_select_index)) {
         StartAppTransition(APP_STATE_GAME, g_stage_select_index);
         return;
     }
@@ -895,6 +1001,37 @@ static void WaitUntilSeconds(HANDLE timer, double target_time) {
     }
 }
 
+static void PerfAddDuration(double start, double end, double* total, double* max_value) {
+    if (!g_perf_config.enabled) {
+        return;
+    }
+    double ms = (end - start) * 1000.0;
+    *total += ms;
+    PerfMax(max_value, ms);
+}
+
+static void PaceFrame(HANDLE frame_timer, double* next_frame_time, double frame_start, double target_frame_seconds) {
+    double t0 = g_perf_config.enabled ? PerfNowSeconds() : 0.0;
+    if (g_perf_config.legacy_pacing) {
+        Sleep(1);
+    } else {
+        *next_frame_time += target_frame_seconds;
+        double after_work = PerfNowSeconds();
+        if (*next_frame_time < after_work - target_frame_seconds) {
+            *next_frame_time = after_work;
+        }
+        WaitUntilSeconds(frame_timer, *next_frame_time);
+    }
+    double t1 = g_perf_config.enabled ? PerfNowSeconds() : 0.0;
+    if (g_perf_config.enabled) {
+        PerfAddDuration(t0, t1, &g_perf_stats.sleep_ms, &g_perf_stats.max_sleep_ms);
+        PerfAddFrame((t1 - frame_start) * 1000.0);
+        if (g_perf_config.bench_frames > 0 && g_perf_stats.frames >= g_perf_config.bench_frames) {
+            g_running = 0;
+        }
+    }
+}
+
 static LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
     switch (message) {
         case WM_ERASEBKGND:
@@ -951,6 +1088,7 @@ extern "C" void WinMainCRTStartup() {
     SettingsUiInit(&g_render, FeatureActive, ToggleFeature, SetSettingsItemValue, DrawContextText);
     MainMenuInit(&g_main_menu);
     MainMenuLoadBackground();
+    StageProgressLoad();
 
     g_game.camera.x = 0.0f;
     g_game.camera.y = 0.0f;
@@ -1017,19 +1155,27 @@ extern "C" void WinMainCRTStartup() {
         }
 
         if (g_type_a_art_test) {
+            t0 = g_perf_config.enabled ? PerfNowSeconds() : 0.0;
             DrawTypeAArtTest();
+            t1 = g_perf_config.enabled ? PerfNowSeconds() : 0.0;
+            PerfAddDuration(t0, t1, &g_perf_stats.render_ms, &g_perf_stats.max_render_ms);
+
+            t0 = g_perf_config.enabled ? PerfNowSeconds() : 0.0;
             FramebufferDownsampleRenderTarget();
+            t1 = g_perf_config.enabled ? PerfNowSeconds() : 0.0;
+            PerfAddDuration(t0, t1, &g_perf_stats.downsample_ms, &g_perf_stats.max_downsample_ms);
+
+            t0 = g_perf_config.enabled ? PerfNowSeconds() : 0.0;
             FramebufferPresent(COL_BG);
-            WaitUntilSeconds(frame_timer, PerfNowSeconds() + target_frame_seconds);
-            if (g_perf_config.enabled) {
-                PerfAddFrame(target_frame_seconds * 1000.0);
-                if (g_perf_config.bench_frames > 0 && g_perf_stats.frames >= g_perf_config.bench_frames) {
-                    g_running = 0;
-                }
-            }
+            t1 = g_perf_config.enabled ? PerfNowSeconds() : 0.0;
+            PerfAddDuration(t0, t1, &g_perf_stats.present_ms, &g_perf_stats.max_present_ms);
+            PerfBucketAddPresent((t1 - t0) * 1000.0);
+
+            PaceFrame(frame_timer, &next_frame_time, frame_start, target_frame_seconds);
             continue;
         }
         if (g_app_state == APP_STATE_MAIN_MENU) {
+            t0 = g_perf_config.enabled ? PerfNowSeconds() : 0.0;
             if (!AppTransitionActive()) {
                 MainMenuUpdate(&g_main_menu);
                 if (g_main_menu.action == MAIN_MENU_ACTION_START) {
@@ -1039,36 +1185,56 @@ extern "C" void WinMainCRTStartup() {
                     g_running = 0;
                 }
             }
+            t1 = g_perf_config.enabled ? PerfNowSeconds() : 0.0;
+            PerfAddDuration(t0, t1, &g_perf_stats.update_ms, &g_perf_stats.max_update_ms);
 
+            t0 = g_perf_config.enabled ? PerfNowSeconds() : 0.0;
             MainMenuColors menu_colors = CurrentMainMenuColors();
             MainMenuDraw(&g_render, &g_main_menu, &menu_colors);
             DrawAppTransition();
+            t1 = g_perf_config.enabled ? PerfNowSeconds() : 0.0;
+            PerfAddDuration(t0, t1, &g_perf_stats.render_ms, &g_perf_stats.max_render_ms);
+
+            t0 = g_perf_config.enabled ? PerfNowSeconds() : 0.0;
             FramebufferDownsampleRenderTarget();
+            t1 = g_perf_config.enabled ? PerfNowSeconds() : 0.0;
+            PerfAddDuration(t0, t1, &g_perf_stats.downsample_ms, &g_perf_stats.max_downsample_ms);
+
+            t0 = g_perf_config.enabled ? PerfNowSeconds() : 0.0;
             FramebufferPresent(COL_BG);
-            WaitUntilSeconds(frame_timer, PerfNowSeconds() + target_frame_seconds);
-            if (g_perf_config.enabled) {
-                PerfAddFrame(target_frame_seconds * 1000.0);
-                if (g_perf_config.bench_frames > 0 && g_perf_stats.frames >= g_perf_config.bench_frames) {
-                    g_running = 0;
-                }
-            }
+            t1 = g_perf_config.enabled ? PerfNowSeconds() : 0.0;
+            PerfAddDuration(t0, t1, &g_perf_stats.present_ms, &g_perf_stats.max_present_ms);
+            PerfBucketAddPresent((t1 - t0) * 1000.0);
+
+            PaceFrame(frame_timer, &next_frame_time, frame_start, target_frame_seconds);
             continue;
         }
         if (g_app_state == APP_STATE_STAGE_SELECT) {
+            t0 = g_perf_config.enabled ? PerfNowSeconds() : 0.0;
             if (!AppTransitionActive()) {
                 UpdateStageSelect();
             }
+            t1 = g_perf_config.enabled ? PerfNowSeconds() : 0.0;
+            PerfAddDuration(t0, t1, &g_perf_stats.update_ms, &g_perf_stats.max_update_ms);
+
+            t0 = g_perf_config.enabled ? PerfNowSeconds() : 0.0;
             DrawStageSelect();
             DrawAppTransition();
+            t1 = g_perf_config.enabled ? PerfNowSeconds() : 0.0;
+            PerfAddDuration(t0, t1, &g_perf_stats.render_ms, &g_perf_stats.max_render_ms);
+
+            t0 = g_perf_config.enabled ? PerfNowSeconds() : 0.0;
             FramebufferDownsampleRenderTarget();
+            t1 = g_perf_config.enabled ? PerfNowSeconds() : 0.0;
+            PerfAddDuration(t0, t1, &g_perf_stats.downsample_ms, &g_perf_stats.max_downsample_ms);
+
+            t0 = g_perf_config.enabled ? PerfNowSeconds() : 0.0;
             FramebufferPresent(COL_BG);
-            WaitUntilSeconds(frame_timer, PerfNowSeconds() + target_frame_seconds);
-            if (g_perf_config.enabled) {
-                PerfAddFrame(target_frame_seconds * 1000.0);
-                if (g_perf_config.bench_frames > 0 && g_perf_stats.frames >= g_perf_config.bench_frames) {
-                    g_running = 0;
-                }
-            }
+            t1 = g_perf_config.enabled ? PerfNowSeconds() : 0.0;
+            PerfAddDuration(t0, t1, &g_perf_stats.present_ms, &g_perf_stats.max_present_ms);
+            PerfBucketAddPresent((t1 - t0) * 1000.0);
+
+            PaceFrame(frame_timer, &next_frame_time, frame_start, target_frame_seconds);
             continue;
         }
 
@@ -1156,27 +1322,7 @@ extern "C" void WinMainCRTStartup() {
             PerfBucketAddPresent(ms);
         }
 
-        t0 = g_perf_config.enabled ? PerfNowSeconds() : 0.0;
-        if (g_perf_config.legacy_pacing) {
-            Sleep(1);
-        } else {
-            next_frame_time += target_frame_seconds;
-            double after_work = PerfNowSeconds();
-            if (next_frame_time < after_work - target_frame_seconds) {
-                next_frame_time = after_work;
-            }
-            WaitUntilSeconds(frame_timer, next_frame_time);
-        }
-        t1 = g_perf_config.enabled ? PerfNowSeconds() : 0.0;
-        if (g_perf_config.enabled) {
-            double ms = (t1 - t0) * 1000.0;
-            g_perf_stats.sleep_ms += ms;
-            PerfMax(&g_perf_stats.max_sleep_ms, ms);
-            PerfAddFrame((t1 - frame_start) * 1000.0);
-            if (g_perf_config.bench_frames > 0 && g_perf_stats.frames >= g_perf_config.bench_frames) {
-                g_running = 0;
-            }
-        }
+        PaceFrame(frame_timer, &next_frame_time, frame_start, target_frame_seconds);
     }
 
     if (frame_timer) {
