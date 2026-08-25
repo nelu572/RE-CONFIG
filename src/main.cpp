@@ -282,6 +282,19 @@ static void EnterStageNow(int room_index) {
     ResetStage();
 }
 
+static void DebugResetDataAndEnterMainMenu() {
+    g_app_transition_target_state = APP_STATE_MAIN_MENU;
+    g_app_transition_target_room = START_ROOM_INDEX;
+    g_app_transition_pending = 0;
+    g_app_transition_amount = 0.0f;
+    g_app_transition_hold_seconds = 0.0f;
+    g_app_transition_last_seconds = 0.0;
+
+    g_game.current_room = START_ROOM_INDEX;
+    ResetStage();
+    EnterMainMenuNow();
+}
+
 static void ApplyAppTransitionTarget() {
     if (g_app_transition_target_state == APP_STATE_MAIN_MENU) {
         EnterMainMenuNow();
@@ -986,6 +999,9 @@ extern "C" void WinMainCRTStartup() {
 
         if (InputWasPressed(KEY_F11)) {
             ToggleFullscreen();
+        }
+        if (InputWasPressed(KEY_0)) {
+            DebugResetDataAndEnterMainMenu();
         }
         if (!AppTransitionActive() && InputWasPressed(KEY_1)) {
             StartAppTransition(APP_STATE_MAIN_MENU, g_game.current_room);

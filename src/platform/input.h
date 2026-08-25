@@ -8,6 +8,7 @@ enum KeyCode {
     KEY_X,
     KEY_F11,
     KEY_R,
+    KEY_0,
     KEY_1,
     KEY_2,
     KEY_3,
