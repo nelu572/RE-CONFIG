@@ -1087,17 +1087,37 @@ static void MainMenuDrawBackground(RenderContext* render, uint32_t fallback_bg) 
     }
 }
 
-static void MainMenuDrawTitle(RenderContext* render, const MainMenuColors* colors) {
+static void MainMenuDrawTitle(RenderContext* render, const MainMenuColors* colors, double time) {
     const int title_y = 430;
     const int re_x = 164;
     const int config_x = 366;
     const uint32_t shadow = 0x00100b0b;
+    uint32_t title_red = MainMenuBrighten(colors->title_red, MainMenuPulse(time, 0.16, 0, 9));
+    uint32_t title_text = MainMenuBrighten(colors->title_text, MainMenuPulse(time + 2.0, 0.13, 0, 5));
     MainMenuDrawLogoText(render, re_x + 3, title_y + 4, "RE:", shadow);
     MainMenuDrawLogoText(render, config_x + 3, title_y + 4, "CONFIG", shadow);
-    MainMenuDrawLogoText(render, re_x, title_y, "RE:", colors->title_red);
-    MainMenuDrawLogoText(render, config_x, title_y, "CONFIG", colors->title_text);
+    MainMenuDrawLogoText(render, re_x, title_y, "RE:", title_red);
+    MainMenuDrawLogoText(render, config_x, title_y, "CONFIG", title_text);
 }
 
+static void MainMenuDrawAmbientMotion(RenderContext* render, const MainMenuColors* colors, double time) {
+    uint32_t cyan = MainMenuBrighten(colors->selected, MainMenuPulse(time + 0.4, 0.46, 8, 28));
+    uint32_t red = MainMenuBrighten(colors->title_red, MainMenuPulse(time + 1.1, 0.38, 6, 24));
+
+    for (int i = 0; i < 24; ++i) {
+        unsigned int h = MainMenuHashPixel(i * 23 + 5, i * 31 + 9, 419u);
+        double phase = (double)((h >> 8) & 255u) / 255.0;
+        double drift = MainMenuFrac(time * (0.120 + (double)(h & 7u) * 0.010) + phase);
+        int x = (int)(drift * (double)(FB_W + 360)) - 180;
+        int y = 82 + (int)(((h >> 4) & 1023u) * 880u / 1024u);
+        y += (int)(MainMenuTri(time * 0.18 + phase) * 10.0) - 5;
+        int w = 22 + (int)((h >> 20) & 31u);
+        int alpha = 38 + (int)((h >> 12) & 35u);
+        uint32_t color = (i & 1) ? cyan : red;
+        MainMenuBlendRectRaw(render, x - 2, y, w + 4, 2, color, alpha / 3);
+        MainMenuBlendRectRaw(render, x, y, w, 2, color, alpha);
+    }
+}
 static float MainMenuEase01(float t) {
     if (t < 0.0f) t = 0.0f;
     if (t > 1.0f) t = 1.0f;
@@ -1109,12 +1129,11 @@ static int MainMenuLerpInt(int a, int b, float t) {
 }
 
 static void MainMenuDrawSelectionBar(RenderContext* render, int x, int center_y, uint32_t color, double time) {
-    uint32_t bright = MainMenuBrighten(color, MainMenuPulse(time, 0.82, 0, 14));
-    int y = center_y - 21;
-    MainMenuBlendRectRaw(render, x - 3, y - 3, 10, 48, bright, 28);
-    DrawRect(render, x, y, 5, 42, bright);
+    uint32_t bright = MainMenuBrighten(color, MainMenuPulse(time, 0.82, 0, 12));
+    int y = center_y - 17;
+    MainMenuBlendRectRaw(render, x - 2, y - 2, 7, 38, bright, 18);
+    DrawRect(render, x, y, 4, 34, bright);
 }
-
 static void MainMenuDrawMenuText(int x, int center_y, const wchar_t* text, float hover, const MainMenuColors* colors, uint32_t selected_color) {
     int size = 32 + (int)(hover * 10.0f + 0.5f);
     int y = center_y - size / 2 - 5;
@@ -1126,12 +1145,13 @@ static void MainMenuDrawMenuText(int x, int center_y, const wchar_t* text, float
 void MainMenuDraw(RenderContext* render, const MainMenuState* menu, const MainMenuColors* colors) {
     double time = PerfNowSeconds();
     MainMenuDrawBackground(render, colors->fallback_bg);
-    MainMenuDrawTitle(render, colors);
+    MainMenuDrawAmbientMotion(render, colors, time);
+    MainMenuDrawTitle(render, colors, time);
 
-    const int bar_x = 150;
-    const int text_x = 206;
-    const int start_center_y = 544;
-    const int exit_center_y = 614;
+    const int bar_x = 186;
+    const int text_x = 242;
+    const int start_center_y = 604;
+    const int exit_center_y = 696;
     const float move_duration = 0.075f;
     int start_selected = menu->selected_index == 0;
     int from_y = menu->selection_from_index == 0 ? start_center_y : exit_center_y;
