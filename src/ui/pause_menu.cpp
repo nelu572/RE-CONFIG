@@ -100,7 +100,7 @@ void PauseMenuUpdate(PauseMenuState* menu) {
         return;
     }
 
-    if (InputWasPressed(KEY_ESCAPE)) {
+    if (InputWasPressed(KEY_X) || InputWasPressed(KEY_ESCAPE)) {
         menu->action = PAUSE_MENU_ACTION_RESUME;
         return;
     }
@@ -120,7 +120,7 @@ void PauseMenuUpdate(PauseMenuState* menu) {
         menu->selection_changed_at = PerfNowSeconds();
     }
 
-    if (InputWasPressed(KEY_X)) {
+    if (InputWasPressed(KEY_Z)) {
         menu->action = (PauseMenuAction)(PAUSE_MENU_ACTION_RESUME + menu->selected_index);
     }
 }

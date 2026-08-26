@@ -1061,7 +1061,7 @@ void MainMenuUpdate(MainMenuState* menu) {
         menu->selection_changed_at = PerfNowSeconds();
     }
 
-    if (InputWasPressed(KEY_X)) {
+    if (InputWasPressed(KEY_Z)) {
         menu->action = menu->selected_index == 0 ? MAIN_MENU_ACTION_START : MAIN_MENU_ACTION_EXIT;
     }
 }

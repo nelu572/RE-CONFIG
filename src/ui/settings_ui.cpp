@@ -564,8 +564,13 @@ void SettingsUiUpdateInput(int use_static_cache) {
         return;
     }
 
+    if (InputWasPressed(KEY_ESCAPE)) {
+        SettingsUiClose();
+        return;
+    }
+
     if (g_settings_focus == SETTINGS_FOCUS_CATEGORY) {
-        if (InputWasPressed(KEY_RIGHT)) {
+        if (InputWasPressed(KEY_RIGHT) || InputWasPressed(KEY_Z)) {
             if (SettingsItemCount((SettingsCategory)g_settings_category_selection) > 0) {
                 g_settings_focus = SETTINGS_FOCUS_ITEM;
                 SettingsRegisterInteraction();

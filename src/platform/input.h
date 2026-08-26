@@ -6,6 +6,7 @@ enum KeyCode {
     KEY_LEFT,
     KEY_RIGHT,
     KEY_X,
+    KEY_Z,
     KEY_ESCAPE,
     KEY_F11,
     KEY_R,

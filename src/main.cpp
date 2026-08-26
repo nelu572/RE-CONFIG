@@ -529,14 +529,14 @@ static void DrawCornerHintSegment(int key_x, int label_x, int y, const wchar_t* 
 static void DrawMainMenuControlHints() {
     const int y = FB_H - 42;
     DrawCornerHintSegment(FB_W - 276, FB_W - 226, y, L"↑↓", L"이동");
-    DrawCornerHintSegment(FB_W - 136, FB_W - 108, y, L"X", L"선택");
+    DrawCornerHintSegment(FB_W - 136, FB_W - 108, y, L"Z", L"선택");
 }
 
 static void DrawStageSelectControlHints() {
     const int y = FB_H - 42;
     DrawCornerHintSegment(FB_W - 418, FB_W - 368, y, L"←→", L"이동");
-    DrawCornerHintSegment(FB_W - 274, FB_W - 246, y, L"X", L"진입");
-    DrawCornerHintSegment(FB_W - 152, FB_W - 96, y, L"ESC", L"뒤로");
+    DrawCornerHintSegment(FB_W - 274, FB_W - 246, y, L"Z", L"진입");
+    DrawCornerHintSegment(FB_W - 152, FB_W - 124, y, L"X", L"뒤로");
 }
 
 static StageCacheState CurrentStageCacheState() {
@@ -889,7 +889,7 @@ static void UpdateStageSelect() {
     if (dt > 0.050f) dt = 0.050f;
     if (dt < 0.0f) dt = 0.0f;
     g_stage_select_last_seconds = now;
-    if (InputWasPressed(KEY_ESCAPE)) {
+    if (InputWasPressed(KEY_X) || InputWasPressed(KEY_ESCAPE)) {
         StartAppTransition(APP_STATE_MAIN_MENU, g_stage_select_index);
         return;
     }
@@ -953,7 +953,7 @@ static void UpdateStageSelect() {
         return;
     }
 
-    if (InputWasPressed(KEY_X) && StageSelectStageSelectable(g_stage_select_index)) {
+    if (InputWasPressed(KEY_Z) && StageSelectStageSelectable(g_stage_select_index)) {
         StartAppTransition(APP_STATE_GAME, g_stage_select_index);
         return;
     }
@@ -1179,6 +1179,7 @@ extern "C" void WinMainCRTStartup() {
         if (InputWasPressed(KEY_F11)) {
             ToggleFullscreen();
         }
+#ifndef NDEBUG
         if (InputWasPressed(KEY_0)) {
             DebugResetDataAndEnterMainMenu();
         }
@@ -1194,6 +1195,7 @@ extern "C" void WinMainCRTStartup() {
         if (!AppTransitionActive() && InputWasPressed(KEY_4)) {
             StartAppTransition(APP_STATE_GAME, DEBUG_ROOM_01_INDEX);
         }
+#endif
 
         if (g_type_a_art_test) {
             t0 = g_perf_config.enabled ? PerfNowSeconds() : 0.0;
