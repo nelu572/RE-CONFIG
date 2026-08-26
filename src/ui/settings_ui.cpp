@@ -2,6 +2,7 @@
 
 #include "game_config.h"
 #include "input.h"
+#include "modal_ui.h"
 #include "ui_text.h"
 
 #ifndef RENDER_SCALE
@@ -41,7 +42,14 @@ static int g_settings_tutorial_target_active = 0;
 static float g_settings_tutorial_pulse_seconds = 0.0f;
 static uint32_t g_settings_cache_supersample_pixels[RENDER_W * RENDER_H];
 static unsigned char g_settings_cache_alpha[RENDER_W * RENDER_H];
-static const uint32_t COL_TUTORIAL_TARGET = 0x0035cfc3;
+static const uint32_t COL_TUTORIAL_TARGET = MODAL_UI_CYAN;
+static const uint32_t COL_SETTINGS_TEXT = MODAL_UI_TEXT;
+static const uint32_t COL_SETTINGS_TEXT_DIM = MODAL_UI_TEXT_DIM;
+static const uint32_t COL_SETTINGS_TEXT_DISABLED = 0x00958b86;
+static const uint32_t COL_SETTINGS_CRIMSON_BRIGHT = MODAL_UI_CRIMSON;
+static const uint32_t COL_SETTINGS_CRIMSON_DARK = MODAL_UI_PANEL_BORDER;
+static const uint32_t COL_SETTINGS_CRIMSON_DEEP = MODAL_UI_PANEL_LINE;
+static const uint32_t COL_SETTINGS_CRIMSON_ARROW = MODAL_UI_CRIMSON_ARROW;
 
 static float SettingsClampF(float value, float lo, float hi) {
     if (value < lo) return lo;
@@ -130,43 +138,6 @@ static RectI SettingsClampRect(RectI rect) {
     if (rect.w < 0) rect.w = 0;
     if (rect.h < 0) rect.h = 0;
     return rect;
-}
-
-static void DrawBlendRect(int x, int y, int w, int h, uint32_t color, float alpha) {
-    alpha = SettingsClampF(alpha, 0.0f, 1.0f);
-    int a = (int)(alpha * 256.0f + 0.5f);
-    if (a <= 0 || w <= 0 || h <= 0 || !g_settings_render) {
-        return;
-    }
-    if (a > 256) a = 256;
-    int sx = x * RENDER_SCALE;
-    int sy = y * RENDER_SCALE;
-    int sw = w * RENDER_SCALE;
-    int sh = h * RENDER_SCALE;
-    if (sx < 0) { sw += sx; sx = 0; }
-    if (sy < 0) { sh += sy; sy = 0; }
-    if (sx + sw > g_settings_render->width) sw = g_settings_render->width - sx;
-    if (sy + sh > g_settings_render->height) sh = g_settings_render->height - sy;
-    if (sw <= 0 || sh <= 0) {
-        return;
-    }
-
-    int sr = (int)((color >> 16) & 255);
-    int sg = (int)((color >> 8) & 255);
-    int sb = (int)(color & 255);
-    int inv = 256 - a;
-    for (int yy = sy; yy < sy + sh; ++yy) {
-        uint32_t* row = g_settings_render->pixels + yy * g_settings_render->width + sx;
-        for (int xx = 0; xx < sw; ++xx) {
-            uint32_t dst = row[xx];
-            int dr = (int)((dst >> 16) & 255);
-            int dg = (int)((dst >> 8) & 255);
-            int db = (int)(dst & 255);
-            row[xx] = (uint32_t)((((sr * a + dr * inv) >> 8) << 16) |
-                                 (((sg * a + dg * inv) >> 8) << 8) |
-                                 ((sb * a + db * inv) >> 8));
-        }
-    }
 }
 
 static void DrawRoundRect(int x, int y, int w, int h, int radius, uint32_t color) {
@@ -667,7 +638,7 @@ void SettingsUiUpdateInput(int use_static_cache) {
 
 static void DrawSettingsCategoryIndicator(int x, int y, int focused, float selected_alpha, float fade, const SettingsUiColors* colors) {
     float alpha = fade * (0.28f + selected_alpha * 0.72f);
-    uint32_t accent = SettingsFadeColor(focused ? COL_TUTORIAL_TARGET : colors->main_red, alpha);
+    uint32_t accent = SettingsFadeColor(focused ? COL_TUTORIAL_TARGET : COL_SETTINGS_CRIMSON_DARK, alpha);
     DrawRect(g_settings_render, x - 30, y + 2, 4, 23, accent);
 }
 
@@ -676,9 +647,9 @@ static int SettingsEstimateTextWidth(const wchar_t* text, int size);
 static void DrawSettingsCategoryRow(int x, int y, SettingsCategory category, float selected_alpha, int tutorial_target, const SettingsUiColors* colors) {
     float fade = SettingsSmooth01(g_settings_fade);
     int focused = g_settings_focus == SETTINGS_FOCUS_CATEGORY && selected_alpha > 0.985f;
-    float area_strength = g_settings_focus == SETTINGS_FOCUS_CATEGORY ? 1.0f : 0.62f;
-    uint32_t selected_color = focused ? COL_TUTORIAL_TARGET : colors->text;
-    uint32_t base_color = SettingsFadeColor(colors->text_dim, area_strength);
+    float area_strength = g_settings_focus == SETTINGS_FOCUS_CATEGORY ? 1.0f : 0.92f;
+    uint32_t selected_color = focused ? COL_TUTORIAL_TARGET : COL_SETTINGS_TEXT;
+    uint32_t base_color = COL_SETTINGS_TEXT_DIM;
     float mix = selected_alpha * area_strength;
     uint32_t color = SettingsLerpColor(base_color, selected_color, mix);
     int bold = selected_alpha > 0.985f && g_settings_focus == SETTINGS_FOCUS_CATEGORY ? 1 : 0;
@@ -697,7 +668,7 @@ static void DrawSettingsCategoryRow(int x, int y, SettingsCategory category, flo
 }
 
 static uint32_t SettingsItemTextColor(float selected_alpha, const SettingsUiColors* colors) {
-    return SettingsLerpColor(colors->text_dim, colors->text, selected_alpha);
+    return SettingsLerpColor(COL_SETTINGS_TEXT_DIM, COL_SETTINGS_TEXT, selected_alpha);
 }
 
 static float SelectedItemAlpha(int item_index) {
@@ -744,7 +715,7 @@ static void DrawSmallStepMarks(int x, int y, const SettingsItemDef* item, int va
         return;
     }
     for (int i = 0; i < item->value_count; ++i) {
-        uint32_t color = i == value_index ? colors->main_red : colors->type_a;
+        uint32_t color = i == value_index ? COL_SETTINGS_CRIMSON_BRIGHT : COL_SETTINGS_CRIMSON_DEEP;
         DrawRect(g_settings_render, x + i * 12, y, 7, 2, SettingsFadeColor(color, fade * area_strength * (i == value_index ? 0.9f : 0.55f)));
     }
 }
@@ -774,8 +745,8 @@ static void DrawVolumeStepMeter(int x,
     if (filled < 0) filled = 0;
     if (filled > step_count) filled = step_count;
 
-    uint32_t empty_color = SettingsLerpColor(colors->type_a, colors->text_dim, 0.16f);
-    uint32_t fill_color = focused ? COL_TUTORIAL_TARGET : colors->bright_red;
+    uint32_t empty_color = COL_SETTINGS_CRIMSON_DEEP;
+    uint32_t fill_color = focused ? COL_TUTORIAL_TARGET : COL_SETTINGS_CRIMSON_BRIGHT;
     for (int i = 0; i < step_count; ++i) {
         int h = base_h + i * 2;
         int bx = x + i * (block_w + block_gap);
@@ -801,43 +772,43 @@ static int SettingsEstimateTextWidth(const wchar_t* text, int size) {
     return width;
 }
 
-static void DrawSettingsValue(int x, int y, const SettingsItemDef* item, float area_strength, int focused, const SettingsUiColors* colors) {
+static void DrawSettingsValue(int x, int y, int w, const SettingsItemDef* item, float area_strength, int focused, const SettingsUiColors* colors) {
     float fade = SettingsSmooth01(g_settings_fade);
     int value_index = SettingsItemValueIndex(item);
     const wchar_t* value_text = SettingsCurrentValueText(item);
-    const int value_center_x = x + 82;
+    const int value_center_x = x + w - 96;
     int interactive = item && item->value_view != SETTINGS_VALUE_PENDING && item->value_count > 1;
-    uint32_t value_color = item && item->status == SETTINGS_ITEM_IMPLEMENTED ? colors->bright_red : SettingsLerpColor(colors->text_dim, colors->text, 0.26f);
-    uint32_t control_color = SettingsLerpColor(colors->type_a, colors->main_red, area_strength);
+    uint32_t value_color = item && item->status == SETTINGS_ITEM_IMPLEMENTED ? COL_SETTINGS_TEXT : COL_SETTINGS_TEXT_DISABLED;
+    uint32_t control_color = SettingsLerpColor(COL_SETTINGS_CRIMSON_ARROW, COL_SETTINGS_CRIMSON_DARK, area_strength);
     if (item && item->feature == FEATURE_COLLISION_TYPE_A) {
-        value_color = value_index == 0 ? colors->bright_red : 0x009a908d;
-        control_color = SettingsLerpColor(colors->type_a, value_color, area_strength);
+        value_color = value_index == 0 ? COL_SETTINGS_TEXT : COL_SETTINGS_TEXT_DIM;
+        control_color = SettingsLerpColor(COL_SETTINGS_CRIMSON_ARROW, COL_SETTINGS_CRIMSON_DARK, area_strength);
     }
     if (focused) {
         value_color = COL_TUTORIAL_TARGET;
-        control_color = COL_TUTORIAL_TARGET;
+        control_color = SettingsLerpColor(COL_SETTINGS_CRIMSON_ARROW, COL_TUTORIAL_TARGET, 0.55f);
     }
-    value_color = SettingsLerpColor(colors->text_dim, value_color, area_strength);
+    value_color = SettingsLerpColor(COL_SETTINGS_TEXT_DIM, value_color, area_strength);
 
     if (SettingsItemIsAudioVolume(item)) {
-        const int meter_w = 145;
-        const int meter_x = x + 46;
+        const int meter_w = 150;
+        const int meter_x = x + 28;
         const int meter_y = y + 4;
         uint32_t arrow_color = SettingsFadeColor(control_color, fade * (focused ? 0.78f : (0.34f + area_strength * 0.32f)));
         if (interactive) {
             DrawTriangleLeft(meter_x - 22, y + 11, 8, 12, arrow_color);
-            DrawTriangleRight(meter_x + meter_w + 22, y + 11, 8, 12, arrow_color);
+            DrawTriangleRight(meter_x + meter_w + 18, y + 11, 8, 12, arrow_color);
         }
         DrawVolumeStepMeter(meter_x, meter_y, item, value_index, fade, area_strength, focused, colors);
-        int text_x = meter_x + meter_w + 62;
+        int text_x = x + w - SettingsEstimateTextWidth(value_text, 18);
         DrawTextUi(text_x, y + 4, value_text, 18, SettingsFadeColor(value_color, fade), item && item->status == SETTINGS_ITEM_IMPLEMENTED);
         return;
     }
 
     if (interactive) {
         uint32_t arrow_color = SettingsFadeColor(control_color, fade * (focused ? 0.78f : (0.34f + area_strength * 0.32f)));
-        DrawTriangleLeft(x + 34, y + 10, 11, 16, arrow_color);
-        DrawTriangleRight(x + 118, y + 10, 11, 16, arrow_color);
+        DrawTriangleLeft(value_center_x - 58, y + 10, 11, 16, arrow_color);
+        DrawTriangleRight(value_center_x + 58, y + 10, 11, 16, arrow_color);
     }
 
     if (IsDirectionValue(value_text)) {
@@ -854,8 +825,8 @@ static void DrawSettingsItemRow(int x, int y, int w, const SettingsItemDef* item
     float selected_alpha = SelectedItemAlpha(item_index);
     int focused = g_settings_focus == SETTINGS_FOCUS_ITEM && selected_alpha > 0.985f;
     float area_strength = g_settings_focus == SETTINGS_FOCUS_ITEM ? 1.0f : 0.54f;
-    uint32_t name_base = g_settings_focus == SETTINGS_FOCUS_ITEM ? colors->text_dim : SettingsFadeColor(colors->text_dim, 0.62f);
-    uint32_t name_focus = focused ? COL_TUTORIAL_TARGET : SettingsItemTextColor(selected_alpha, colors);
+    uint32_t name_base = g_settings_focus == SETTINGS_FOCUS_ITEM ? COL_SETTINGS_TEXT_DIM : SettingsLerpColor(COL_SETTINGS_TEXT_DIM, COL_SETTINGS_TEXT, 0.18f);
+    uint32_t name_focus = focused ? COL_SETTINGS_TEXT : SettingsItemTextColor(selected_alpha, colors);
     float mix = selected_alpha * area_strength;
     uint32_t name_color = SettingsFadeColor(SettingsLerpColor(name_base, name_focus, mix), fade);
     int text_size = 23;
@@ -870,7 +841,7 @@ static void DrawSettingsItemRow(int x, int y, int w, const SettingsItemDef* item
         draw_y -= size_delta / 2;
     }
     DrawTextUi(draw_x, draw_y, item->name, text_size, name_color, 0);
-    DrawSettingsValue(x + w - 236, y - 2, item, area_strength, focused, colors);
+    DrawSettingsValue(x + w - 360, y - 2, 330, item, area_strength, focused, colors);
 }
 
 void SettingsUiDrawMenu(const SettingsUiColors* colors, const SettingsUiTutorialState* tutorial) {
@@ -881,72 +852,72 @@ void SettingsUiDrawMenu(const SettingsUiColors* colors, const SettingsUiTutorial
     SettingsSetTutorialTargetActive(tutorial && tutorial->active);
     float motion = SettingsSmooth01(g_settings_motion);
     float content_motion = SettingsSmooth01(g_settings_content_motion);
-    const int panel_w = 1120;
-    const int panel_h = 632;
+    const int panel_w = 980;
+    const int panel_h = 588;
     const int panel_x = (FB_W - panel_w) / 2;
     const int panel_y = (FB_H - panel_h) / 2;
     const int left_w = 284;
     const int sep_x = panel_x + left_w;
-    const int right_x = sep_x + 48;
-    const int row_w = panel_w - left_w - 106;
+    const int right_x = sep_x + 46;
+    const int row_w = panel_w - left_w - 80;
 
-    DrawBlendRect(panel_x, panel_y, panel_w, panel_h, colors->bg, 0.985f * fade);
-    DrawRectOutline(g_settings_render, panel_x, panel_y, panel_w, panel_h, SettingsFadeColor(colors->type_a, fade * 0.54f));
-    DrawRect(g_settings_render, sep_x, panel_y + 94, 1, panel_h - 142, SettingsFadeColor(colors->type_a, fade * 0.56f));
-    DrawTextUi(panel_x + 46, panel_y + 46, L"설정", 32, SettingsFadeColor(colors->text, fade), 0);
+    RectI panel_rect = { panel_x, panel_y, panel_w, panel_h };
+    DrawUIPanel(g_settings_render, panel_rect, fade);
+    DrawRect(g_settings_render, sep_x, panel_y + 124, 1, 386, SettingsFadeColor(COL_SETTINGS_CRIMSON_DARK, fade * 0.62f));
+    DrawTextUi(panel_x + 62, panel_y + 58, L"설정", 32, SettingsFadeColor(COL_SETTINGS_TEXT, fade), 0);
 
     for (int i = 0; i < SETTINGS_CATEGORY_COUNT; ++i) {
         float selected_alpha = g_settings_category_alpha[i];
-        int row_y = panel_y + 164 + i * 62;
+        int row_y = panel_y + 184 + i * 66;
         int tutorial_target = tutorial->mark_system_category && i == SETTINGS_SYSTEM;
         if (i == g_settings_category_selection && selected_alpha > 0.001f) {
-            DrawSettingsCategoryIndicator(panel_x + 78, row_y, g_settings_focus == SETTINGS_FOCUS_CATEGORY, selected_alpha, fade, colors);
+            DrawSettingsCategoryIndicator(panel_x + 86, row_y, g_settings_focus == SETTINGS_FOCUS_CATEGORY, selected_alpha, fade, colors);
         }
-        DrawSettingsCategoryRow(panel_x + 78, row_y, (SettingsCategory)i, selected_alpha, tutorial_target, colors);
+        DrawSettingsCategoryRow(panel_x + 86, row_y, (SettingsCategory)i, selected_alpha, tutorial_target, colors);
     }
 
     SettingsCategory category = (SettingsCategory)g_settings_category_selection;
     int content_x = right_x + (int)((1.0f - content_motion) * g_settings_content_dir * 22.0f);
     float content_fade = fade * (0.35f + content_motion * 0.65f);
     float right_area_strength = g_settings_focus == SETTINGS_FOCUS_ITEM ? 1.0f : 0.78f;
-    uint32_t right_header_color = SettingsLerpColor(colors->text_dim, colors->text, right_area_strength);
-    DrawTextUi(content_x, panel_y + 82, SettingsCategoryAt(category)->name, 27, SettingsFadeColor(right_header_color, content_fade), 0);
-    DrawRect(g_settings_render, content_x, panel_y + 124, 220, 1, SettingsFadeColor(colors->type_a, content_fade * (0.22f + right_area_strength * 0.16f)));
+    uint32_t right_header_color = SettingsLerpColor(COL_SETTINGS_TEXT_DIM, COL_SETTINGS_TEXT, right_area_strength);
+    DrawTextUi(content_x, panel_y + 116, SettingsCategoryAt(category)->name, 27, SettingsFadeColor(right_header_color, content_fade), 0);
+    DrawRect(g_settings_render, content_x, panel_y + 156, 180, 1, SettingsFadeColor(COL_SETTINGS_CRIMSON_DARK, content_fade * (0.26f + right_area_strength * 0.10f)));
 
     int count = SettingsItemCount(category);
     if (count > 0) {
         if (g_settings_item_selection < 0) g_settings_item_selection = 0;
         if (g_settings_item_selection >= count) g_settings_item_selection = count - 1;
         if (g_settings_focus == SETTINGS_FOCUS_ITEM) {
-            int item_y = panel_y + 178 + g_settings_item_selection * 74;
+            int item_y = panel_y + 222 + g_settings_item_selection * 76;
             float selected_item_alpha = 0.0f;
             int selected_index = SelectedSettingsItemIndex();
             selected_item_alpha = SelectedItemAlpha(selected_index);
-            DrawRect(g_settings_render, content_x, item_y + 6, 4, 18, SettingsFadeColor(COL_TUTORIAL_TARGET, content_fade * selected_item_alpha));
-            DrawRect(g_settings_render, content_x + 32, item_y + 31, row_w - 96, 1, SettingsFadeColor(COL_TUTORIAL_TARGET, content_fade * selected_item_alpha * 0.58f));
+            DrawRect(g_settings_render, content_x, item_y + 6, 4, 18, SettingsFadeColor(COL_SETTINGS_CRIMSON_BRIGHT, content_fade * selected_item_alpha * 0.44f));
+            DrawRect(g_settings_render, content_x + 32, item_y + 31, row_w - 96, 1, SettingsFadeColor(COL_SETTINGS_CRIMSON_DARK, content_fade * selected_item_alpha * 0.38f));
         }
         for (int i = 0; i < count; ++i) {
             int item_index = SettingsItemIndex(category, i);
             if (item_index >= 0) {
                 const SettingsItemDef* item = SettingsItemAt(item_index);
-                int item_y = panel_y + 178 + i * 74;
+                int item_y = panel_y + 222 + i * 76;
                 int tutorial_target = tutorial->mark_type_a_setting &&
                                       item->feature == FEATURE_COLLISION_TYPE_A;
                 DrawSettingsItemRow(content_x + 32, item_y, row_w - 64, item, item_index, tutorial_target, colors);
                 if (i + 1 < count) {
-                    DrawRect(g_settings_render, content_x + 32, item_y + 50, row_w - 96, 1, SettingsFadeColor(colors->type_a, content_fade * (0.16f + right_area_strength * 0.16f)));
+                    DrawRect(g_settings_render, content_x + 32, item_y + 50, row_w - 96, 1, SettingsFadeColor(COL_SETTINGS_CRIMSON_DARK, content_fade * (0.14f + right_area_strength * 0.10f)));
                 }
             }
         }
     } else {
-        DrawRect(g_settings_render, content_x + 32, panel_y + 184, row_w - 82, 2, SettingsFadeColor(colors->type_a, content_fade));
+        DrawRect(g_settings_render, content_x + 32, panel_y + 228, row_w - 82, 2, SettingsFadeColor(COL_SETTINGS_CRIMSON_DARK, content_fade * 0.48f));
     }
 
 }
 
 RectI SettingsUiMenuDirtyRect() {
-    const int panel_w = 1120;
-    const int panel_h = 632;
+    const int panel_w = 980;
+    const int panel_h = 588;
     const int panel_x = (FB_W - panel_w) / 2;
     const int panel_y = (FB_H - panel_h) / 2;
     if (g_settings_full_dirty || !SettingsUiOverlayVisible()) {
@@ -960,7 +931,7 @@ RectI SettingsUiMenuDirtyRect() {
 void SettingsUiDrawDimRect(RectI rect) {
     rect = SettingsClampRect(rect);
     if (rect.w > 0 && rect.h > 0) {
-        DrawBlendRect(rect.x, rect.y, rect.w, rect.h, 0x00000000, 0.46f);
+        DrawModalDimOverlayRect(g_settings_render, rect, SettingsSmooth01(g_settings_fade));
     }
 }
 

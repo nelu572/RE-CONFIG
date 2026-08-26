@@ -9,6 +9,7 @@
 #include "framebuffer.h"
 #include "input.h"
 #include "main_menu.h"
+#include "pause_menu.h"
 #include "render.h"
 #include "settings_ui.h"
 #include "stage_cache.h"
@@ -50,7 +51,9 @@ static WINDOWPLACEMENT g_windowed_placement = { sizeof(g_windowed_placement) };
 static GameState g_game;
 static RenderContext g_render = { 0, &g_game.camera, RENDER_W, RENDER_H, RENDER_SCALE };
 static MainMenuState g_main_menu;
+static PauseMenuState g_pause_menu;
 static int g_overlay_redraw_pending = 0;
+static int g_pause_redraw_pending = 0;
 static constexpr int START_ROOM_INDEX = 4;
 static constexpr int DEBUG_ROOM_00_INDEX = 0;
 static constexpr int DEBUG_ROOM_01_INDEX = 1;
@@ -304,12 +307,14 @@ static int AppTransitionActive() {
 
 static void EnterMainMenuNow() {
     SettingsUiClose();
+    PauseMenuClose(&g_pause_menu);
     g_app_state = APP_STATE_MAIN_MENU;
     MainMenuInit(&g_main_menu);
 }
 
 static void EnterStageSelectNow(int stage_index) {
     SettingsUiClose();
+    PauseMenuClose(&g_pause_menu);
     g_stage_select_index = ClampRoomIndex(stage_index);
     g_stage_select_target_offset = StageSelectTargetOffset(g_stage_select_index);
     g_stage_select_world_offset = g_stage_select_target_offset;
@@ -329,12 +334,14 @@ static void EnterStageSelectNow(int stage_index) {
 
 static void EnterStageNow(int room_index) {
     SettingsUiClose();
+    PauseMenuClose(&g_pause_menu);
     g_game.current_room = ClampRoomIndex(room_index);
     g_app_state = APP_STATE_GAME;
     ResetStage();
 }
 
 static void DebugResetDataAndEnterMainMenu() {
+    PauseMenuClose(&g_pause_menu);
     ClearBytes(g_stage_select_cleared, sizeof(g_stage_select_cleared));
     StageProgressSave();
 
@@ -502,6 +509,34 @@ static MainMenuColors CurrentMainMenuColors() {
     colors.selected = COL_MENU_CYAN;
     colors.inactive = COL_TEXT_DIM;
     return colors;
+}
+
+static PauseMenuColors CurrentPauseMenuColors() {
+    PauseMenuColors colors;
+    colors.text = COL_TEXT;
+    colors.text_dim = COL_TEXT_DIM;
+    colors.accent = COL_MENU_CYAN;
+    return colors;
+}
+
+static void DrawCornerHintSegment(int key_x, int label_x, int y, const wchar_t* key, const wchar_t* label) {
+    DrawTextUi(key_x + 1, y + 2, key, 18, 0x00070506, 1);
+    DrawTextUi(key_x, y, key, 18, COL_MENU_CYAN, 1);
+    DrawTextUi(label_x + 1, y + 2, label, 18, 0x00070506, 0);
+    DrawTextUi(label_x, y, label, 18, COL_TEXT, 0);
+}
+
+static void DrawMainMenuControlHints() {
+    const int y = FB_H - 42;
+    DrawCornerHintSegment(FB_W - 276, FB_W - 226, y, L"↑↓", L"이동");
+    DrawCornerHintSegment(FB_W - 136, FB_W - 108, y, L"X", L"선택");
+}
+
+static void DrawStageSelectControlHints() {
+    const int y = FB_H - 42;
+    DrawCornerHintSegment(FB_W - 418, FB_W - 368, y, L"←→", L"이동");
+    DrawCornerHintSegment(FB_W - 274, FB_W - 246, y, L"X", L"진입");
+    DrawCornerHintSegment(FB_W - 152, FB_W - 96, y, L"ESC", L"뒤로");
 }
 
 static StageCacheState CurrentStageCacheState() {
@@ -854,6 +889,10 @@ static void UpdateStageSelect() {
     if (dt > 0.050f) dt = 0.050f;
     if (dt < 0.0f) dt = 0.0f;
     g_stage_select_last_seconds = now;
+    if (InputWasPressed(KEY_ESCAPE)) {
+        StartAppTransition(APP_STATE_MAIN_MENU, g_stage_select_index);
+        return;
+    }
     g_stage_select_anim_seconds += dt;
     float move_t = StageSelectClamp01(g_stage_select_anim_seconds / STAGE_SELECT_MOVE_SECONDS);
     float t = StageSelectEase(move_t);
@@ -930,7 +969,8 @@ static void DrawStageSelect() {
         }
         StageSelectDrawStageNode(i);
     }
-StageSelectDrawPlayer();
+    StageSelectDrawPlayer();
+    DrawStageSelectControlHints();
 }
 static void ToggleFullscreen() {
     DWORD style = GetWindowLongA(g_window, GWL_STYLE);
@@ -1087,6 +1127,7 @@ extern "C" void WinMainCRTStartup() {
     UiTextWarmSettingsTextCache();
     SettingsUiInit(&g_render, FeatureActive, ToggleFeature, SetSettingsItemValue, DrawContextText);
     MainMenuInit(&g_main_menu);
+    PauseMenuInit(&g_pause_menu);
     MainMenuLoadBackground();
     StageProgressLoad();
 
@@ -1191,6 +1232,7 @@ extern "C" void WinMainCRTStartup() {
             t0 = g_perf_config.enabled ? PerfNowSeconds() : 0.0;
             MainMenuColors menu_colors = CurrentMainMenuColors();
             MainMenuDraw(&g_render, &g_main_menu, &menu_colors);
+            DrawMainMenuControlHints();
             DrawAppTransition();
             t1 = g_perf_config.enabled ? PerfNowSeconds() : 0.0;
             PerfAddDuration(t0, t1, &g_perf_stats.render_ms, &g_perf_stats.max_render_ms);
@@ -1238,7 +1280,7 @@ extern "C" void WinMainCRTStartup() {
             continue;
         }
 
-        if (!AppTransitionActive() && g_perf_config.settings_bench) {
+        if (!AppTransitionActive() && !PauseMenuIsOpen(&g_pause_menu) && g_perf_config.settings_bench) {
             int f = g_perf_stats.frames;
             if (f == 30 || f == 130 || f == 230) {
                 SettingsUiOpen(!g_perf_config.disable_static_cache);
@@ -1255,9 +1297,32 @@ extern "C" void WinMainCRTStartup() {
 
         t0 = g_perf_config.enabled ? PerfNowSeconds() : 0.0;
         if (!AppTransitionActive()) {
-            UpdateStage(dt);
-            g_perf_frame_settings_anim = SettingsUiAnimationActive();
-            g_perf_frame_tutorial_fade = TutorialUiFadeActive(g_game.current_room);
+            if (PauseMenuIsOpen(&g_pause_menu)) {
+                PauseMenuUpdate(&g_pause_menu);
+                PauseMenuAction pause_action = g_pause_menu.action;
+                if (pause_action == PAUSE_MENU_ACTION_RESUME) {
+                    PauseMenuClose(&g_pause_menu);
+                } else if (pause_action == PAUSE_MENU_ACTION_RESTART) {
+                    PauseMenuClose(&g_pause_menu);
+                    ResetStage();
+                } else if (pause_action == PAUSE_MENU_ACTION_STAGE_SELECT) {
+                    PauseMenuClose(&g_pause_menu);
+                    StartAppTransition(APP_STATE_STAGE_SELECT, g_game.current_room);
+                }
+                AudioUpdateSpeaker(0.0, 0.0f, 0);
+                g_perf_frame_settings_anim = 0;
+                g_perf_frame_tutorial_fade = 0;
+            } else if (InputWasPressed(KEY_ESCAPE) && !SettingsUiOverlayVisible()) {
+                PauseMenuOpen(&g_pause_menu);
+                g_pause_redraw_pending = 1;
+                AudioUpdateSpeaker(0.0, 0.0f, 0);
+                g_perf_frame_settings_anim = 0;
+                g_perf_frame_tutorial_fade = 0;
+            } else {
+                UpdateStage(dt);
+                g_perf_frame_settings_anim = SettingsUiAnimationActive();
+                g_perf_frame_tutorial_fade = TutorialUiFadeActive(g_game.current_room);
+            }
         } else {
             g_perf_frame_settings_anim = 0;
             g_perf_frame_tutorial_fade = 0;
@@ -1270,17 +1335,27 @@ extern "C" void WinMainCRTStartup() {
         }
 
         int overlay_visible = SettingsUiOverlayVisible();
+        int pause_visible = PauseMenuIsOpen(&g_pause_menu);
         if (overlay_visible) {
             g_overlay_redraw_pending = 1;
         }
+        if (pause_visible) {
+            g_pause_redraw_pending = 1;
+        }
         int force_full_redraw = AppTransitionActive() ||
                                 overlay_visible ||
+                                pause_visible ||
                                 g_overlay_redraw_pending ||
+                                g_pause_redraw_pending ||
                                 !FeatureActive(FEATURE_COLLISION_TYPE_A);
 
         if (g_perf_config.disable_static_cache || force_full_redraw) {
             t0 = g_perf_config.enabled ? PerfNowSeconds() : 0.0;
             DrawStage();
+            if (PauseMenuIsOpen(&g_pause_menu)) {
+                PauseMenuColors pause_colors = CurrentPauseMenuColors();
+                PauseMenuDraw(&g_render, &g_pause_menu, &pause_colors);
+            }
             DrawAppTransition();
             t1 = g_perf_config.enabled ? PerfNowSeconds() : 0.0;
             if (g_perf_config.enabled) {
@@ -1299,6 +1374,9 @@ extern "C" void WinMainCRTStartup() {
             }
             if (!overlay_visible) {
                 g_overlay_redraw_pending = 0;
+            }
+            if (!PauseMenuIsOpen(&g_pause_menu)) {
+                g_pause_redraw_pending = 0;
             }
         } else {
             t0 = g_perf_config.enabled ? PerfNowSeconds() : 0.0;
