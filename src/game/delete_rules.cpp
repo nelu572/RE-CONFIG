@@ -46,14 +46,14 @@ static const wchar_t* const g_camera_values[] = {
 };
 
 static const wchar_t* const g_speed_values[] = {
-    L"0%",
-    L"정상",
+    L"느림",
+    L"보통",
     L"빠름",
 };
 
 static const SettingsItemDef g_settings_items[] = {
     { SETTINGS_GAMEPLAY, FEATURE_COUNT, L"캐릭터 유연성", SETTINGS_VALUE_CHOICES, SETTINGS_ITEM_IMPLEMENTED, g_flex_values, SETTINGS_FLEXIBILITY_COUNT, SETTINGS_FLEXIBILITY_NORMAL },
-    { SETTINGS_GAMEPLAY, FEATURE_COUNT, L"게임 속도", SETTINGS_VALUE_STEPS, SETTINGS_ITEM_PLANNED, g_speed_values, 3, 1 },
+    { SETTINGS_GAMEPLAY, FEATURE_COUNT, L"기믹 속도", SETTINGS_VALUE_STEPS, SETTINGS_ITEM_IMPLEMENTED, g_speed_values, SETTINGS_GAME_SPEED_COUNT, SETTINGS_GAME_SPEED_NORMAL },
     { SETTINGS_AUDIO, FEATURE_COUNT, L"BGM 음량", SETTINGS_VALUE_STEPS, SETTINGS_ITEM_IMPLEMENTED, g_volume_values, 11, 7 },
     { SETTINGS_AUDIO, FEATURE_COUNT, L"효과음 음량", SETTINGS_VALUE_STEPS, SETTINGS_ITEM_IMPLEMENTED, g_volume_values, 11, 7 },
     { SETTINGS_VIDEO, FEATURE_COUNT, L"무채색", SETTINGS_VALUE_TOGGLE, SETTINGS_ITEM_PLANNED, g_toggle_values, 2, 1 },
@@ -140,6 +140,18 @@ int SettingsGravityDirectionItemIndex() {
         if (item->category == SETTINGS_SYSTEM &&
             item->value_view == SETTINGS_VALUE_CHOICES &&
             item->values == g_gravity_direction_values) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+int SettingsGameSpeedItemIndex() {
+    for (int i = 0; i < SettingsItemTotalCount(); ++i) {
+        const SettingsItemDef* item = SettingsItemAt(i);
+        if (item->category == SETTINGS_GAMEPLAY &&
+            item->value_view == SETTINGS_VALUE_STEPS &&
+            item->values == g_speed_values) {
             return i;
         }
     }

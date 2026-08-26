@@ -54,6 +54,7 @@ int SettingsUiItemFocusActive();
 int SettingsUiItemValue(int item_index);
 float SettingsUiBgmVolume();
 float SettingsUiSfxVolume();
+float SettingsUiGameSpeedScale();
 DeleteFeature SettingsUiSelectedFeature();
 int SettingsUiHighlightsFeature(DeleteFeature feature);
 RectI SettingsUiMenuDirtyRect();

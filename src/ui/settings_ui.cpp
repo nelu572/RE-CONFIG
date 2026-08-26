@@ -333,6 +333,17 @@ float SettingsUiSfxVolume() {
     return SettingsUiVolumeForItem(SettingsSfxVolumeItemIndex());
 }
 
+float SettingsUiGameSpeedScale() {
+    int value = SettingsUiItemValue(SettingsGameSpeedItemIndex());
+    if (value == SETTINGS_GAME_SPEED_SLOW) {
+        return 0.55f;
+    }
+    if (value == SETTINGS_GAME_SPEED_FAST) {
+        return 1.35f;
+    }
+    return 1.0f;
+}
+
 void SettingsUiReset() {
     g_settings_open = 0;
     g_settings_focus = SETTINGS_FOCUS_CATEGORY;

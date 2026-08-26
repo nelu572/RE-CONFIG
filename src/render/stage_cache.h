@@ -25,6 +25,7 @@ struct StageCacheState {
     int player_dead;
     float camera_x;
     float camera_y;
+    float piston_time_seconds;
     unsigned int bg_color;
 };
 

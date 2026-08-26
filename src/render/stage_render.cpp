@@ -2,6 +2,7 @@
 
 #include "exit_sequence.h"
 #include "game_config.h"
+#include "piston.h"
 #include "settings_ui.h"
 #include "tutorial_ui.h"
 
@@ -678,6 +679,51 @@ static void DrawSettingsMenu(const StageRenderState* state) {
     SettingsUiDrawMenu(&colors, &tutorial);
 }
 
+static void DrawPistonDevice(const StageRenderState* state, const PistonDevice* piston) {
+    RenderContext* render = state->render;
+    RectF body = PistonBodyRect(piston);
+    RectF shaft = PistonShaftRectAt(piston, state->piston_time_seconds);
+    RectF plate = PistonPlateRectAt(piston, state->piston_time_seconds);
+
+    int bx = WorldX(render, body.x);
+    int by = WorldY(render, body.y);
+    int bw = (int)(body.w + 0.5f);
+    int bh = (int)(body.h + 0.5f);
+    int sx = WorldX(render, shaft.x);
+    int sy = WorldY(render, shaft.y);
+    int sw = (int)(shaft.w + 0.5f);
+    int sh = (int)(shaft.h + 0.5f);
+    int px = WorldX(render, plate.x);
+    int py = WorldY(render, plate.y);
+    int pw = (int)(plate.w + 0.5f);
+    int ph = (int)(plate.h + 0.5f);
+
+    uint32_t body_color = StageLerpColor(state->platform_color, state->effect_color, 0.24f);
+    uint32_t dark_color = StageLerpColor(state->bg_color, state->platform_color, 0.58f);
+    uint32_t light_color = StageLerpColor(state->platform_color, state->text_dim_color, 0.22f);
+    uint32_t plate_color = StageLerpColor(state->platform_color, state->text_color, 0.10f);
+
+    DrawRect(render, bx, by, bw, bh, body_color);
+    DrawRect(render, bx, by + bh - 7, bw, 7, dark_color);
+    DrawRect(render, bx + 8, by + 8, bw - 16, 5, light_color);
+    DrawRectOutline(render, bx, by, bw, bh, dark_color);
+
+    if (sh > 0) {
+        DrawRect(render, sx, sy, sw, sh, dark_color);
+        DrawRect(render, sx + sw / 2 - 2, sy, 4, sh, body_color);
+    }
+
+    DrawRect(render, px, py, pw, ph, plate_color);
+    DrawRect(render, px, py + ph - 9, pw, 9, dark_color);
+    DrawRect(render, px + 10, py + 8, pw - 20, 4, light_color);
+    DrawRectOutline(render, px, py, pw, ph, dark_color);
+}
+static void DrawRoomPistons(const StageRenderState* state) {
+    for (int i = 0; i < state->room->piston_count; ++i) {
+        DrawPistonDevice(state, &state->room->pistons[i]);
+    }
+}
+
 static void DrawContextUi(const StageRenderState* state) {
     TutorialUiDrawWorldHint(state->render, state->room, state->player);
     ExitSequenceDrawSolvedUi(state->render, state->text_color, state->draw_text_small);
@@ -702,6 +748,7 @@ void StageRenderDrawDynamic(const StageRenderState* state) {
     for (int i = 0; i < state->room->speaker_count; ++i) {
         DrawSpeakerDevice(state, &state->room->speakers[i]);
     }
+    DrawRoomPistons(state);
     ExitSequenceDrawExit(state->render, &state->room->exit);
     if (state->player_visible) {
         DrawPlayer(state->render,

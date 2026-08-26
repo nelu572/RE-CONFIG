@@ -12,17 +12,26 @@ static int PlatformSolidCount(const RoomDef* room) {
     return room->platform_count;
 }
 
-static int TotalSolidCount(const RoomDef* room, int type_a_collision_active) {
-    return PlatformSolidCount(room) + (type_a_collision_active ? room->type_a_count : 0);
+static int TypeASolidCount(const RoomDef* room, int type_a_collision_active) {
+    return type_a_collision_active ? room->type_a_count : 0;
 }
 
-static const RectF* SolidAt(const RoomDef* room, int index) {
-    if (index < room->platform_count) {
+static int TotalSolidCount(const RoomDef* room, int type_a_collision_active, int extra_solid_count) {
+    return PlatformSolidCount(room) + TypeASolidCount(room, type_a_collision_active) + extra_solid_count;
+}
+
+static const RectF* SolidAt(const RoomDef* room, int type_a_collision_active, const RectF* extra_solids, int index) {
+    int platform_count = PlatformSolidCount(room);
+    if (index < platform_count) {
         return &room->platforms[index];
     }
-    return &room->type_a_walls[index - room->platform_count];
+    index -= platform_count;
+    int type_a_count = TypeASolidCount(room, type_a_collision_active);
+    if (index < type_a_count) {
+        return &room->type_a_walls[index];
+    }
+    return &extra_solids[index - type_a_count];
 }
-
 static void MovementGravityVector(GravityDirection direction, int* x, int* y) {
     *x = 0;
     *y = 1;
@@ -75,6 +84,8 @@ static void RegisterTypeAContact(PlayerMovementFeedback* feedback, double now_se
 static void ResolveAxis(Player* player,
                         const RoomDef* room,
                         int type_a_collision_active,
+                        const RectF* extra_solids,
+                        int extra_solid_count,
                         double now_seconds,
                         PlayerMovementFeedback* feedback,
                         RectF* p,
@@ -84,11 +95,12 @@ static void ResolveAxis(Player* player,
                         int gravity_y,
                         int gravity_axis) {
     int platform_count = PlatformSolidCount(room);
-    int total_count = TotalSolidCount(room, type_a_collision_active);
+    int type_a_count = TypeASolidCount(room, type_a_collision_active);
+    int total_count = TotalSolidCount(room, type_a_collision_active, extra_solid_count);
     for (int i = 0; i < total_count; ++i) {
-        const RectF* solid = SolidAt(room, i);
+        const RectF* solid = SolidAt(room, type_a_collision_active, extra_solids, i);
         if (!RectsOverlap(p, solid)) continue;
-        if (i >= platform_count) {
+        if (i >= platform_count && i < platform_count + type_a_count) {
             RegisterTypeAContact(feedback, now_seconds, !gravity_axis);
         }
         if (axis_x != 0) {
@@ -118,14 +130,16 @@ static void ResolveAxis(Player* player,
 static int HasGroundSupport(const Player* player,
                             const RoomDef* room,
                             int type_a_collision_active,
+                            const RectF* extra_solids,
+                            int extra_solid_count,
                             int gravity_x,
                             int gravity_y) {
     RectF probe = PlayerCollisionRect(player);
     probe.x += (float)gravity_x;
     probe.y += (float)gravity_y;
-    int total_count = TotalSolidCount(room, type_a_collision_active);
+    int total_count = TotalSolidCount(room, type_a_collision_active, extra_solid_count);
     for (int i = 0; i < total_count; ++i) {
-        const RectF* solid = SolidAt(room, i);
+        const RectF* solid = SolidAt(room, type_a_collision_active, extra_solids, i);
         if (RectsOverlap(&probe, solid)) {
             return 1;
         }
@@ -142,6 +156,8 @@ PlayerMovementResult UpdatePlayerMovement(Player* player,
                                           int gravity_active,
                                           GravityDirection gravity_direction,
                                           int type_a_collision_active,
+                                          const RectF* extra_solids,
+                                          int extra_solid_count,
                                           float external_vx,
                                           float external_vy,
                                           double now_seconds,
@@ -186,7 +202,7 @@ PlayerMovementResult UpdatePlayerMovement(Player* player,
         player->y += player->vy * dt;
     }
     RectF pr = PlayerCollisionRect(player);
-    ResolveAxis(player, room, type_a_collision_active, now_seconds, feedback, &pr, tangent_x, tangent_y, gravity_x, gravity_y, 0);
+    ResolveAxis(player, room, type_a_collision_active, extra_solids, extra_solid_count, now_seconds, feedback, &pr, tangent_x, tangent_y, gravity_x, gravity_y, 0);
 
     player->grounded = 0;
     if (gravity_x != 0) {
@@ -195,9 +211,9 @@ PlayerMovementResult UpdatePlayerMovement(Player* player,
         player->y += player->vy * dt;
     }
     pr = PlayerCollisionRect(player);
-    ResolveAxis(player, room, type_a_collision_active, now_seconds, feedback, &pr, gravity_x, gravity_y, gravity_x, gravity_y, 1);
+    ResolveAxis(player, room, type_a_collision_active, extra_solids, extra_solid_count, now_seconds, feedback, &pr, gravity_x, gravity_y, gravity_x, gravity_y, 1);
     gravity_speed = MovementVelocityOnAxis(player, gravity_x, gravity_y);
-    if (!player->grounded && gravity_speed >= 0.0f && HasGroundSupport(player, room, type_a_collision_active, gravity_x, gravity_y)) {
+    if (!player->grounded && gravity_speed >= 0.0f && HasGroundSupport(player, room, type_a_collision_active, extra_solids, extra_solid_count, gravity_x, gravity_y)) {
         player->grounded = 1;
     }
 

@@ -4,6 +4,7 @@
 #include "exit_sequence.h"
 #include "input.h"
 #include "perf.h"
+#include "piston.h"
 #include "player_movement.h"
 #include "settings_ui.h"
 #include "stage_cache.h"
@@ -27,8 +28,10 @@ static constexpr float PLAYER_FLEX_SOFT_AIR_TANGENT = 28.0f;
 static constexpr float PLAYER_FLEX_SOFT_AIR_GRAVITY = 53.6f;
 static constexpr float PLAYER_FLEX_SOFT_APPROACH_SPEED = 95.0f;
 static constexpr float PLAYER_FLEX_FIRM_GROW_SPEED = 220.0f;
+static constexpr int GAME_MAX_DYNAMIC_SOLIDS = 24;
 
 static void GameApplyPlayerFlexibility(GameState* state, int value, float move, int airborne, GravityDirection anchor_direction, float dt);
+static void GameStartPlayerDeath(GameState* state);
 
 int GameFeatureActive(const GameState* state, DeleteFeature feature) {
     return state->delete_state.deleted[feature] == 0;
@@ -91,6 +94,26 @@ void GameSetGravityDirection(GameState* state, GravityDirection direction) {
     state->gravity_setting_feedback_until = PerfNowSeconds() + 0.22;
 }
 
+static int GameBuildPistonSolids(const RoomDef* room, float piston_time_seconds, RectF* out_solids, int max_solids) {
+    int count = 0;
+    if (!room || !out_solids || max_solids <= 0) {
+        return 0;
+    }
+    for (int i = 0; i < room->piston_count; ++i) {
+        const PistonDevice* piston = &room->pistons[i];
+        if (count < max_solids) {
+            out_solids[count++] = PistonBodyRect(piston);
+        }
+        RectF shaft = PistonShaftRectAt(piston, piston_time_seconds);
+        if (shaft.h > 0.001f && count < max_solids) {
+            out_solids[count++] = shaft;
+        }
+        if (count < max_solids) {
+            out_solids[count++] = PistonPlateRectAt(piston, piston_time_seconds);
+        }
+    }
+    return count;
+}
 static int GameRectOverlapsSolids(const GameState* state, const RectF* rect) {
     const RoomDef* room = GameCurrentRoom(state);
     for (int i = 0; i < room->platform_count; ++i) {
@@ -105,8 +128,16 @@ static int GameRectOverlapsSolids(const GameState* state, const RectF* rect) {
             }
         }
     }
+    RectF piston_solids[GAME_MAX_DYNAMIC_SOLIDS];
+    int piston_solid_count = GameBuildPistonSolids(room, state->piston_time_seconds, piston_solids, GAME_MAX_DYNAMIC_SOLIDS);
+    for (int i = 0; i < piston_solid_count; ++i) {
+        if (RectsOverlap(rect, &piston_solids[i])) {
+            return 1;
+        }
+    }
     return 0;
 }
+
 static RectF GamePlayerFlexRectWithSize(const GameState* state, float tangent_size, float gravity_size, GravityDirection anchor_direction) {
     RectF old = GamePlayerRect(state);
     float width = tangent_size;
@@ -141,15 +172,20 @@ static int GamePlayerFlexSizeClear(const GameState* state, float tangent_size, f
     return !GameRectOverlapsSolids(state, &candidate);
 }
 
-static int GamePlayerResizeSolidCount(const RoomDef* room, int type_a_collision_active) {
-    return room->platform_count + (type_a_collision_active ? room->type_a_count : 0);
+static int GamePlayerResizeSolidCount(const RoomDef* room, int type_a_collision_active, int extra_solid_count) {
+    return room->platform_count + (type_a_collision_active ? room->type_a_count : 0) + extra_solid_count;
 }
 
-static const RectF* GamePlayerResizeSolidAt(const RoomDef* room, int index) {
+static const RectF* GamePlayerResizeSolidAt(const RoomDef* room, int type_a_collision_active, const RectF* extra_solids, int index) {
     if (index < room->platform_count) {
         return &room->platforms[index];
     }
-    return &room->type_a_walls[index - room->platform_count];
+    index -= room->platform_count;
+    int type_a_count = type_a_collision_active ? room->type_a_count : 0;
+    if (index < type_a_count) {
+        return &room->type_a_walls[index];
+    }
+    return &extra_solids[index - type_a_count];
 }
 
 static int GameResolvePlayerResizeRect(const GameState* state, RectF* rect, int allow_x, int allow_y) {
@@ -157,13 +193,16 @@ static int GameResolvePlayerResizeRect(const GameState* state, RectF* rect, int 
         return !GameRectOverlapsSolids(state, rect);
     }
     const RoomDef* room = GameCurrentRoom(state);
-    int total_count = GamePlayerResizeSolidCount(room, GameFeatureActive(state, FEATURE_COLLISION_TYPE_A));
+    int type_a_collision_active = GameFeatureActive(state, FEATURE_COLLISION_TYPE_A);
+    RectF piston_solids[GAME_MAX_DYNAMIC_SOLIDS];
+    int piston_solid_count = GameBuildPistonSolids(room, state->piston_time_seconds, piston_solids, GAME_MAX_DYNAMIC_SOLIDS);
+    int total_count = GamePlayerResizeSolidCount(room, type_a_collision_active, piston_solid_count);
     for (int pass = 0; pass < 8; ++pass) {
         float best_abs = 1000000.0f;
         float best_x = 0.0f;
         float best_y = 0.0f;
         for (int i = 0; i < total_count; ++i) {
-            const RectF* solid = GamePlayerResizeSolidAt(room, i);
+            const RectF* solid = GamePlayerResizeSolidAt(room, type_a_collision_active, piston_solids, i);
             if (!RectsOverlap(rect, solid)) {
                 continue;
             }
@@ -373,7 +412,87 @@ void GameResetStage(GameState* state) {
     state->room_started_at_seconds = PerfNowSeconds();
     state->speaker_push_vx = 0.0f;
     state->speaker_push_vy = 0.0f;
+    state->piston_time_seconds = 0.0f;
     StageCacheInvalidate();
+}
+
+static int GamePistonHorizontallyOverlapsRect(const RectF* plate, const RectF* rect) {
+    return plate->x < rect->x + rect->w && plate->x + plate->w > rect->x;
+}
+
+static int GameTryPushPlayerByMovingPiston(GameState* state, const PistonDevice* piston, float previous_piston_time, float current_piston_time) {
+    PistonPose previous = PistonPoseAt(piston, previous_piston_time);
+    PistonPose current = PistonPoseAt(piston, current_piston_time);
+    float delta = current.extension - previous.extension;
+    if (delta == 0.0f) {
+        return 1;
+    }
+
+    RectF pr = GamePlayerRect(state);
+    RectF current_plate = PistonPlateRectAt(piston, current_piston_time);
+    if (!GamePistonHorizontallyOverlapsRect(&current_plate, &pr)) {
+        return 1;
+    }
+
+    float previous_plate_top = piston->y + piston->body_height + previous.extension;
+    float current_plate_top = piston->y + piston->body_height + current.extension;
+    float previous_plate_bottom = previous_plate_top + piston->plate_height;
+    float current_plate_bottom = current_plate_top + piston->plate_height;
+    RectF candidate = pr;
+
+    if (delta > 0.0f) {
+        int swept_player_top = previous_plate_bottom <= pr.y && current_plate_bottom > pr.y;
+        if (!swept_player_top && !RectsOverlap(&current_plate, &pr)) {
+            return 1;
+        }
+        candidate.y = current_plate_bottom;
+    } else {
+        float player_bottom = pr.y + pr.h;
+        int swept_player_bottom = previous_plate_top >= player_bottom && current_plate_top < player_bottom;
+        if (!swept_player_bottom && !RectsOverlap(&current_plate, &pr)) {
+            return 1;
+        }
+        candidate.y = current_plate_top - pr.h;
+    }
+
+    if (GameRectOverlapsSolids(state, &candidate)) {
+        return 0;
+    }
+
+    state->player.y = candidate.y;
+    if (delta > 0.0f && state->player.vy < 0.0f) {
+        state->player.vy = 0.0f;
+    } else if (delta < 0.0f && state->player.vy > 0.0f) {
+        state->player.vy = 0.0f;
+    }
+    return 1;
+}
+
+static int GameTryPushPlayerByPistons(GameState* state, float previous_piston_time, float current_piston_time) {
+    const RoomDef* room = GameCurrentRoom(state);
+    if (room->piston_count <= 0) {
+        return 1;
+    }
+
+    for (int i = 0; i < room->piston_count; ++i) {
+        if (!GameTryPushPlayerByMovingPiston(state, &room->pistons[i], previous_piston_time, current_piston_time)) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static void GameUpdateRoomPistons(GameState* state, float dt) {
+    float previous_time = state->piston_time_seconds;
+    state->piston_time_seconds += dt * SettingsUiGameSpeedScale();
+    if (state->piston_time_seconds > 600.0f) {
+        state->piston_time_seconds -= 600.0f;
+        previous_time -= 600.0f;
+    }
+
+    if (!GameTryPushPlayerByPistons(state, previous_time, state->piston_time_seconds)) {
+        GameStartPlayerDeath(state);
+    }
 }
 
 static int GamePlayerOutsideRoomBounds(const GameState* state) {
@@ -613,6 +732,11 @@ void GameUpdateStage(GameState* state, float dt, int use_static_cache) {
         return;
     }
 
+    GameUpdateRoomPistons(state, dt);
+    if (state->player_dead) {
+        return;
+    }
+
     GameControlInput control = {};
     if (!SettingsUiIsOpen()) {
         control = GameReadControlInput(state->gravity_direction);
@@ -632,6 +756,9 @@ void GameUpdateStage(GameState* state, float dt, int use_static_cache) {
 
     GameSpeakerPushVelocity speaker_push = GameSmoothSpeakerPush(state, GameComputeSpeakerPushVelocity(state), dt);
 
+    RectF dynamic_solids[GAME_MAX_DYNAMIC_SOLIDS];
+    int dynamic_solid_count = GameBuildPistonSolids(GameCurrentRoom(state), state->piston_time_seconds, dynamic_solids, GAME_MAX_DYNAMIC_SOLIDS);
+
     PlayerMovementFeedback movement_feedback;
     movement_feedback.type_a_contacted = state->type_a_contacted;
     movement_feedback.type_a_blocked_this_frame = state->type_a_blocked_this_frame;
@@ -645,6 +772,8 @@ void GameUpdateStage(GameState* state, float dt, int use_static_cache) {
                                                           GameFeatureActive(state, FEATURE_GRAVITY),
                                                           state->gravity_direction,
                                                           GameFeatureActive(state, FEATURE_COLLISION_TYPE_A),
+                                                          dynamic_solids,
+                                                          dynamic_solid_count,
                                                           speaker_push.vx,
                                                           speaker_push.vy,
                                                           PerfNowSeconds(),

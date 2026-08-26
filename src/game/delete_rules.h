@@ -44,6 +44,13 @@ enum SettingsFlexibilityValue {
     SETTINGS_FLEXIBILITY_COUNT
 };
 
+enum SettingsGameSpeedValue {
+    SETTINGS_GAME_SPEED_SLOW,
+    SETTINGS_GAME_SPEED_NORMAL,
+    SETTINGS_GAME_SPEED_FAST,
+    SETTINGS_GAME_SPEED_COUNT
+};
+
 enum SettingsItemStatus {
     SETTINGS_ITEM_IMPLEMENTED,
     SETTINGS_ITEM_PLANNED
@@ -69,3 +76,4 @@ int SettingsFlexibilityItemIndex();
 int SettingsBgmVolumeItemIndex();
 int SettingsSfxVolumeItemIndex();
 int SettingsGravityDirectionItemIndex();
+int SettingsGameSpeedItemIndex();

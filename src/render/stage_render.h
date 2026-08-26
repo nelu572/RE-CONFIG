@@ -25,6 +25,7 @@ struct StageRenderState {
     uint32_t type_a_off_pattern_color;
     double render_time_seconds;
     double speaker_time_seconds;
+    float piston_time_seconds;
     int type_a_off_line_thickness;
     int type_a_off_visible_path_len;
     uint32_t effect_color;

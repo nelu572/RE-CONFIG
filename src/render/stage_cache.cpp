@@ -4,6 +4,7 @@
 #include "framebuffer.h"
 #include "game_config.h"
 #include "perf.h"
+#include "piston.h"
 #include "settings_ui.h"
 #include "tutorial_ui.h"
 
@@ -147,6 +148,38 @@ static RectI SpeakerWavesDirtyRect(RenderContext* render, const RoomDef* room) {
     return FramebufferClampRect(rect);
 }
 
+static RectI PistonsDirtyRect(RenderContext* render, const RoomDef* room) {
+    if (room->piston_count <= 0) {
+        return { 0, 0, 0, 0 };
+    }
+
+    RectF dirty = PistonTravelDirtyRect(&room->pistons[0]);
+    RectI rect = {
+        WorldX(render, dirty.x),
+        WorldY(render, dirty.y),
+        (int)(dirty.w + 0.5f),
+        (int)(dirty.h + 0.5f)
+    };
+    for (int i = 1; i < room->piston_count; ++i) {
+        dirty = PistonTravelDirtyRect(&room->pistons[i]);
+        int x = WorldX(render, dirty.x);
+        int y = WorldY(render, dirty.y);
+        int w = (int)(dirty.w + 0.5f);
+        int h = (int)(dirty.h + 0.5f);
+        int x2 = rect.x + rect.w;
+        int y2 = rect.y + rect.h;
+        int px2 = x + w;
+        int py2 = y + h;
+        if (x < rect.x) rect.x = x;
+        if (y < rect.y) rect.y = y;
+        if (px2 > x2) x2 = px2;
+        if (py2 > y2) y2 = py2;
+        rect.w = x2 - rect.x;
+        rect.h = y2 - rect.y;
+    }
+    return FramebufferClampRect(rect);
+}
+
 static void CaptureCachedFrameState(const StageCacheState* state) {
     g_prev_player_dirty = PlayerDirtyRect(state->render, state->player);
     g_prev_player_particles_dirty = PlayerParticlesDirtyRect(state->render, state->player_particles, state->player_particle_count);
@@ -197,7 +230,7 @@ void StageCacheDrawCached(const StageCacheState* state, StageCacheDrawCallback d
         FramebufferCopyStaticToLive();
     }
 
-    RectI dirty[18];
+    RectI dirty[20];
     int count = 0;
     if (!state->settings_overlay_visible) {
         dirty[count++] = g_prev_player_dirty;
@@ -206,6 +239,7 @@ void StageCacheDrawCached(const StageCacheState* state, StageCacheDrawCallback d
         dirty[count++] = PlayerParticlesDirtyRect(state->render, state->player_particles, state->player_particle_count);
         dirty[count++] = ExitSequenceDirtyRect(state->render, &state->room->exit);
         dirty[count++] = SpeakerWavesDirtyRect(state->render, state->room);
+        dirty[count++] = PistonsDirtyRect(state->render, state->room);
     }
     if (state->player_dead || g_prev_player_dead) {
         dirty[count++] = { 0, 0, FB_W, FB_H };

@@ -54,9 +54,11 @@ static MainMenuState g_main_menu;
 static PauseMenuState g_pause_menu;
 static int g_overlay_redraw_pending = 0;
 static int g_pause_redraw_pending = 0;
-static constexpr int START_ROOM_INDEX = 4;
+static constexpr int START_ROOM_INDEX = 5;
 static constexpr int DEBUG_ROOM_00_INDEX = 0;
 static constexpr int DEBUG_ROOM_01_INDEX = 1;
+static constexpr int STAGE_SELECT_LAST_ROOM_INDEX = 10;
+static constexpr int STAGE_SELECT_DISPLAY_COUNT = STAGE_SELECT_LAST_ROOM_INDEX + 1;
 static int g_stage_select_index = 0;
 static float g_stage_select_world_offset = 0.0f;
 static float g_stage_select_target_offset = 0.0f;
@@ -71,10 +73,11 @@ static float g_stage_select_player_face_dir = 0.0f;
 static float g_stage_select_player_visual_sx = 1.0f;
 static float g_stage_select_player_visual_sy = 1.0f;
 static double g_stage_select_last_seconds = 0.0;
-static int g_stage_select_cleared[32];
+static int g_stage_select_cleared[STAGE_SELECT_DISPLAY_COUNT];
 
 static constexpr unsigned int STAGE_PROGRESS_MAGIC = 0x31535652u;
 static constexpr unsigned int STAGE_PROGRESS_VERSION = 1u;
+static constexpr int STAGE_PROGRESS_DATA_SIZE = 8 + STAGE_SELECT_DISPLAY_COUNT;
 
 static void StageProgressWriteU32(unsigned char* data, int offset, unsigned int value) {
     data[offset + 0] = (unsigned char)(value & 255u);
@@ -91,7 +94,7 @@ static unsigned int StageProgressReadU32(const unsigned char* data, int offset) 
 }
 
 static void StageProgressSave() {
-    unsigned char data[40];
+    unsigned char data[STAGE_PROGRESS_DATA_SIZE];
     StageProgressWriteU32(data, 0, STAGE_PROGRESS_MAGIC);
     StageProgressWriteU32(data, 4, STAGE_PROGRESS_VERSION);
     for (int i = 0; i < (int)(sizeof(g_stage_select_cleared) / sizeof(g_stage_select_cleared[0])); ++i) {
@@ -108,7 +111,7 @@ static void StageProgressSave() {
 }
 
 static void StageProgressLoad() {
-    unsigned char data[40];
+    unsigned char data[STAGE_PROGRESS_DATA_SIZE];
     HANDLE file = CreateFileA("save.dat", GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
     if (file == INVALID_HANDLE_VALUE) {
         return;
@@ -506,6 +509,7 @@ static StageRenderState CurrentStageRenderState() {
     state.type_a_off_pattern_color = COL_TYPE_A_OFF_PATTERN;
     state.render_time_seconds = g_type_a_phase_lock_seconds >= 0.0 ? g_type_a_phase_lock_seconds : PerfNowSeconds();
     state.speaker_time_seconds = PerfNowSeconds() - g_game.room_started_at_seconds;
+    state.piston_time_seconds = g_game.piston_time_seconds;
     state.type_a_off_line_thickness = g_type_a_off_line_thickness;
     state.type_a_off_visible_path_len = g_type_a_off_visible_path_len;
     state.effect_color = COL_EFFECT;
@@ -600,6 +604,7 @@ static StageCacheState CurrentStageCacheState() {
     state.player_dead = g_game.player_dead;
     state.camera_x = g_game.camera.x;
     state.camera_y = g_game.camera.y;
+    state.piston_time_seconds = g_game.piston_time_seconds;
     state.bg_color = COL_BG;
     return state;
 }
@@ -608,7 +613,6 @@ static constexpr float STAGE_SELECT_CENTER_X = FB_W * 0.5f;
 static constexpr float STAGE_SELECT_PLAYER_W = 40.0f;
 static constexpr float STAGE_SELECT_PLAYER_H = 40.0f;
 static constexpr int STAGE_SELECT_DEFAULT_INDEX = 2;
-static constexpr int STAGE_SELECT_DISPLAY_COUNT = 32;
 static constexpr float STAGE_SELECT_MOVE_SECONDS = 0.36f;
 static constexpr float STAGE_SELECT_JUMP_ARC_HEIGHT = 220.0f;
 static constexpr float STAGE_SELECT_PLATFORM_GROW_SECONDS = 0.16f;
@@ -633,6 +637,9 @@ static int StageSelectPreviousStagesCleared(int stage_index) {
 }
 
 static int StageSelectStageUnlocked(int stage_index) {
+    if (stage_index == START_ROOM_INDEX) {
+        return StageSelectStageImplemented(stage_index);
+    }
     return StageSelectStageImplemented(stage_index) && StageSelectPreviousStagesCleared(stage_index);
 }
 
@@ -1231,7 +1238,7 @@ extern "C" void WinMainCRTStartup() {
             StartAppTransition(APP_STATE_MAIN_MENU, g_game.current_room);
         }
         if (!AppTransitionActive() && InputWasPressed(KEY_2)) {
-            StartAppTransition(APP_STATE_STAGE_SELECT, DEBUG_ROOM_00_INDEX);
+            StartAppTransition(APP_STATE_STAGE_SELECT, START_ROOM_INDEX);
         }
         if (!AppTransitionActive() && InputWasPressed(KEY_3)) {
             StartAppTransition(APP_STATE_GAME, DEBUG_ROOM_00_INDEX);
@@ -1266,7 +1273,7 @@ extern "C" void WinMainCRTStartup() {
             if (!AppTransitionActive()) {
                 MainMenuUpdate(&g_main_menu);
                 if (g_main_menu.action == MAIN_MENU_ACTION_START) {
-                    StartAppTransition(APP_STATE_STAGE_SELECT, DEBUG_ROOM_00_INDEX);
+                    StartAppTransition(APP_STATE_STAGE_SELECT, START_ROOM_INDEX);
                 }
                 if (g_main_menu.action == MAIN_MENU_ACTION_EXIT) {
                     g_running = 0;

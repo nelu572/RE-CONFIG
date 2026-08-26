@@ -38,4 +38,5 @@ struct GameState {
     double room_started_at_seconds;
     float speaker_push_vx;
     float speaker_push_vy;
+    float piston_time_seconds;
 };

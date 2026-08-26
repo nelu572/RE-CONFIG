@@ -16,6 +16,18 @@ struct SpeakerDevice {
     float height;
 };
 
+struct PistonDevice {
+    float x;
+    float y;
+    float width;
+    float body_height;
+    float shaft_width;
+    float plate_height;
+    float travel;
+    float cycle_seconds;
+    float phase;
+};
+
 struct RoomDef {
     const RectF* platforms;
     int platform_count;
@@ -30,6 +42,8 @@ struct RoomDef {
     float death_margin;
     GravityDirection initial_gravity;
     DeleteState initial_delete_state;
+    const PistonDevice* pistons;
+    int piston_count;
 };
 
 const RoomDef* GetRoom(int index);
