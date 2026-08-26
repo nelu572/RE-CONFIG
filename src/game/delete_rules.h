@@ -66,5 +66,6 @@ int SettingsItemTotalCount();
 int SettingsItemCount(SettingsCategory category);
 int SettingsItemIndex(SettingsCategory category, int category_index);
 int SettingsFlexibilityItemIndex();
-int SettingsAudioVolumeItemIndex();
+int SettingsBgmVolumeItemIndex();
+int SettingsSfxVolumeItemIndex();
 int SettingsGravityDirectionItemIndex();

@@ -317,13 +317,20 @@ int SettingsUiItemValue(int item_index) {
     return value;
 }
 
-float SettingsUiAudioVolume() {
-    int item_index = SettingsAudioVolumeItemIndex();
+static float SettingsUiVolumeForItem(int item_index) {
     const SettingsItemDef* item = item_index >= 0 ? SettingsItemAt(item_index) : 0;
     if (!item || item->value_count <= 1) {
         return 1.0f;
     }
     return (float)SettingsUiItemValue(item_index) / (float)(item->value_count - 1);
+}
+
+float SettingsUiBgmVolume() {
+    return SettingsUiVolumeForItem(SettingsBgmVolumeItemIndex());
+}
+
+float SettingsUiSfxVolume() {
+    return SettingsUiVolumeForItem(SettingsSfxVolumeItemIndex());
 }
 
 void SettingsUiReset() {
@@ -726,8 +733,10 @@ static void DrawSmallStepMarks(int x, int y, const SettingsItemDef* item, int va
 }
 
 static int SettingsItemIsAudioVolume(const SettingsItemDef* item) {
-    int volume_index = SettingsAudioVolumeItemIndex();
-    return volume_index >= 0 && item == SettingsItemAt(volume_index);
+    int bgm_index = SettingsBgmVolumeItemIndex();
+    int sfx_index = SettingsSfxVolumeItemIndex();
+    return (bgm_index >= 0 && item == SettingsItemAt(bgm_index)) ||
+           (sfx_index >= 0 && item == SettingsItemAt(sfx_index));
 }
 
 static void DrawVolumeStepMeter(int x,

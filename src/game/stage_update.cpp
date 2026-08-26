@@ -432,6 +432,7 @@ static void GameStartPlayerDeath(GameState* state) {
     burst_y = GameClampF(burst_y, room->bounds.y + 18.0f, room->bounds.y + room->bounds.h - 18.0f);
 
     state->player_dead = 1;
+    state->audio_events |= GAME_AUDIO_DEATH;
     state->death_respawn_timer = GAME_DEATH_RESPAWN_DELAY;
     state->player.vx = 0.0f;
     state->player.vy = 0.0f;
@@ -471,7 +472,7 @@ static GameSpeakerPushVelocity GameComputeSpeakerPushVelocity(const GameState* s
     if (room->speaker_count <= 0) {
         return result;
     }
-    float volume = SettingsUiAudioVolume();
+    float volume = SettingsUiSfxVolume();
     if (volume <= 0.001f) {
         return result;
     }
@@ -582,6 +583,7 @@ static void GameResetStageCallback(void* user_data) {
 }
 
 void GameUpdateStage(GameState* state, float dt, int use_static_cache) {
+    state->audio_events = 0;
     SettingsUiUpdateInput(use_static_cache);
     SettingsUiUpdateFade(dt);
     if (ExitSequenceUpdateTransition(dt, &state->current_room, GameResetStageCallback, state)) {
@@ -651,6 +653,13 @@ void GameUpdateStage(GameState* state, float dt, int use_static_cache) {
     state->type_a_blocked_this_frame = movement_feedback.type_a_blocked_this_frame;
     state->type_a_bump_until = movement_feedback.type_a_bump_until;
     GameApplyPlayerFlexibility(state, flexibility, control.move, !state->player.grounded, GameFlexAnchorDirection(!state->player.grounded, state->gravity_direction), dt);
+    if (movement.jump_started) {
+        state->audio_events |= GAME_AUDIO_JUMP;
+    }
+    if (movement.landed) {
+        state->audio_events |= GAME_AUDIO_LAND;
+    }
+
     UpdatePlayerPresentation(&state->player,
                              state->player_particles,
                              PLAYER_PARTICLE_COUNT,
@@ -666,6 +675,7 @@ void GameUpdateStage(GameState* state, float dt, int use_static_cache) {
     ExitSequenceUpdateDoor(dt, &pr, &GameCurrentRoom(state)->exit);
     if (RectsOverlap(&pr, &GameCurrentRoom(state)->exit)) {
         state->cleared_room_this_frame = state->current_room;
+        state->audio_events |= GAME_AUDIO_CLEAR;
         ExitSequenceSetRoomSolved(1);
         SettingsUiMarkFullDirty();
         return;

@@ -253,6 +253,8 @@ static void SetSettingsItemValue(int item_index, int value) {
         GameSetGravityDirection(&g_game, (GravityDirection)value);
     } else if (item_index == SettingsFlexibilityItemIndex()) {
         GameSetPlayerFlexibility(&g_game, value);
+    } else if (item_index == SettingsBgmVolumeItemIndex()) {
+        AudioSetBgmVolume(SettingsUiBgmVolume());
     }
 }
 
@@ -274,6 +276,7 @@ static int TypeASettingFeedbackVisible() {
 
 static void ResetStage() {
     GameResetStage(&g_game);
+    AudioSetBgmVolume(SettingsUiBgmVolume());
 }
 
 static int ClampRoomIndex(int room_index) {
@@ -377,6 +380,7 @@ static void StartAppTransition(AppState target_state, int room_index) {
     }
 
     SettingsUiClose();
+    AudioPlayTransition(SettingsUiSfxVolume());
     g_app_transition_target_state = target_state;
     g_app_transition_target_room = target_room;
     g_app_transition_pending = 1;
@@ -409,12 +413,17 @@ static void UpdateAppTransition(float dt) {
     }
 }
 
+static void PlayGameAudioEvents(int events);
+static void PlayUiAudioForInput();
+
 static void DrawAppTransition() {
     ExitSequenceDrawTransitionAmount(&g_render, g_app_transition_amount);
 }
 
 static void UpdateStage(float dt) {
     GameUpdateStage(&g_game, dt, !g_perf_config.disable_static_cache);
+    PlayGameAudioEvents(g_game.audio_events);
+    g_game.audio_events = 0;
     if (g_game.cleared_room_this_frame >= 0 &&
         g_game.cleared_room_this_frame < (int)(sizeof(g_stage_select_cleared) / sizeof(g_stage_select_cleared[0]))) {
         int cleared_room = g_game.cleared_room_this_frame;
@@ -427,10 +436,42 @@ static void UpdateStage(float dt) {
     }
     const RoomDef* room = CurrentRoom();
     AudioUpdateSpeaker(PerfNowSeconds() - g_game.room_started_at_seconds,
-                       SettingsUiAudioVolume(),
+                       SettingsUiSfxVolume(),
                        room && room->speaker_count > 0);
 }
 
+static void PlayGameAudioEvents(int events) {
+    if (!events) {
+        return;
+    }
+    float volume = SettingsUiSfxVolume();
+    if (events & GAME_AUDIO_JUMP) AudioPlayJump(volume);
+    if (events & GAME_AUDIO_LAND) AudioPlayLand(volume);
+    if (events & GAME_AUDIO_DEATH) AudioPlayDeath(volume);
+    if (events & GAME_AUDIO_CLEAR) AudioPlayClear(volume);
+}
+
+static void PlayUiAudioForInput() {
+    int ui_context = g_app_state == APP_STATE_MAIN_MENU ||
+                     g_app_state == APP_STATE_STAGE_SELECT ||
+                     SettingsUiOverlayVisible() ||
+                     PauseMenuIsOpen(&g_pause_menu);
+    if (!ui_context || AppTransitionActive()) {
+        return;
+    }
+
+    float volume = SettingsUiSfxVolume();
+    if (InputWasPressed(KEY_UP) || InputWasPressed(KEY_DOWN) ||
+        InputWasPressed(KEY_LEFT) || InputWasPressed(KEY_RIGHT)) {
+        AudioPlayUiMove(volume);
+    }
+    if (InputWasPressed(KEY_Z)) {
+        AudioPlayUiConfirm(volume);
+    }
+    if (InputWasPressed(KEY_X) || InputWasPressed(KEY_ESCAPE)) {
+        AudioPlayUiBack(volume);
+    }
+}
 static int SettingsHighlightsTypeA() {
     return 0;
 }
@@ -471,7 +512,7 @@ static StageRenderState CurrentStageRenderState() {
     state.text_color = COL_TEXT;
     state.text_dim_color = COL_TEXT_DIM;
     state.type_a_active = FeatureActive(FEATURE_COLLISION_TYPE_A);
-    state.speaker_volume = SettingsUiAudioVolume();
+    state.speaker_volume = SettingsUiSfxVolume();
     state.highlight_type_a = SettingsHighlightsTypeA();
     state.type_a_bump_visible = TypeABumpVisible();
     state.type_a_setting_feedback_visible = TypeASettingFeedbackVisible();
@@ -1137,6 +1178,7 @@ extern "C" void WinMainCRTStartup() {
     ResetStage();
     SettingsUiColors settings_colors = CurrentSettingsColors();
     SettingsUiBuildMenuCache(&settings_colors);
+    AudioStartBgm(SettingsUiBgmVolume());
     if (!g_perf_config.disable_static_cache) {
         EnsureStaticCache();
     }
@@ -1175,6 +1217,8 @@ extern "C" void WinMainCRTStartup() {
         }
         g_app_transition_last_seconds = frame_start;
         UpdateAppTransition(app_dt);
+        AudioUpdateBgm(SettingsUiBgmVolume());
+        PlayUiAudioForInput();
 
         if (InputWasPressed(KEY_F11)) {
             ToggleFullscreen();

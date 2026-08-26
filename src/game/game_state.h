@@ -4,6 +4,13 @@
 #include "delete_rules.h"
 #include "player.h"
 
+enum GameAudioEvent {
+    GAME_AUDIO_JUMP = 1 << 0,
+    GAME_AUDIO_LAND = 1 << 1,
+    GAME_AUDIO_DEATH = 1 << 2,
+    GAME_AUDIO_CLEAR = 1 << 3,
+};
+
 struct GameRoomStartState {
     float player_x;
     float player_y;
@@ -21,6 +28,7 @@ struct GameState {
     int current_room;
     int cleared_room_this_frame;
     int player_dead;
+    int audio_events;
     float death_respawn_timer;
     int type_a_contacted;
     int type_a_blocked_this_frame;
