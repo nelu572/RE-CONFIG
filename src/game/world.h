@@ -28,6 +28,27 @@ struct PistonDevice {
     float phase;
 };
 
+struct GravityBoxDef {
+    RectF start;
+};
+
+enum PressureSwitchActivator {
+    PRESSURE_SWITCH_PLAYER,
+    PRESSURE_SWITCH_BOX,
+    PRESSURE_SWITCH_ANY,
+};
+
+struct PressureSwitchDevice {
+    RectF rect;
+    PressureSwitchActivator activator;
+};
+
+struct PressurePlatformDevice {
+    RectF rect;
+    float open_offset_x;
+    float open_offset_y;
+};
+
 struct RoomDef {
     const RectF* platforms;
     int platform_count;
@@ -44,6 +65,13 @@ struct RoomDef {
     DeleteState initial_delete_state;
     const PistonDevice* pistons;
     int piston_count;
+    const GravityBoxDef* gravity_boxes;
+    int gravity_box_count;
+    const PressureSwitchDevice* pressure_switches;
+    int pressure_switch_count;
+    const PressurePlatformDevice* pressure_platforms;
+    int pressure_platform_count;
+    int exit_requires_pressure_switches;
 };
 
 const RoomDef* GetRoom(int index);

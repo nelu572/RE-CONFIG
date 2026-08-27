@@ -452,6 +452,7 @@ static void PlayGameAudioEvents(int events) {
     if (events & GAME_AUDIO_LAND) AudioPlayLand(volume);
     if (events & GAME_AUDIO_DEATH) AudioPlayDeath(volume);
     if (events & GAME_AUDIO_CLEAR) AudioPlayClear(volume);
+    if (events & GAME_AUDIO_SWITCH) { }
 }
 
 static void PlayUiAudioForInput() {
@@ -510,6 +511,13 @@ static StageRenderState CurrentStageRenderState() {
     state.render_time_seconds = g_type_a_phase_lock_seconds >= 0.0 ? g_type_a_phase_lock_seconds : PerfNowSeconds();
     state.speaker_time_seconds = PerfNowSeconds() - g_game.room_started_at_seconds;
     state.piston_time_seconds = g_game.piston_time_seconds;
+    state.gravity_boxes = g_game.gravity_boxes;
+    state.gravity_box_count = CurrentRoom()->gravity_box_count;
+    if (state.gravity_box_count > GAME_MAX_GRAVITY_BOXES) state.gravity_box_count = GAME_MAX_GRAVITY_BOXES;
+    state.pressure_switch_pressed = g_game.pressure_switch_pressed;
+    state.pressure_switch_anim = g_game.pressure_switch_anim;
+    state.pressure_platform_open_amount = g_game.pressure_platform_open_amount;
+    state.room_exit_unlocked = g_game.room_exit_unlocked;
     state.type_a_off_line_thickness = g_type_a_off_line_thickness;
     state.type_a_off_visible_path_len = g_type_a_off_visible_path_len;
     state.effect_color = COL_EFFECT;

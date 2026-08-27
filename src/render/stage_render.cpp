@@ -1,5 +1,7 @@
 #include "stage_render.h"
 
+#include "box_sprite_data.h"
+
 #include "exit_sequence.h"
 #include "game_config.h"
 #include "piston.h"
@@ -724,6 +726,156 @@ static void DrawRoomPistons(const StageRenderState* state) {
     }
 }
 
+static void DrawPressureSwitchDevice(const StageRenderState* state, const PressureSwitchDevice* sw, int pressed, float anim) {
+    RenderContext* render = state->render;
+    int x = WorldX(render, sw->rect.x);
+    int y = WorldY(render, sw->rect.y);
+    int w = (int)(sw->rect.w + 0.5f);
+    int h = (int)(sw->rect.h + 0.5f);
+    uint32_t mount_color = StageLerpColor(state->text_color, state->platform_color, 0.16f);
+    uint32_t stem_color = StageLerpColor(state->text_color, state->platform_color, 0.28f);
+    uint32_t press = pressed ? 0xFF3030u : 0xE1192Du;
+    uint32_t press_shadow = 0x8A101Au;
+    int travel = (int)(anim * 7.0f + 0.5f);
+
+    if (w >= h) {
+        int mount_h = StageMaxI(8, h / 4);
+        int cap_h = StageMaxI(14, h * 7 / 16);
+        int cap_w = w;
+        int cap_x = x;
+        int cap_y = y + h - travel - cap_h;
+        int stem_w = StageMaxI(8, w / 8);
+        int stem_x = x + (w - stem_w) / 2;
+        int stem_y = y + mount_h - 1;
+        int stem_h = StageMaxI(5, cap_y - stem_y + 3);
+
+        DrawRect(render, x, y, w, mount_h, mount_color);
+        DrawRect(render, stem_x, stem_y, stem_w, stem_h, stem_color);
+        DrawRect(render, cap_x, cap_y, cap_w, cap_h, press_shadow);
+        DrawRect(render, cap_x + 2, cap_y + 2, StageMaxI(2, cap_w - 4), StageMaxI(2, cap_h - 4), press);
+    } else {
+        int cap_x = x + 2;
+        int cap_y = y + 8;
+        int cap_w = StageMaxI(6, w / 2 - travel);
+        int cap_h = StageMaxI(10, h - 16);
+        int connector_x = cap_x + cap_w;
+        int connector_y = y + 4;
+        int connector_w = StageMaxI(5, w - cap_w - 3);
+        int connector_h = StageMaxI(12, h - 8);
+
+        DrawRect(render, connector_x, connector_y, connector_w, connector_h, stem_color);
+        DrawRect(render, cap_x, cap_y, cap_w, cap_h, press_shadow);
+        DrawRect(render, cap_x + 2, cap_y + 3, StageMaxI(2, cap_w - 4), StageMaxI(2, cap_h - 6), press);
+    }
+}
+
+static void DrawRoomPressureSwitches(const StageRenderState* state) {
+    int switch_count = state->room->pressure_switch_count;
+    for (int i = 0; i < switch_count; ++i) {
+        int pressed = state->pressure_switch_pressed ? state->pressure_switch_pressed[i] : 0;
+        float anim = state->pressure_switch_anim ? state->pressure_switch_anim[i] : 0.0f;
+        DrawPressureSwitchDevice(state, &state->room->pressure_switches[i], pressed, anim);
+    }
+}
+
+static void DrawPressurePlatformDevice(const StageRenderState* state, const PressurePlatformDevice* platform, float open_amount) {
+    open_amount = StageClampF(open_amount, 0.0f, 1.0f);
+    RectF current = platform->rect;
+    current.x += platform->open_offset_x * open_amount;
+    current.y += platform->open_offset_y * open_amount;
+
+    RectF pieces[16];
+    RectF next[16];
+    int piece_count = 1;
+    pieces[0] = current;
+    for (int platform_index = 0; platform_index < state->room->platform_count; ++platform_index) {
+        const RectF* solid = &state->room->platforms[platform_index];
+        int next_count = 0;
+        for (int piece_index = 0; piece_index < piece_count && next_count < 16; ++piece_index) {
+            RectF piece = pieces[piece_index];
+            float ix0 = piece.x > solid->x ? piece.x : solid->x;
+            float iy0 = piece.y > solid->y ? piece.y : solid->y;
+            float ix1 = piece.x + piece.w < solid->x + solid->w ? piece.x + piece.w : solid->x + solid->w;
+            float iy1 = piece.y + piece.h < solid->y + solid->h ? piece.y + piece.h : solid->y + solid->h;
+            if (ix1 <= ix0 || iy1 <= iy0) {
+                next[next_count++] = piece;
+                continue;
+            }
+            if (iy0 > piece.y && next_count < 16) {
+                next[next_count++] = { piece.x, piece.y, piece.w, iy0 - piece.y };
+            }
+            if (iy1 < piece.y + piece.h && next_count < 16) {
+                next[next_count++] = { piece.x, iy1, piece.w, piece.y + piece.h - iy1 };
+            }
+            if (ix0 > piece.x && next_count < 16) {
+                next[next_count++] = { piece.x, iy0, ix0 - piece.x, iy1 - iy0 };
+            }
+            if (ix1 < piece.x + piece.w && next_count < 16) {
+                next[next_count++] = { ix1, iy0, piece.x + piece.w - ix1, iy1 - iy0 };
+            }
+        }
+        for (int i = 0; i < next_count; ++i) {
+            pieces[i] = next[i];
+        }
+        piece_count = next_count;
+    }
+    for (int i = 0; i < piece_count; ++i) {
+        DrawPlatform(state, &pieces[i]);
+    }
+}
+
+static void DrawRoomPressurePlatforms(const StageRenderState* state) {
+    int platform_count = state->room->pressure_platform_count;
+    for (int i = 0; i < platform_count; ++i) {
+        float open_amount = state->pressure_platform_open_amount ? state->pressure_platform_open_amount[i] : (state->room_exit_unlocked ? 1.0f : 0.0f);
+        DrawPressurePlatformDevice(state, &state->room->pressure_platforms[i], open_amount);
+    }
+}
+
+static int BoxSpriteSourceCornerPixel(int sx, int sy) {
+    const int corner_size = 2;
+    int near_left = sx < corner_size;
+    int near_right = sx >= BOX_SPRITE_WIDTH - corner_size;
+    int near_top = sy < corner_size;
+    int near_bottom = sy >= BOX_SPRITE_HEIGHT - corner_size;
+    return (near_left || near_right) && (near_top || near_bottom);
+}
+
+static void DrawGravityBox(const StageRenderState* state, const RectF* box) {
+    int x = WorldX(state->render, box->x);
+    int y = WorldY(state->render, box->y);
+    int w = (int)(box->w + 0.5f);
+    int h = (int)(box->h + 0.5f);
+
+    for (int i = 0; i < BOX_SPRITE_RECT_COUNT; ++i) {
+        const BoxSpriteRect* rect = &BOX_SPRITE_RECTS[i];
+        uint32_t pixel = rect->rgba;
+        if ((pixel & 255u) == 0) {
+            continue;
+        }
+        uint32_t color = (uint32_t)((((pixel >> 24) & 255u) << 16) |
+                                    (((pixel >> 16) & 255u) << 8) |
+                                    ((pixel >> 8) & 255u));
+        for (int sy = (int)rect->y; sy < (int)rect->y + (int)rect->h; ++sy) {
+            for (int sx = (int)rect->x; sx < (int)rect->x + (int)rect->w; ++sx) {
+                if (BoxSpriteSourceCornerPixel(sx, sy)) {
+                    continue;
+                }
+                int rx = x + sx * w / BOX_SPRITE_WIDTH;
+                int ry = y + sy * h / BOX_SPRITE_HEIGHT;
+                int rw = (sx + 1) * w / BOX_SPRITE_WIDTH - sx * w / BOX_SPRITE_WIDTH;
+                int rh = (sy + 1) * h / BOX_SPRITE_HEIGHT - sy * h / BOX_SPRITE_HEIGHT;
+                DrawObjectClippedRect(state, x, y, w, h, rx, ry, rw, rh, color);
+            }
+        }
+    }
+}
+
+static void DrawRoomGravityBoxes(const StageRenderState* state) {
+    for (int i = 0; i < state->gravity_box_count; ++i) {
+        DrawGravityBox(state, &state->gravity_boxes[i]);
+    }
+}
 static void DrawContextUi(const StageRenderState* state) {
     TutorialUiDrawWorldHint(state->render, state->room, state->player);
     ExitSequenceDrawSolvedUi(state->render, state->text_color, state->draw_text_small);
@@ -749,6 +901,9 @@ void StageRenderDrawDynamic(const StageRenderState* state) {
         DrawSpeakerDevice(state, &state->room->speakers[i]);
     }
     DrawRoomPistons(state);
+    DrawRoomPressureSwitches(state);
+    DrawRoomPressurePlatforms(state);
+    DrawRoomGravityBoxes(state);
     ExitSequenceDrawExit(state->render, &state->room->exit);
     if (state->player_visible) {
         DrawPlayer(state->render,

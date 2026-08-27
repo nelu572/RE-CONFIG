@@ -28,9 +28,21 @@ static constexpr float PLAYER_FLEX_SOFT_AIR_TANGENT = 28.0f;
 static constexpr float PLAYER_FLEX_SOFT_AIR_GRAVITY = 53.6f;
 static constexpr float PLAYER_FLEX_SOFT_APPROACH_SPEED = 95.0f;
 static constexpr float PLAYER_FLEX_FIRM_GROW_SPEED = 220.0f;
-static constexpr int GAME_MAX_DYNAMIC_SOLIDS = 24;
+static constexpr int GAME_MAX_DYNAMIC_SOLIDS = 32;
+static constexpr float GRAVITY_BOX_ACCEL = 1850.0f;
+static constexpr float GRAVITY_BOX_TANGENT_DAMPING = 24.0f;
+static constexpr float GRAVITY_BOX_MAX_GRAVITY_SPEED = 1250.0f;
+static constexpr float GRAVITY_BOX_MAX_TANGENT_SPEED = 480.0f;
+static constexpr float GRAVITY_BOX_PUSH_SPEED = 120.0f;
+static constexpr float PRESSURE_PLATFORM_OPEN_SPEED = 8.0f;
+static constexpr float PRESSURE_PLATFORM_CLOSE_SPEED = 12.0f;
 
+static float GameClampF(float value, float lo, float hi);
 static void GameApplyPlayerFlexibility(GameState* state, int value, float move, int airborne, GravityDirection anchor_direction, float dt);
+static int GameRoomGravityBoxCount(const RoomDef* room);
+static int GameAppendGravityBoxSolids(const GameState* state, RectF* out_solids, int count, int max_solids);
+static int GameAppendPressurePlatformSolids(const GameState* state, RectF* out_solids, int count, int max_solids);
+static int GameAppendPressureSwitchSolids(const GameState* state, RectF* out_solids, int count, int max_solids);
 static void GameStartPlayerDeath(GameState* state);
 
 int GameFeatureActive(const GameState* state, DeleteFeature feature) {
@@ -91,6 +103,12 @@ void GameSetGravityDirection(GameState* state, GravityDirection direction) {
     state->player.vx = 0.0f;
     state->player.vy = 0.0f;
     state->player.grounded = 0;
+    int gravity_box_count = GameRoomGravityBoxCount(GameCurrentRoom(state));
+    for (int i = 0; i < gravity_box_count; ++i) {
+        state->gravity_box_vx[i] = 0.0f;
+        state->gravity_box_vy[i] = 0.0f;
+        state->gravity_box_grounded[i] = 0;
+    }
     state->gravity_setting_feedback_until = PerfNowSeconds() + 0.22;
 }
 
@@ -114,6 +132,90 @@ static int GameBuildPistonSolids(const RoomDef* room, float piston_time_seconds,
     }
     return count;
 }
+
+static int GameRoomGravityBoxCount(const RoomDef* room) {
+    if (!room || room->gravity_box_count <= 0) {
+        return 0;
+    }
+    return room->gravity_box_count < GAME_MAX_GRAVITY_BOXES ? room->gravity_box_count : GAME_MAX_GRAVITY_BOXES;
+}
+
+static int GameRoomPressureSwitchCount(const RoomDef* room) {
+    if (!room || room->pressure_switch_count <= 0) {
+        return 0;
+    }
+    return room->pressure_switch_count < GAME_MAX_PRESSURE_SWITCHES ? room->pressure_switch_count : GAME_MAX_PRESSURE_SWITCHES;
+}
+
+static int GameRoomPressurePlatformCount(const RoomDef* room) {
+    if (!room || room->pressure_platform_count <= 0) {
+        return 0;
+    }
+    return room->pressure_platform_count < GAME_MAX_PRESSURE_PLATFORMS ? room->pressure_platform_count : GAME_MAX_PRESSURE_PLATFORMS;
+}
+
+static RectF GamePressurePlatformRectAt(const PressurePlatformDevice* platform, float open_amount) {
+    RectF rect = platform->rect;
+    open_amount = open_amount < 0.0f ? 0.0f : (open_amount > 1.0f ? 1.0f : open_amount);
+    rect.x += platform->open_offset_x * open_amount;
+    rect.y += platform->open_offset_y * open_amount;
+    return rect;
+}
+
+static int GamePressurePlatformTargetClear(const GameState* state, int platform_index, float open_amount, const RectF* player_rect) {
+    const RoomDef* room = GameCurrentRoom(state);
+    RectF platform_rect = GamePressurePlatformRectAt(&room->pressure_platforms[platform_index], open_amount);
+    if (player_rect && RectsOverlap(player_rect, &platform_rect)) {
+        return 0;
+    }
+    int box_count = GameRoomGravityBoxCount(room);
+    for (int i = 0; i < box_count; ++i) {
+        if (RectsOverlap(&state->gravity_boxes[i], &platform_rect)) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static int GameAppendPressurePlatformSolids(const GameState* state, RectF* out_solids, int count, int max_solids) {
+    const RoomDef* room = GameCurrentRoom(state);
+    int platform_count = GameRoomPressurePlatformCount(room);
+    for (int i = 0; i < platform_count && count < max_solids; ++i) {
+        out_solids[count++] = GamePressurePlatformRectAt(&room->pressure_platforms[i], state->pressure_platform_open_amount[i]);
+    }
+    return count;
+}
+
+static RectF GamePressureSwitchSolidAt(const GameState* state, int switch_index) {
+    const RoomDef* room = GameCurrentRoom(state);
+    RectF rect = room->pressure_switches[switch_index].rect;
+    float anim = GameClampF(state->pressure_switch_anim[switch_index], 0.0f, 1.0f);
+    float travel = anim * 6.0f;
+    if (rect.w >= rect.h) {
+        rect.h = GameClampF(rect.h - travel, 4.0f, rect.h);
+    } else {
+        rect.w = GameClampF(rect.w - travel, 4.0f, rect.w);
+    }
+    return rect;
+}
+
+static int GameAppendPressureSwitchSolids(const GameState* state, RectF* out_solids, int count, int max_solids) {
+    const RoomDef* room = GameCurrentRoom(state);
+    int switch_count = GameRoomPressureSwitchCount(room);
+    for (int i = 0; i < switch_count && count < max_solids; ++i) {
+        out_solids[count++] = GamePressureSwitchSolidAt(state, i);
+    }
+    return count;
+}
+
+static int GameAppendGravityBoxSolids(const GameState* state, RectF* out_solids, int count, int max_solids) {
+    const RoomDef* room = GameCurrentRoom(state);
+    int box_count = GameRoomGravityBoxCount(room);
+    for (int i = 0; i < box_count && count < max_solids; ++i) {
+        out_solids[count++] = state->gravity_boxes[i];
+    }
+    return count;
+}
 static int GameRectOverlapsSolids(const GameState* state, const RectF* rect) {
     const RoomDef* room = GameCurrentRoom(state);
     for (int i = 0; i < room->platform_count; ++i) {
@@ -130,8 +232,16 @@ static int GameRectOverlapsSolids(const GameState* state, const RectF* rect) {
     }
     RectF piston_solids[GAME_MAX_DYNAMIC_SOLIDS];
     int piston_solid_count = GameBuildPistonSolids(room, state->piston_time_seconds, piston_solids, GAME_MAX_DYNAMIC_SOLIDS);
+    piston_solid_count = GameAppendPressurePlatformSolids(state, piston_solids, piston_solid_count, GAME_MAX_DYNAMIC_SOLIDS);
+    piston_solid_count = GameAppendPressureSwitchSolids(state, piston_solids, piston_solid_count, GAME_MAX_DYNAMIC_SOLIDS);
     for (int i = 0; i < piston_solid_count; ++i) {
         if (RectsOverlap(rect, &piston_solids[i])) {
+            return 1;
+        }
+    }
+    int box_count = GameRoomGravityBoxCount(room);
+    for (int i = 0; i < box_count; ++i) {
+        if (RectsOverlap(rect, &state->gravity_boxes[i])) {
             return 1;
         }
     }
@@ -196,6 +306,9 @@ static int GameResolvePlayerResizeRect(const GameState* state, RectF* rect, int 
     int type_a_collision_active = GameFeatureActive(state, FEATURE_COLLISION_TYPE_A);
     RectF piston_solids[GAME_MAX_DYNAMIC_SOLIDS];
     int piston_solid_count = GameBuildPistonSolids(room, state->piston_time_seconds, piston_solids, GAME_MAX_DYNAMIC_SOLIDS);
+    piston_solid_count = GameAppendPressurePlatformSolids(state, piston_solids, piston_solid_count, GAME_MAX_DYNAMIC_SOLIDS);
+    piston_solid_count = GameAppendPressureSwitchSolids(state, piston_solids, piston_solid_count, GAME_MAX_DYNAMIC_SOLIDS);
+    piston_solid_count = GameAppendGravityBoxSolids(state, piston_solids, piston_solid_count, GAME_MAX_DYNAMIC_SOLIDS);
     int total_count = GamePlayerResizeSolidCount(room, type_a_collision_active, piston_solid_count);
     for (int pass = 0; pass < 8; ++pass) {
         float best_abs = 1000000.0f;
@@ -395,6 +508,24 @@ void GameResetStage(GameState* state) {
     ResetPlayerPresentation(&state->player, state->player_particles, PLAYER_PARTICLE_COUNT);
     state->delete_state = state->room_start_state.delete_state;
     state->gravity_direction = state->room_start_state.gravity_direction;
+    for (int i = 0; i < GAME_MAX_GRAVITY_BOXES; ++i) {
+        state->gravity_boxes[i] = { 0.0f, 0.0f, 0.0f, 0.0f };
+        state->gravity_box_vx[i] = 0.0f;
+        state->gravity_box_vy[i] = 0.0f;
+        state->gravity_box_grounded[i] = 0;
+    }
+    int box_count = GameRoomGravityBoxCount(room);
+    for (int i = 0; i < box_count; ++i) {
+        state->gravity_boxes[i] = room->gravity_boxes[i].start;
+    }
+    for (int i = 0; i < GAME_MAX_PRESSURE_SWITCHES; ++i) {
+        state->pressure_switch_pressed[i] = 0;
+        state->pressure_switch_anim[i] = 0.0f;
+    }
+    for (int i = 0; i < GAME_MAX_PRESSURE_PLATFORMS; ++i) {
+        state->pressure_platform_open_amount[i] = 0.0f;
+    }
+    state->room_exit_unlocked = (room->pressure_switch_count > 0 || room->exit_requires_pressure_switches) ? 0 : 1;
     state->cleared_room_this_frame = -1;
     state->player_dead = 0;
     state->death_respawn_timer = 0.0f;
@@ -535,6 +666,260 @@ static void GameGravityVector(GravityDirection direction, int* x, int* y) {
     } else if (direction == GRAVITY_LEFT) {
         *x = -1;
         *y = 0;
+    }
+}
+
+
+static int GameBoxSolidCount(const GameState* state, const RectF* dynamic_solids, int dynamic_solid_count, const RectF* player_rect) {
+    const RoomDef* room = GameCurrentRoom(state);
+    return room->platform_count +
+           (GameFeatureActive(state, FEATURE_COLLISION_TYPE_A) ? room->type_a_count : 0) +
+           dynamic_solid_count +
+           (player_rect ? 1 : 0);
+}
+
+static const RectF* GameBoxSolidAt(const GameState* state, const RectF* dynamic_solids, int dynamic_solid_count, const RectF* player_rect, int index) {
+    const RoomDef* room = GameCurrentRoom(state);
+    if (index < room->platform_count) {
+        return &room->platforms[index];
+    }
+    index -= room->platform_count;
+    int type_a_count = GameFeatureActive(state, FEATURE_COLLISION_TYPE_A) ? room->type_a_count : 0;
+    if (index < type_a_count) {
+        return &room->type_a_walls[index];
+    }
+    index -= type_a_count;
+    if (index < dynamic_solid_count) {
+        return &dynamic_solids[index];
+    }
+    return player_rect;
+}
+
+static void GameResolveGravityBoxAxis(GameState* state, int box_index, const RectF* dynamic_solids, int dynamic_solid_count, const RectF* player_rect, int axis_x, int axis_y, int gravity_x, int gravity_y) {
+    RectF* box = &state->gravity_boxes[box_index];
+    int total = GameBoxSolidCount(state, dynamic_solids, dynamic_solid_count, player_rect);
+    for (int i = 0; i < total; ++i) {
+        const RectF* solid = GameBoxSolidAt(state, dynamic_solids, dynamic_solid_count, player_rect, i);
+        if (!RectsOverlap(box, solid)) {
+            continue;
+        }
+        if (axis_x != 0) {
+            if (state->gravity_box_vx[box_index] > 0.0f) {
+                box->x = solid->x - box->w;
+                if (gravity_x > 0) state->gravity_box_grounded[box_index] = 1;
+            } else if (state->gravity_box_vx[box_index] < 0.0f) {
+                box->x = solid->x + solid->w;
+                if (gravity_x < 0) state->gravity_box_grounded[box_index] = 1;
+            }
+            state->gravity_box_vx[box_index] = 0.0f;
+        } else if (axis_y != 0) {
+            if (state->gravity_box_vy[box_index] > 0.0f) {
+                box->y = solid->y - box->h;
+                if (gravity_y > 0) state->gravity_box_grounded[box_index] = 1;
+            } else if (state->gravity_box_vy[box_index] < 0.0f) {
+                box->y = solid->y + solid->h;
+                if (gravity_y < 0) state->gravity_box_grounded[box_index] = 1;
+            }
+            state->gravity_box_vy[box_index] = 0.0f;
+        }
+    }
+}
+
+static void GameUpdateRoomGravityBoxes(GameState* state, float dt) {
+    const RoomDef* room = GameCurrentRoom(state);
+    int box_count = GameRoomGravityBoxCount(room);
+    if (box_count <= 0) {
+        return;
+    }
+
+    RectF dynamic_solids[GAME_MAX_DYNAMIC_SOLIDS];
+    int dynamic_solid_count = GameBuildPistonSolids(room, state->piston_time_seconds, dynamic_solids, GAME_MAX_DYNAMIC_SOLIDS);
+    dynamic_solid_count = GameAppendPressurePlatformSolids(state, dynamic_solids, dynamic_solid_count, GAME_MAX_DYNAMIC_SOLIDS);
+    dynamic_solid_count = GameAppendPressureSwitchSolids(state, dynamic_solids, dynamic_solid_count, GAME_MAX_DYNAMIC_SOLIDS);
+    RectF player_rect = GamePlayerRect(state);
+    int gravity_x;
+    int gravity_y;
+    GameGravityVector(state->gravity_direction, &gravity_x, &gravity_y);
+    float sim_dt = dt * SettingsUiGameSpeedScale();
+    for (int i = 0; i < box_count; ++i) {
+        float ax = 0.0f;
+        float ay = 0.0f;
+        if (GameFeatureActive(state, FEATURE_GRAVITY)) {
+            ax = (float)gravity_x * GRAVITY_BOX_ACCEL;
+            ay = (float)gravity_y * GRAVITY_BOX_ACCEL;
+        }
+
+        int tangent_x = gravity_y != 0 ? 1 : 0;
+        int tangent_y = gravity_y != 0 ? 0 : 1;
+        float gravity_speed = state->gravity_box_vx[i] * (float)gravity_x + state->gravity_box_vy[i] * (float)gravity_y;
+        float tangent_speed = state->gravity_box_vx[i] * (float)tangent_x + state->gravity_box_vy[i] * (float)tangent_y;
+        gravity_speed += ax * (float)gravity_x * sim_dt + ay * (float)gravity_y * sim_dt;
+        float tangent_damping = GameClampF(1.0f - GRAVITY_BOX_TANGENT_DAMPING * sim_dt, 0.0f, 1.0f);
+        tangent_speed *= tangent_damping;
+        gravity_speed = GameClampF(gravity_speed, -GRAVITY_BOX_MAX_GRAVITY_SPEED, GRAVITY_BOX_MAX_GRAVITY_SPEED);
+        tangent_speed = GameClampF(tangent_speed, -GRAVITY_BOX_MAX_TANGENT_SPEED, GRAVITY_BOX_MAX_TANGENT_SPEED);
+        state->gravity_box_vx[i] = (float)tangent_x * tangent_speed + (float)gravity_x * gravity_speed;
+        state->gravity_box_vy[i] = (float)tangent_y * tangent_speed + (float)gravity_y * gravity_speed;
+
+        state->gravity_box_grounded[i] = 0;
+        state->gravity_boxes[i].x += state->gravity_box_vx[i] * sim_dt;
+        GameResolveGravityBoxAxis(state, i, dynamic_solids, dynamic_solid_count, &player_rect, 1, 0, gravity_x, gravity_y);
+        state->gravity_boxes[i].y += state->gravity_box_vy[i] * sim_dt;
+        GameResolveGravityBoxAxis(state, i, dynamic_solids, dynamic_solid_count, &player_rect, 0, 1, gravity_x, gravity_y);
+    }
+}
+
+
+static int GameRangesOverlap(float a0, float a1, float b0, float b1) {
+    return a0 < b1 && a1 > b0;
+}
+
+static int GamePlayerCanReachBoxOnAxis(const RectF* player_rect, const RectF* box, int axis_x, int axis_y, float amount) {
+    float reach = GameAbsF(amount) + 2.0f;
+    if (axis_x != 0) {
+        if (!GameRangesOverlap(player_rect->y + 2.0f, player_rect->y + player_rect->h - 2.0f, box->y + 1.0f, box->y + box->h - 1.0f)) {
+            return 0;
+        }
+        if (amount > 0.0f) {
+            return player_rect->x + player_rect->w <= box->x + 0.5f && box->x - (player_rect->x + player_rect->w) <= reach;
+        }
+        return box->x + box->w <= player_rect->x + 0.5f && player_rect->x - (box->x + box->w) <= reach;
+    }
+    if (!GameRangesOverlap(player_rect->x + 2.0f, player_rect->x + player_rect->w - 2.0f, box->x + 1.0f, box->x + box->w - 1.0f)) {
+        return 0;
+    }
+    if (amount > 0.0f) {
+        return player_rect->y + player_rect->h <= box->y + 0.5f && box->y - (player_rect->y + player_rect->h) <= reach;
+    }
+    return box->y + box->h <= player_rect->y + 0.5f && player_rect->y - (box->y + box->h) <= reach;
+}
+
+static void GamePushGravityBoxByPlayer(GameState* state, int box_index, const RectF* dynamic_solids, int dynamic_solid_count, int axis_x, int axis_y, float amount, float dt) {
+    if (amount == 0.0f || dt <= 0.0f) {
+        return;
+    }
+    RectF before = state->gravity_boxes[box_index];
+    if (axis_x != 0) {
+        state->gravity_boxes[box_index].x += amount;
+        state->gravity_box_vx[box_index] = 0.0f;
+    } else if (axis_y != 0) {
+        state->gravity_boxes[box_index].y += amount;
+        state->gravity_box_vy[box_index] = 0.0f;
+    }
+
+    int gravity_x;
+    int gravity_y;
+    GameGravityVector(state->gravity_direction, &gravity_x, &gravity_y);
+    GameResolveGravityBoxAxis(state, box_index, dynamic_solids, dynamic_solid_count, 0, axis_x, axis_y, gravity_x, gravity_y);
+
+    RectF* box = &state->gravity_boxes[box_index];
+    float moved = axis_x != 0 ? box->x - before.x : box->y - before.y;
+    if ((amount > 0.0f && moved <= 0.0f) || (amount < 0.0f && moved >= 0.0f)) {
+        *box = before;
+        if (axis_x != 0) state->gravity_box_vx[box_index] = 0.0f;
+        if (axis_y != 0) state->gravity_box_vy[box_index] = 0.0f;
+    }
+}
+
+static void GamePushGravityBoxesByPlayerInput(GameState* state, float move, float dt) {
+    const RoomDef* room = GameCurrentRoom(state);
+    int box_count = GameRoomGravityBoxCount(room);
+    if (box_count <= 0 || move > -0.01f && move < 0.01f) {
+        return;
+    }
+
+    int gravity_x;
+    int gravity_y;
+    GameGravityVector(state->gravity_direction, &gravity_x, &gravity_y);
+    int tangent_x = gravity_y != 0 ? 1 : 0;
+    int tangent_y = gravity_y != 0 ? 0 : 1;
+    float direction = move > 0.0f ? 1.0f : -1.0f;
+    float amount = GRAVITY_BOX_PUSH_SPEED * direction * dt;
+
+    RectF dynamic_solids[GAME_MAX_DYNAMIC_SOLIDS];
+    int dynamic_solid_count = GameBuildPistonSolids(room, state->piston_time_seconds, dynamic_solids, GAME_MAX_DYNAMIC_SOLIDS);
+    dynamic_solid_count = GameAppendPressurePlatformSolids(state, dynamic_solids, dynamic_solid_count, GAME_MAX_DYNAMIC_SOLIDS);
+    dynamic_solid_count = GameAppendPressureSwitchSolids(state, dynamic_solids, dynamic_solid_count, GAME_MAX_DYNAMIC_SOLIDS);
+    RectF player_rect = GamePlayerRect(state);
+    for (int i = 0; i < box_count; ++i) {
+        if (GamePlayerCanReachBoxOnAxis(&player_rect, &state->gravity_boxes[i], tangent_x, tangent_y, amount)) {
+            GamePushGravityBoxByPlayer(state, i, dynamic_solids, dynamic_solid_count, tangent_x, tangent_y, amount, dt);
+            break;
+        }
+    }
+}
+
+static int GamePressureSwitchTouchedByRect(const PressureSwitchDevice* sw, const RectF* rect) {
+    const float contact_margin = 3.0f;
+    const float side_inset = 0.0f;
+    RectF probe = sw->rect;
+    if (sw->rect.w >= sw->rect.h) {
+        probe.x += side_inset;
+        probe.w -= side_inset * 2.0f;
+        probe.y = sw->rect.y + sw->rect.h;
+        probe.h = contact_margin;
+    } else {
+        probe.x = sw->rect.x - contact_margin;
+        probe.w = contact_margin;
+        probe.y += side_inset;
+        probe.h -= side_inset * 2.0f;
+    }
+    if (probe.w <= 0.0f || probe.h <= 0.0f) {
+        return 0;
+    }
+    return RectsOverlap(rect, &probe);
+}
+
+static void GameUpdateRoomPressureSwitches(GameState* state, float dt) {
+    const RoomDef* room = GameCurrentRoom(state);
+    int switch_count = GameRoomPressureSwitchCount(room);
+    RectF pr = GamePlayerRect(state);
+    int box_count = GameRoomGravityBoxCount(room);
+    for (int i = 0; i < switch_count; ++i) {
+        const PressureSwitchDevice* sw = &room->pressure_switches[i];
+        int pressed = 0;
+        if (sw->activator == PRESSURE_SWITCH_PLAYER || sw->activator == PRESSURE_SWITCH_ANY) {
+            pressed = GamePressureSwitchTouchedByRect(sw, &pr);
+        }
+        if (!pressed && (sw->activator == PRESSURE_SWITCH_BOX || sw->activator == PRESSURE_SWITCH_ANY)) {
+            for (int box_index = 0; box_index < box_count; ++box_index) {
+                if (GamePressureSwitchTouchedByRect(sw, &state->gravity_boxes[box_index])) {
+                    pressed = 1;
+                    break;
+                }
+            }
+        }
+        if (pressed != state->pressure_switch_pressed[i]) {
+            state->audio_events |= GAME_AUDIO_SWITCH;
+        }
+        state->pressure_switch_pressed[i] = pressed;
+        state->pressure_switch_anim[i] = GameFlexApproachF(state->pressure_switch_anim[i], pressed ? 1.0f : 0.0f, dt, 18.0f, 18.0f);
+    }
+
+    int unlocked = switch_count <= 0 && !room->exit_requires_pressure_switches;
+    if (switch_count > 0) {
+        unlocked = 1;
+        for (int i = 0; i < switch_count; ++i) {
+            if (!state->pressure_switch_pressed[i]) {
+                unlocked = 0;
+                break;
+            }
+        }
+    }
+    state->room_exit_unlocked = unlocked;
+
+    RectF pr_now = GamePlayerRect(state);
+    int platform_count = GameRoomPressurePlatformCount(room);
+    float sim_dt = dt * SettingsUiGameSpeedScale();
+    for (int i = 0; i < platform_count; ++i) {
+        float current = state->pressure_platform_open_amount[i];
+        float target = unlocked ? 1.0f : 0.0f;
+        float speed = unlocked ? PRESSURE_PLATFORM_OPEN_SPEED : PRESSURE_PLATFORM_CLOSE_SPEED;
+        float next = GameFlexApproachF(current, target, sim_dt, speed, speed);
+        if (next < current && !GamePressurePlatformTargetClear(state, i, next, &pr_now)) {
+            next = current;
+        }
+        state->pressure_platform_open_amount[i] = next;
     }
 }
 
@@ -733,6 +1118,7 @@ void GameUpdateStage(GameState* state, float dt, int use_static_cache) {
     }
 
     GameUpdateRoomPistons(state, dt);
+    GameUpdateRoomGravityBoxes(state, dt);
     if (state->player_dead) {
         return;
     }
@@ -741,6 +1127,8 @@ void GameUpdateStage(GameState* state, float dt, int use_static_cache) {
     if (!SettingsUiIsOpen()) {
         control = GameReadControlInput(state->gravity_direction);
     }
+
+    GamePushGravityBoxesByPlayerInput(state, control.move, dt);
 
     int flexibility = SettingsUiItemValue(SettingsFlexibilityItemIndex());
     GameApplyPlayerFlexibility(state, flexibility, control.move, !state->player.grounded, GameFlexAnchorDirection(!state->player.grounded, state->gravity_direction), dt);
@@ -758,6 +1146,9 @@ void GameUpdateStage(GameState* state, float dt, int use_static_cache) {
 
     RectF dynamic_solids[GAME_MAX_DYNAMIC_SOLIDS];
     int dynamic_solid_count = GameBuildPistonSolids(GameCurrentRoom(state), state->piston_time_seconds, dynamic_solids, GAME_MAX_DYNAMIC_SOLIDS);
+    dynamic_solid_count = GameAppendPressurePlatformSolids(state, dynamic_solids, dynamic_solid_count, GAME_MAX_DYNAMIC_SOLIDS);
+    dynamic_solid_count = GameAppendPressureSwitchSolids(state, dynamic_solids, dynamic_solid_count, GAME_MAX_DYNAMIC_SOLIDS);
+    dynamic_solid_count = GameAppendGravityBoxSolids(state, dynamic_solids, dynamic_solid_count, GAME_MAX_DYNAMIC_SOLIDS);
 
     PlayerMovementFeedback movement_feedback;
     movement_feedback.type_a_contacted = state->type_a_contacted;
@@ -799,10 +1190,16 @@ void GameUpdateStage(GameState* state, float dt, int use_static_cache) {
                              movement.landed,
                              GamePlayerStretchBlocked(state),
                              state->gravity_direction);
+    GameUpdateRoomPressureSwitches(state, dt);
 
     RectF pr = GamePlayerRect(state);
-    ExitSequenceUpdateDoor(dt, &pr, &GameCurrentRoom(state)->exit);
-    if (RectsOverlap(&pr, &GameCurrentRoom(state)->exit)) {
+    RectF door_player_probe = pr;
+    if (GameCurrentRoom(state)->exit_requires_pressure_switches && !state->room_exit_unlocked) {
+        door_player_probe.x = GameCurrentRoom(state)->bounds.x - 10000.0f;
+        door_player_probe.y = GameCurrentRoom(state)->bounds.y - 10000.0f;
+    }
+    ExitSequenceUpdateDoor(dt, &door_player_probe, &GameCurrentRoom(state)->exit);
+    if ((!GameCurrentRoom(state)->exit_requires_pressure_switches || state->room_exit_unlocked) && RectsOverlap(&pr, &GameCurrentRoom(state)->exit)) {
         state->cleared_room_this_frame = state->current_room;
         state->audio_events |= GAME_AUDIO_CLEAR;
         ExitSequenceSetRoomSolved(1);

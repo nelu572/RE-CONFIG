@@ -26,6 +26,12 @@ struct StageRenderState {
     double render_time_seconds;
     double speaker_time_seconds;
     float piston_time_seconds;
+    const RectF* gravity_boxes;
+    int gravity_box_count;
+    const int* pressure_switch_pressed;
+    const float* pressure_switch_anim;
+    const float* pressure_platform_open_amount;
+    int room_exit_unlocked;
     int type_a_off_line_thickness;
     int type_a_off_visible_path_len;
     uint32_t effect_color;

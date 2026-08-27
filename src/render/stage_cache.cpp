@@ -230,9 +230,12 @@ void StageCacheDrawCached(const StageCacheState* state, StageCacheDrawCallback d
         FramebufferCopyStaticToLive();
     }
 
-    RectI dirty[20];
+    RectI dirty[24];
     int count = 0;
     if (!state->settings_overlay_visible) {
+        if (state->room->gravity_box_count > 0 || state->room->pressure_switch_count > 0 || state->room->pressure_platform_count > 0) {
+            dirty[count++] = { 0, 0, FB_W, FB_H };
+        }
         dirty[count++] = g_prev_player_dirty;
         dirty[count++] = PlayerDirtyRect(state->render, state->player);
         dirty[count++] = g_prev_player_particles_dirty;

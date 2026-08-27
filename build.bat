@@ -39,6 +39,14 @@ if errorlevel 1 (
 if not exist build mkdir build
 if not exist dist mkdir dist
 
+where python.exe >nul 2>nul
+if not errorlevel 1 (
+    python tools\export_box_sprite_header.py
+    if errorlevel 1 exit /b 1
+) else if not exist src\render\box_sprite_data.h (
+    echo ERROR: python.exe not found and src\render\box_sprite_data.h is missing.
+    exit /b 1
+)
 set CFLAGS=/nologo /std:c++17 /utf-8 /O1 /Os /Oi /GS- /GR- /Gw /Gy /DWIN32_LEAN_AND_MEAN /DNOMINMAX /DSTB_VORBIS_NO_STDIO /DSTB_VORBIS_NO_PUSHDATA_API /DSTB_VORBIS_MAX_CHANNELS=2 /DSTB_VORBIS_FAST_HUFFMAN_LENGTH=7 /DNDEBUG /Isrc\core /Isrc\platform /Isrc\render /Isrc\game /Isrc\ui
 set LFLAGS=/link /SUBSYSTEM:WINDOWS /NODEFAULTLIB /ENTRY:WinMainCRTStartup /INCREMENTAL:NO /OPT:REF /OPT:ICF kernel32.lib user32.lib gdi32.lib winmm.lib msvcrt.lib
 

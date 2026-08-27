@@ -4,11 +4,16 @@
 #include "delete_rules.h"
 #include "player.h"
 
+static constexpr int GAME_MAX_GRAVITY_BOXES = 4;
+static constexpr int GAME_MAX_PRESSURE_SWITCHES = 8;
+static constexpr int GAME_MAX_PRESSURE_PLATFORMS = 4;
+
 enum GameAudioEvent {
     GAME_AUDIO_JUMP = 1 << 0,
     GAME_AUDIO_LAND = 1 << 1,
     GAME_AUDIO_DEATH = 1 << 2,
     GAME_AUDIO_CLEAR = 1 << 3,
+    GAME_AUDIO_SWITCH = 1 << 4,
 };
 
 struct GameRoomStartState {
@@ -39,4 +44,12 @@ struct GameState {
     float speaker_push_vx;
     float speaker_push_vy;
     float piston_time_seconds;
+    RectF gravity_boxes[GAME_MAX_GRAVITY_BOXES];
+    float gravity_box_vx[GAME_MAX_GRAVITY_BOXES];
+    float gravity_box_vy[GAME_MAX_GRAVITY_BOXES];
+    int gravity_box_grounded[GAME_MAX_GRAVITY_BOXES];
+    int pressure_switch_pressed[GAME_MAX_PRESSURE_SWITCHES];
+    float pressure_switch_anim[GAME_MAX_PRESSURE_SWITCHES];
+    float pressure_platform_open_amount[GAME_MAX_PRESSURE_PLATFORMS];
+    int room_exit_unlocked;
 };
