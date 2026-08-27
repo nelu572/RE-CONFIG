@@ -54,7 +54,7 @@ static MainMenuState g_main_menu;
 static PauseMenuState g_pause_menu;
 static int g_overlay_redraw_pending = 0;
 static int g_pause_redraw_pending = 0;
-static constexpr int START_ROOM_INDEX = 5;
+static constexpr int START_ROOM_INDEX = 6;
 static constexpr int DEBUG_ROOM_00_INDEX = 0;
 static constexpr int DEBUG_ROOM_01_INDEX = 1;
 static constexpr int STAGE_SELECT_LAST_ROOM_INDEX = 10;
