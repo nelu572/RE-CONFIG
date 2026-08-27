@@ -2,6 +2,7 @@
 
 #include "box_sprite_data.h"
 
+#include "camera.h"
 #include "exit_sequence.h"
 #include "game_config.h"
 #include "piston.h"
@@ -168,15 +169,11 @@ struct SpeakerRoomAirRect {
 };
 
 static SpeakerRoomAirRect SpeakerRoomAirRectForRoom(const RoomDef* room) {
-    const float side_wall_w = 120.0f;
-    const float ceiling_h = 160.0f;
-    const float floor_h = 160.0f;
-
     SpeakerRoomAirRect rect;
-    rect.left = room->bounds.x + side_wall_w;
-    rect.right = room->bounds.x + room->bounds.w - side_wall_w;
-    rect.top = room->bounds.y + ceiling_h;
-    rect.bottom = room->bounds.y + room->bounds.h - floor_h;
+    rect.left = room->bounds.x;
+    rect.right = room->bounds.x + room->bounds.w;
+    rect.top = room->bounds.y;
+    rect.bottom = room->bounds.y + room->bounds.h;
     return rect;
 }
 
@@ -253,7 +250,44 @@ static int SpeakerClipLineToRoomAir(const SpeakerRoomAirRect* rect,
     return 1;
 }
 
-static void DrawSpeakerAlphaLine(RenderContext* render,
+static RectF StagePressurePlatformRectAt(const PressurePlatformDevice* platform, float open_amount) {
+    RectF rect = platform->rect;
+    open_amount = StageClampF(open_amount, 0.0f, 1.0f);
+    rect.x += platform->open_offset_x * open_amount;
+    rect.y += platform->open_offset_y * open_amount;
+    return rect;
+}
+
+static int StagePointInsideRect(float x, float y, const RectF* rect) {
+    return x >= rect->x && x < rect->x + rect->w &&
+           y >= rect->y && y < rect->y + rect->h;
+}
+
+static int SpeakerWaveMaskedBySolids(const StageRenderState* state, int screen_x, int screen_y) {
+    float world_x = ScreenToWorldX(state->render->camera, (float)screen_x);
+    float world_y = ScreenToWorldY(state->render->camera, (float)screen_y);
+    for (int i = 0; i < state->room->platform_count; ++i) {
+        if (StagePointInsideRect(world_x, world_y, &state->room->platforms[i])) {
+            return 1;
+        }
+    }
+    if (state->type_a_active) {
+        for (int i = 0; i < state->room->type_a_count; ++i) {
+            if (StagePointInsideRect(world_x, world_y, &state->room->type_a_walls[i])) {
+                return 1;
+            }
+        }
+    }
+    for (int i = 0; i < state->room->pressure_platform_count; ++i) {
+        float open_amount = state->pressure_platform_open_amount ? state->pressure_platform_open_amount[i] : 0.0f;
+        RectF platform = StagePressurePlatformRectAt(&state->room->pressure_platforms[i], open_amount);
+        if (StagePointInsideRect(world_x, world_y, &platform)) {
+            return 1;
+        }
+    }
+    return 0;
+}
+static void DrawSpeakerAlphaLine(const StageRenderState* state,
                                  int x0,
                                  int y0,
                                  int x1,
@@ -266,6 +300,7 @@ static void DrawSpeakerAlphaLine(RenderContext* render,
         return;
     }
 
+    RenderContext* render = state->render;
     float r = (float)((color >> 16) & 255) / 255.0f;
     float g = (float)((color >> 8) & 255) / 255.0f;
     float b = (float)(color & 255) / 255.0f;
@@ -274,7 +309,9 @@ static void DrawSpeakerAlphaLine(RenderContext* render,
     int steps = StageMaxI(StageAbsI(dx), StageAbsI(dy));
     int half = thickness / 2;
     if (steps <= 0) {
-        BlendPixel(render, x0, y0, r, g, b, alpha);
+        if (!SpeakerWaveMaskedBySolids(state, x0, y0)) {
+            BlendPixel(render, x0, y0, r, g, b, alpha);
+        }
         return;
     }
 
@@ -283,7 +320,9 @@ static void DrawSpeakerAlphaLine(RenderContext* render,
         int y = y0 + dy * i / steps;
         for (int oy = -half; oy <= half; ++oy) {
             for (int ox = -half; ox <= half; ++ox) {
-                BlendPixel(render, x + ox, y + oy, r, g, b, alpha);
+                if (!SpeakerWaveMaskedBySolids(state, x + ox, y + oy)) {
+                    BlendPixel(render, x + ox, y + oy, r, g, b, alpha);
+                }
             }
         }
     }
@@ -508,14 +547,20 @@ static void DrawSpeakerDevice(const StageRenderState* state, const SpeakerDevice
     int base_y = WorldY(render, speaker->y);
     int base_w = (int)(speaker->width + 0.5f);
     int base_h = (int)(speaker->height + 0.5f);
-    int x = base_x + anim.body_x - anim.body_w_extra;
+    int room_center_x = WorldX(render, state->room->bounds.x + state->room->bounds.w * 0.5f);
+    int speaker_center_x = WorldX(render, speaker->x + speaker->width * 0.5f);
+    int mounted_left = speaker_center_x < room_center_x;
+    int x = mounted_left ? base_x - anim.body_x : base_x + anim.body_x - anim.body_w_extra;
     int y = base_y + anim.body_y - anim.body_h_extra / 2;
     int w = base_w + anim.body_w_extra;
     int h = base_h + anim.body_h_extra;
-    int body_right = x + w;
     int side_w = StageMaxI(12, w * 10 / 100);
     int front_w = w - side_w;
-    int wall_x = WorldX(render, state->room->bounds.x + state->room->bounds.w - 120.0f);
+    int body_left = x;
+    int body_right = x + w;
+    int wall_x = mounted_left ?
+        WorldX(render, state->room->bounds.x + 120.0f) :
+        WorldX(render, state->room->bounds.x + state->room->bounds.w - 120.0f);
     int plate_w = StageMaxI(14, base_w * 9 / 100);
     int plate_x = wall_x - plate_w / 2;
     int plate_y = base_y + base_h * 31 / 100;
@@ -524,23 +569,40 @@ static void DrawSpeakerDevice(const StageRenderState* state, const SpeakerDevice
     int lower_support_y = y + h * 67 / 100;
     int support_h = StageMaxI(8, base_h * 5 / 100);
 
-    DrawRect(render, body_right - 2, upper_support_y - support_h / 2, plate_x - body_right + plate_w / 2, support_h, SPEAKER_BRACKET);
-    DrawRect(render, body_right - 2, lower_support_y - support_h / 2, plate_x - body_right + plate_w / 2, support_h, SPEAKER_BRACKET);
-    DrawThickLine(render,
-                  body_right + support_h / 2,
-                  lower_support_y - support_h / 2,
-                  plate_x + plate_w / 2,
-                  upper_support_y + support_h / 2,
-                  support_h,
-                  SPEAKER_BRACKET);
+    if (mounted_left) {
+        DrawRect(render, plate_x + plate_w / 2, upper_support_y - support_h / 2, body_left - (plate_x + plate_w / 2) + 2, support_h, SPEAKER_BRACKET);
+        DrawRect(render, plate_x + plate_w / 2, lower_support_y - support_h / 2, body_left - (plate_x + plate_w / 2) + 2, support_h, SPEAKER_BRACKET);
+        DrawThickLine(render,
+                      plate_x + plate_w / 2,
+                      upper_support_y + support_h / 2,
+                      body_left - support_h / 2,
+                      lower_support_y - support_h / 2,
+                      support_h,
+                      SPEAKER_BRACKET);
+    } else {
+        DrawRect(render, body_right - 2, upper_support_y - support_h / 2, plate_x - body_right + plate_w / 2, support_h, SPEAKER_BRACKET);
+        DrawRect(render, body_right - 2, lower_support_y - support_h / 2, plate_x - body_right + plate_w / 2, support_h, SPEAKER_BRACKET);
+        DrawThickLine(render,
+                      body_right + support_h / 2,
+                      lower_support_y - support_h / 2,
+                      plate_x + plate_w / 2,
+                      upper_support_y + support_h / 2,
+                      support_h,
+                      SPEAKER_BRACKET);
+    }
 
     DrawRect(render, x, y, w, h, SPEAKER_BODY);
     DrawRect(render, x, y, w, StageMaxI(3, h * 1 / 100), SPEAKER_BODY_LIGHT);
-    DrawRect(render, x, y, StageMaxI(3, w * 2 / 100), h, SPEAKER_BODY_LIGHT);
-    DrawRect(render, body_right - side_w, y, side_w, h, SPEAKER_DARK);
+    if (mounted_left) {
+        DrawRect(render, body_right - StageMaxI(3, w * 2 / 100), y, StageMaxI(3, w * 2 / 100), h, SPEAKER_BODY_LIGHT);
+        DrawRect(render, x, y, side_w, h, SPEAKER_DARK);
+    } else {
+        DrawRect(render, x, y, StageMaxI(3, w * 2 / 100), h, SPEAKER_BODY_LIGHT);
+        DrawRect(render, body_right - side_w, y, side_w, h, SPEAKER_DARK);
+    }
     DrawRectOutline(render, x, y, w, h, SPEAKER_DEEP_DARK);
 
-    int slot_x = x + w * 12 / 100;
+    int slot_x = mounted_left ? x + w * 65 / 100 : x + w * 12 / 100;
     int slot_y = y + h * 14 / 100;
     int slot_w = w * 23 / 100;
     int slot_h = StageMaxI(7, h * 3 / 100);
@@ -549,25 +611,31 @@ static void DrawSpeakerDevice(const StageRenderState* state, const SpeakerDevice
         DrawSpeakerSlot(render, slot_x, slot_y + i * slot_gap, slot_w, slot_h, SPEAKER_DARK);
     }
 
-    int small_cx = x + w * 64 / 100;
+    int small_cx = mounted_left ? x + w * 36 / 100 : x + w * 64 / 100;
     int small_cy = y + h * 23 / 100;
-    int big_cx = x + front_w / 2;
+    int big_cx = mounted_left ? x + side_w + front_w / 2 : x + front_w / 2;
     int big_cy = y + h * 66 / 100;
     DrawSmallSpeakerDriver(render, small_cx, small_cy, h * 11 / 100 + anim.small_radius_extra, SPEAKER_HIGHLIGHT, SPEAKER_DARK, SPEAKER_BRIGHT, SPEAKER_DEEP_DARK);
     DrawSpeakerDriver(render, big_cx, big_cy, h * 22 / 100 + anim.big_radius_extra, SPEAKER_HIGHLIGHT, SPEAKER_DARK, SPEAKER_BRIGHT, SPEAKER_DEEP_DARK);
 
     int screw_r = StageMaxI(5, w * 3 / 100);
     int screw_inset = StageMaxI(20, w * 12 / 100);
-    FillCircle(render, x + screw_inset, y + screw_inset, screw_r, SPEAKER_DARK);
-    FillCircle(render, x + front_w - screw_inset, y + screw_inset, screw_r, SPEAKER_DARK);
-    FillCircle(render, x + screw_inset, y + h - screw_inset, screw_r, SPEAKER_DARK);
-    FillCircle(render, x + front_w - screw_inset, y + h - screw_inset, screw_r, SPEAKER_DARK);
+    if (mounted_left) {
+        FillCircle(render, body_right - screw_inset, y + screw_inset, screw_r, SPEAKER_DARK);
+        FillCircle(render, x + side_w + screw_inset, y + screw_inset, screw_r, SPEAKER_DARK);
+        FillCircle(render, body_right - screw_inset, y + h - screw_inset, screw_r, SPEAKER_DARK);
+        FillCircle(render, x + side_w + screw_inset, y + h - screw_inset, screw_r, SPEAKER_DARK);
+    } else {
+        FillCircle(render, x + screw_inset, y + screw_inset, screw_r, SPEAKER_DARK);
+        FillCircle(render, x + front_w - screw_inset, y + screw_inset, screw_r, SPEAKER_DARK);
+        FillCircle(render, x + screw_inset, y + h - screw_inset, screw_r, SPEAKER_DARK);
+        FillCircle(render, x + front_w - screw_inset, y + h - screw_inset, screw_r, SPEAKER_DARK);
+    }
 
     DrawRect(render, plate_x, plate_y + plate_w / 2, plate_w, plate_h - plate_w, SPEAKER_BRACKET);
     FillCircle(render, plate_x + plate_w / 2, plate_y + plate_w / 2, plate_w / 2, SPEAKER_BRACKET);
     FillCircle(render, plate_x + plate_w / 2, plate_y + plate_h - plate_w / 2 - 1, plate_w / 2, SPEAKER_BRACKET);
 }
-
 static void DrawSpeakerWaveCircle(const StageRenderState* state,
                                   float world_cx,
                                   float world_cy,
@@ -633,7 +701,7 @@ static void DrawSpeakerWaveCircle(const StageRenderState* state,
         if (!SpeakerClipLineToRoomAir(&air_rect, &ax, &ay, &bx, &by)) {
             continue;
         }
-        DrawSpeakerAlphaLine(render,
+        DrawSpeakerAlphaLine(state,
                              WorldX(render, ax),
                              WorldY(render, ay),
                              WorldX(render, bx),

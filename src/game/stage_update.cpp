@@ -34,8 +34,14 @@ static constexpr float GRAVITY_BOX_TANGENT_DAMPING = 24.0f;
 static constexpr float GRAVITY_BOX_MAX_GRAVITY_SPEED = 1250.0f;
 static constexpr float GRAVITY_BOX_MAX_TANGENT_SPEED = 480.0f;
 static constexpr float GRAVITY_BOX_PUSH_SPEED = 120.0f;
+static constexpr float GRAVITY_BOX_SPEAKER_MIN_PUSH_SPEED = 200.0f;
 static constexpr float PRESSURE_PLATFORM_OPEN_SPEED = 8.0f;
 static constexpr float PRESSURE_PLATFORM_CLOSE_SPEED = 12.0f;
+
+struct GameSpeakerPushVelocity {
+    float vx;
+    float vy;
+};
 
 static float GameClampF(float value, float lo, float hi);
 static void GameApplyPlayerFlexibility(GameState* state, int value, float move, int airborne, GravityDirection anchor_direction, float dt);
@@ -43,6 +49,7 @@ static int GameRoomGravityBoxCount(const RoomDef* room);
 static int GameAppendGravityBoxSolids(const GameState* state, RectF* out_solids, int count, int max_solids);
 static int GameAppendPressurePlatformSolids(const GameState* state, RectF* out_solids, int count, int max_solids);
 static int GameAppendPressureSwitchSolids(const GameState* state, RectF* out_solids, int count, int max_solids);
+static GameSpeakerPushVelocity GameComputeSpeakerPushVelocityForRect(const GameState* state, const RectF* rect, int grounded);
 static void GameStartPlayerDeath(GameState* state);
 
 int GameFeatureActive(const GameState* state, DeleteFeature feature) {
@@ -753,7 +760,15 @@ static void GameUpdateRoomGravityBoxes(GameState* state, float dt) {
         int tangent_y = gravity_y != 0 ? 0 : 1;
         float gravity_speed = state->gravity_box_vx[i] * (float)gravity_x + state->gravity_box_vy[i] * (float)gravity_y;
         float tangent_speed = state->gravity_box_vx[i] * (float)tangent_x + state->gravity_box_vy[i] * (float)tangent_y;
+        GameSpeakerPushVelocity speaker_push = GameComputeSpeakerPushVelocityForRect(state, &state->gravity_boxes[i], state->gravity_box_grounded[i]);
+        float speaker_tangent_speed = speaker_push.vx * (float)tangent_x + speaker_push.vy * (float)tangent_y;
+        float speaker_gravity_speed = speaker_push.vx * (float)gravity_x + speaker_push.vy * (float)gravity_y;
         gravity_speed += ax * (float)gravity_x * sim_dt + ay * (float)gravity_y * sim_dt;
+        if (GameAbsF(speaker_tangent_speed) >= GRAVITY_BOX_SPEAKER_MIN_PUSH_SPEED ||
+            GameAbsF(speaker_gravity_speed) >= GRAVITY_BOX_SPEAKER_MIN_PUSH_SPEED) {
+            tangent_speed += speaker_tangent_speed;
+            gravity_speed += speaker_gravity_speed;
+        }
         float tangent_damping = GameClampF(1.0f - GRAVITY_BOX_TANGENT_DAMPING * sim_dt, 0.0f, 1.0f);
         tangent_speed *= tangent_damping;
         gravity_speed = GameClampF(gravity_speed, -GRAVITY_BOX_MAX_GRAVITY_SPEED, GRAVITY_BOX_MAX_GRAVITY_SPEED);
@@ -948,11 +963,6 @@ static void GameStartPlayerDeath(GameState* state) {
                               state->gravity_direction);
 }
 
-struct GameSpeakerPushVelocity {
-    float vx;
-    float vy;
-};
-
 static GameSpeakerPushVelocity GameSmoothSpeakerPush(GameState* state, GameSpeakerPushVelocity target, float dt) {
     if ((target.vx > -0.001f && target.vx < 0.001f) &&
         (target.vy > -0.001f && target.vy < 0.001f)) {
@@ -971,6 +981,11 @@ static GameSpeakerPushVelocity GameSmoothSpeakerPush(GameState* state, GameSpeak
 }
 
 static GameSpeakerPushVelocity GameComputeSpeakerPushVelocity(const GameState* state) {
+    RectF pr = GamePlayerRect(state);
+    return GameComputeSpeakerPushVelocityForRect(state, &pr, state->player.grounded);
+}
+
+static GameSpeakerPushVelocity GameComputeSpeakerPushVelocityForRect(const GameState* state, const RectF* rect, int grounded) {
     GameSpeakerPushVelocity result = {};
     const RoomDef* room = GameCurrentRoom(state);
     if (room->speaker_count <= 0) {
@@ -981,9 +996,8 @@ static GameSpeakerPushVelocity GameComputeSpeakerPushVelocity(const GameState* s
         return result;
     }
 
-    RectF pr = GamePlayerRect(state);
-    float player_cx = pr.x + pr.w * 0.5f;
-    float player_cy = pr.y + pr.h * 0.5f;
+    float target_cx = rect->x + rect->w * 0.5f;
+    float target_cy = rect->y + rect->h * 0.5f;
     float best_speed = 0.0f;
     float best_dir_x = -1.0f;
     float best_dir_y = 0.0f;
@@ -991,8 +1005,8 @@ static GameSpeakerPushVelocity GameComputeSpeakerPushVelocity(const GameState* s
         const SpeakerDevice* speaker = &room->speakers[speaker_index];
         float source_x = speaker->x + speaker->width * 0.45f;
         float source_y = speaker->y + speaker->height * 0.66f;
-        float dx = player_cx - source_x;
-        float dy = player_cy - source_y;
+        float dx = target_cx - source_x;
+        float dy = target_cy - source_y;
         float dist_sq = dx * dx + dy * dy;
         if (dist_sq > SPEAKER_WAVE_RANGE * SPEAKER_WAVE_RANGE) {
             continue;
@@ -1027,7 +1041,7 @@ static GameSpeakerPushVelocity GameComputeSpeakerPushVelocity(const GameState* s
     best_dir_x /= speaker_dir_len;
     best_dir_y /= speaker_dir_len;
 
-    if (state->player.grounded) {
+    if (grounded) {
         int gravity_x;
         int gravity_y;
         GameGravityVector(state->gravity_direction, &gravity_x, &gravity_y);
@@ -1044,7 +1058,7 @@ static GameSpeakerPushVelocity GameComputeSpeakerPushVelocity(const GameState* s
         }
     }
 
-    float air_scale = state->player.grounded ? 1.0f : SPEAKER_AIR_PUSH_SCALE;
+    float air_scale = grounded ? 1.0f : SPEAKER_AIR_PUSH_SCALE;
     best_speed *= air_scale;
     result.vx = best_dir_x * best_speed;
     result.vy = best_dir_y * best_speed;
