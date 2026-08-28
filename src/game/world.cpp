@@ -9,6 +9,7 @@ static const RoomDef* const g_rooms[] = {
     &g_room04,
     &g_room05,
     &g_room06,
+    &g_room07,
 };
 
 const RoomDef* GetRoom(int index) {
@@ -20,6 +21,6 @@ int RoomCount() {
 }
 
 int DevelopedRoomCount() {
-    return 7;
+    return 8;
 }
 
