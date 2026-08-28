@@ -643,7 +643,8 @@ static constexpr float STAGE_SELECT_PLAYER_H = 40.0f;
 static constexpr int STAGE_SELECT_DEFAULT_INDEX = 2;
 static constexpr float STAGE_SELECT_MOVE_SECONDS = 0.36f;
 static constexpr float STAGE_SELECT_JUMP_ARC_HEIGHT = 220.0f;
-static constexpr float STAGE_SELECT_PLATFORM_GROW_SECONDS = 0.16f;
+static constexpr float STAGE_SELECT_PLATFORM_GROW_SECONDS = 0.22f;
+static constexpr float STAGE_SELECT_LAND_INPUT_DELAY_SECONDS = 0.12f;
 
 static int StageSelectStageImplemented(int stage_index) {
     return stage_index >= 0 && stage_index < DevelopedRoomCount();
@@ -1014,7 +1015,8 @@ static void UpdateStageSelect() {
         g_stage_select_platform_grow_seconds = 0.0f;
     }
 
-    if (g_stage_select_anim_seconds < STAGE_SELECT_MOVE_SECONDS) {
+    if (g_stage_select_anim_seconds < STAGE_SELECT_MOVE_SECONDS ||
+        g_stage_select_platform_grow_seconds < STAGE_SELECT_LAND_INPUT_DELAY_SECONDS) {
         return;
     }
 
