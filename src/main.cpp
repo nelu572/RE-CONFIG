@@ -54,7 +54,7 @@ static MainMenuState g_main_menu;
 static PauseMenuState g_pause_menu;
 static int g_overlay_redraw_pending = 0;
 static int g_pause_redraw_pending = 0;
-static constexpr int START_ROOM_INDEX = 7;
+static constexpr int START_ROOM_INDEX = 0;
 static constexpr int DEBUG_ROOM_00_INDEX = 0;
 static constexpr int DEBUG_ROOM_01_INDEX = 1;
 static constexpr int STAGE_SELECT_LAST_ROOM_INDEX = 10;
@@ -76,7 +76,7 @@ static double g_stage_select_last_seconds = 0.0;
 static int g_stage_select_cleared[STAGE_SELECT_DISPLAY_COUNT];
 
 static constexpr unsigned int STAGE_PROGRESS_MAGIC = 0x31535652u;
-static constexpr unsigned int STAGE_PROGRESS_VERSION = 1u;
+static constexpr unsigned int STAGE_PROGRESS_VERSION = 2u;
 static constexpr int STAGE_PROGRESS_DATA_SIZE = 8 + STAGE_SELECT_DISPLAY_COUNT;
 
 static void StageProgressWriteU32(unsigned char* data, int offset, unsigned int value) {
@@ -137,6 +137,7 @@ static AppState g_app_state = APP_STATE_MAIN_MENU;
 static AppState g_app_transition_target_state = APP_STATE_MAIN_MENU;
 static int g_app_transition_pending = 0;
 static int g_app_transition_target_room = 0;
+static int g_stage_select_entry_from_room = -1;
 static float g_app_transition_amount = 0.0f;
 static float g_app_transition_hold_seconds = 0.0f;
 static constexpr float APP_TRANSITION_HOLD_SECONDS = 0.09f;
@@ -321,19 +322,27 @@ static void EnterMainMenuNow() {
 static void EnterStageSelectNow(int stage_index) {
     SettingsUiClose();
     PauseMenuClose(&g_pause_menu);
-    g_stage_select_index = ClampRoomIndex(stage_index);
-    g_stage_select_target_offset = StageSelectTargetOffset(g_stage_select_index);
-    g_stage_select_world_offset = g_stage_select_target_offset;
-    g_stage_select_start_offset = g_stage_select_world_offset;
-    g_stage_select_target_player_y = StageSelectPlayerYForStage(g_stage_select_index);
-    g_stage_select_player_y = g_stage_select_target_player_y;
-    g_stage_select_start_player_y = g_stage_select_player_y;
-    g_stage_select_anim_seconds = 0.36f;
-    g_stage_select_platform_grow_seconds = 0.16f;
-    g_stage_select_player_move_dir = 0.0f;
-    g_stage_select_player_face_dir = 0.0f;
-    g_stage_select_player_visual_sx = 1.0f;
-    g_stage_select_player_visual_sy = 1.0f;
+
+    int target_stage = ClampRoomIndex(stage_index);
+    int entry_stage = g_stage_select_entry_from_room;
+    g_stage_select_entry_from_room = -1;
+    if (entry_stage < 0 || entry_stage >= DevelopedRoomCount()) {
+        entry_stage = target_stage;
+    }
+
+    g_stage_select_index = target_stage;
+    g_stage_select_target_offset = StageSelectTargetOffset(target_stage);
+    g_stage_select_target_player_y = StageSelectPlayerYForStage(target_stage);
+    g_stage_select_start_offset = StageSelectTargetOffset(entry_stage);
+    g_stage_select_start_player_y = StageSelectPlayerYForStage(entry_stage);
+    g_stage_select_world_offset = g_stage_select_start_offset;
+    g_stage_select_player_y = g_stage_select_start_player_y;
+    g_stage_select_anim_seconds = entry_stage == target_stage ? 0.36f : 0.0f;
+    g_stage_select_platform_grow_seconds = entry_stage == target_stage ? 0.16f : 0.0f;
+    g_stage_select_player_move_dir = g_stage_select_target_offset < g_stage_select_start_offset ? 1.0f : -1.0f;
+    g_stage_select_player_face_dir = entry_stage == target_stage ? 0.0f : g_stage_select_player_move_dir;
+    g_stage_select_player_visual_sx = entry_stage == target_stage ? 1.0f : 1.14f;
+    g_stage_select_player_visual_sy = entry_stage == target_stage ? 1.0f : 0.84f;
     g_stage_select_last_seconds = PerfNowSeconds();
     g_app_state = APP_STATE_STAGE_SELECT;
 }
@@ -435,7 +444,12 @@ static void UpdateStage(float dt) {
             StageProgressSave();
         }
         g_game.cleared_room_this_frame = -1;
-        StartAppTransition(APP_STATE_STAGE_SELECT, cleared_room);
+        int next_room = cleared_room + 1;
+        if (next_room >= DevelopedRoomCount()) {
+            next_room = cleared_room;
+        }
+        g_stage_select_entry_from_room = next_room == cleared_room ? -1 : cleared_room;
+        StartAppTransition(APP_STATE_STAGE_SELECT, next_room);
     }
     const RoomDef* room = CurrentRoom();
     AudioUpdateSpeaker(PerfNowSeconds() - g_game.room_started_at_seconds,
@@ -1471,3 +1485,4 @@ extern "C" void WinMainCRTStartup() {
     PerfWriteReport();
     ExitProcess(0);
 }
+
