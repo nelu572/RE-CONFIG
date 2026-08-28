@@ -10,30 +10,20 @@ ROOM 06은 스피커, 박스, 스위치를 조합하는 방이다. 박스를 움
 ## 맵 규격
 
 - 전체 프레임: **57T x 27T**
-- 1T = 40px
 - 각 행은 반드시 57글자여야 한다.
 - 전체 행 수는 반드시 27행이어야 한다.
-- 빈 공간은 .으로 적는다.
-- 화면 밖이나 사용하지 않는 공간도 맵 안에서는 #로 채운다.
+- 공통 규격, 범례, 작성 원칙은 [ROOM_MAP_GUIDE.md](ROOM_MAP_GUIDE.md)를 따른다.
 
-## 범례
+## 사용 오브젝트
 
-- # : 일반 벽 / 고정 플랫폼
-- . : 플레이 가능한 빈 공간
-- P : 플레이어 시작 위치
-- B : 중력 영향을 받는 박스 시작 영역
-- K : 스피커 본체 영역
-- T : 측면 스위치
-- H : 스위치 작동 시 가로로 열리는 플랫폼 / 문
-- V : 스위치 작동 시 세로로 열리는 플랫폼 / 문
-- E : EXIT 배치 예약 영역
+- `#`, `.`, `P`, `B`, `K`, `T`, `H`, `V`, `E`
 
-## 스피커 표기 방식
+## 방별 오브젝트 메모
 
-스피커는 실제 크기감을 보기 위해 K를 여러 칸으로 채워 표시한다.
-이 초안에서 K 영역은 5T x 9T 스피커 본체를 뜻한다.
-
-음파는 별도 타일로 표시하지 않는다. 스피커는 360도 범위로 영향을 주므로, 맵에서는 K와 다른 오브젝트의 상대 위치만 보고 판단한다.
+- K 영역은 5T x 9T 스피커 본체를 뜻한다.
+- 음파는 별도 타일로 표시하지 않는다.
+- T는 `PRESSURE_SWITCH_ANY`로 설정되어 있다.
+- H는 `open_offset_x`, V는 `open_offset_y`를 사용한다.
 
 ## 57 x 27 타일맵
 
@@ -76,11 +66,8 @@ ROOM 06은 스피커, 박스, 스위치를 조합하는 방이다. 박스를 움
 
 ## 코드 반영 메모
 
-- 연속된 #는 가능한 한 큰 RectF 플랫폼으로 병합한다.
-- P, B, K, T, H, V, E는 플랫폼이 아니라 오브젝트 배치 마커로 처리한다.
-- K는 SpeakerDevice로 만든다.
-- B는 GravityBoxDef로 만든다.
-- T는 PressureSwitchDevice로 만들고 기본적으로 PRESSURE_SWITCH_ANY를 사용한다. 단, 방 설계상 필요한 경우 예외 activator를 사용할 수 있다.
-- H와 V는 모두 PressurePlatformDevice로 만들고, H는 open_offset_x, V는 open_offset_y를 사용한다.
+- K는 `SpeakerDevice`로 만든다.
+- B는 `GravityBoxDef`로 만든다.
+- T는 `PressureSwitchDevice`로 만들고 `PRESSURE_SWITCH_ANY`를 사용한다.
+- H와 V는 모두 `PressurePlatformDevice`로 만들고, H는 `open_offset_x`, V는 `open_offset_y`를 사용한다.
 - H와 V의 열림 거리는 이동 방향의 마커 길이와 같게 둔다.
-- E는 RoomDef.exit로 만든다.
