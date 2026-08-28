@@ -604,6 +604,7 @@ static StageRenderState CurrentStageRenderState() {
     state.render_time_seconds = g_type_a_phase_lock_seconds >= 0.0 ? g_type_a_phase_lock_seconds : PerfNowSeconds();
     state.speaker_time_seconds = PerfNowSeconds() - g_game.room_started_at_seconds;
     state.piston_time_seconds = g_game.piston_time_seconds;
+    state.piston_effective_extension = g_game.piston_effective_extension;
     state.gravity_boxes = g_game.gravity_boxes;
     state.gravity_box_count = CurrentRoom()->gravity_box_count;
     if (state.gravity_box_count > GAME_MAX_GRAVITY_BOXES) state.gravity_box_count = GAME_MAX_GRAVITY_BOXES;

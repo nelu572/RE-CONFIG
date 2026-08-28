@@ -26,6 +26,7 @@ struct StageRenderState {
     double render_time_seconds;
     double speaker_time_seconds;
     float piston_time_seconds;
+    const float* piston_effective_extension;
     const RectF* gravity_boxes;
     int gravity_box_count;
     const int* pressure_switch_pressed;

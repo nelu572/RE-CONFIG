@@ -27,6 +27,36 @@ static float PistonWrap01(float value) {
     return value;
 }
 
+static PistonDirection PistonDirectionOrDefault(const PistonDevice* piston) {
+    if (!piston) {
+        return PISTON_DOWN;
+    }
+    if (piston->direction < PISTON_DOWN || piston->direction > PISTON_LEFT) {
+        return PISTON_DOWN;
+    }
+    return piston->direction;
+}
+
+static void PistonDirectionVector(const PistonDevice* piston, float* x, float* y) {
+    *x = 0.0f;
+    *y = 1.0f;
+    PistonDirection direction = PistonDirectionOrDefault(piston);
+    if (direction == PISTON_UP) {
+        *y = -1.0f;
+    } else if (direction == PISTON_RIGHT) {
+        *x = 1.0f;
+        *y = 0.0f;
+    } else if (direction == PISTON_LEFT) {
+        *x = -1.0f;
+        *y = 0.0f;
+    }
+}
+
+static int PistonIsHorizontal(const PistonDevice* piston) {
+    PistonDirection direction = PistonDirectionOrDefault(piston);
+    return direction == PISTON_RIGHT || direction == PISTON_LEFT;
+}
+
 PistonPose PistonPoseAt(const PistonDevice* piston, float piston_time_seconds) {
     PistonPose pose = {};
     if (!piston || piston->cycle_seconds <= 0.001f) {
@@ -62,52 +92,175 @@ RectF PistonBodyRect(const PistonDevice* piston) {
     }
     rect.x = piston->x;
     rect.y = piston->y;
-    rect.w = piston->width;
-    rect.h = piston->body_height;
+    if (PistonIsHorizontal(piston)) {
+        rect.w = piston->body_height;
+        rect.h = piston->width;
+    } else {
+        rect.w = piston->width;
+        rect.h = piston->body_height;
+    }
+    return rect;
+}
+
+RectF PistonShaftRectForExtension(const PistonDevice* piston, float extension) {
+    RectF rect = {};
+    if (!piston) {
+        return rect;
+    }
+    extension = PistonClampF(extension, 0.0f, piston->travel);
+    float dir_x;
+    float dir_y;
+    PistonDirectionVector(piston, &dir_x, &dir_y);
+    RectF body = PistonBodyRect(piston);
+
+    if (dir_x > 0.0f) {
+        rect.x = body.x + body.w;
+        rect.y = body.y + body.h * 0.5f - piston->shaft_width * 0.5f;
+        rect.w = extension;
+        rect.h = piston->shaft_width;
+    } else if (dir_x < 0.0f) {
+        rect.x = body.x - extension;
+        rect.y = body.y + body.h * 0.5f - piston->shaft_width * 0.5f;
+        rect.w = extension;
+        rect.h = piston->shaft_width;
+    } else if (dir_y < 0.0f) {
+        rect.x = body.x + body.w * 0.5f - piston->shaft_width * 0.5f;
+        rect.y = body.y - extension;
+        rect.w = piston->shaft_width;
+        rect.h = extension;
+    } else {
+        rect.x = body.x + body.w * 0.5f - piston->shaft_width * 0.5f;
+        rect.y = body.y + body.h;
+        rect.w = piston->shaft_width;
+        rect.h = extension;
+    }
+    return rect;
+}
+
+RectF PistonPlateRectForExtension(const PistonDevice* piston, float extension) {
+    RectF rect = {};
+    if (!piston) {
+        return rect;
+    }
+    extension = PistonClampF(extension, 0.0f, piston->travel);
+    float dir_x;
+    float dir_y;
+    PistonDirectionVector(piston, &dir_x, &dir_y);
+    RectF body = PistonBodyRect(piston);
+
+    if (dir_x > 0.0f) {
+        rect.x = body.x + body.w + extension;
+        rect.y = body.y;
+        rect.w = piston->plate_height;
+        rect.h = body.h;
+    } else if (dir_x < 0.0f) {
+        rect.x = body.x - extension - piston->plate_height;
+        rect.y = body.y;
+        rect.w = piston->plate_height;
+        rect.h = body.h;
+    } else if (dir_y < 0.0f) {
+        rect.x = body.x;
+        rect.y = body.y - extension - piston->plate_height;
+        rect.w = body.w;
+        rect.h = piston->plate_height;
+    } else {
+        rect.x = body.x;
+        rect.y = body.y + body.h + extension;
+        rect.w = body.w;
+        rect.h = piston->plate_height;
+    }
     return rect;
 }
 
 RectF PistonShaftRectAt(const PistonDevice* piston, float piston_time_seconds) {
-    RectF rect = {};
-    if (!piston) {
-        return rect;
-    }
-    PistonPose pose = PistonPoseAt(piston, piston_time_seconds);
-    rect.w = piston->shaft_width;
-    rect.h = pose.extension;
-    rect.x = piston->x + piston->width * 0.5f - piston->shaft_width * 0.5f;
-    rect.y = piston->y + piston->body_height;
-    return rect;
+    return PistonShaftRectForExtension(piston, PistonPoseAt(piston, piston_time_seconds).extension);
 }
 
 RectF PistonPlateRectAt(const PistonDevice* piston, float piston_time_seconds) {
-    RectF rect = {};
-    if (!piston) {
-        return rect;
-    }
-    PistonPose pose = PistonPoseAt(piston, piston_time_seconds);
-    rect.x = piston->x;
-    rect.y = piston->y + piston->body_height + pose.extension;
-    rect.w = piston->width;
-    rect.h = piston->plate_height;
-    return rect;
+    return PistonPlateRectForExtension(piston, PistonPoseAt(piston, piston_time_seconds).extension);
 }
 
+
+float PistonMaxExtensionBeforeRect(const PistonDevice* piston, const RectF* blocker) {
+    if (!piston || !blocker) {
+        return piston ? piston->travel : 0.0f;
+    }
+
+    RectF body = PistonBodyRect(piston);
+    RectF plate = PistonPlateRectForExtension(piston, 0.0f);
+    float dir_x;
+    float dir_y;
+    PistonDirectionVector(piston, &dir_x, &dir_y);
+    float max_extension = piston->travel;
+
+    if (dir_x > 0.0f) {
+        if (plate.y >= blocker->y + blocker->h || plate.y + plate.h <= blocker->y) return max_extension;
+        float blocker_face = blocker->x;
+        float plate_retracted_face = body.x + body.w + piston->plate_height;
+        if (blocker_face >= plate_retracted_face) {
+            max_extension = blocker_face - plate_retracted_face;
+        }
+    } else if (dir_x < 0.0f) {
+        if (plate.y >= blocker->y + blocker->h || plate.y + plate.h <= blocker->y) return max_extension;
+        float blocker_face = blocker->x + blocker->w;
+        float plate_retracted_face = body.x - piston->plate_height;
+        if (blocker_face <= plate_retracted_face) {
+            max_extension = plate_retracted_face - blocker_face;
+        }
+    } else if (dir_y < 0.0f) {
+        if (plate.x >= blocker->x + blocker->w || plate.x + plate.w <= blocker->x) return max_extension;
+        float blocker_face = blocker->y + blocker->h;
+        float plate_retracted_face = body.y - piston->plate_height;
+        if (blocker_face <= plate_retracted_face) {
+            max_extension = plate_retracted_face - blocker_face;
+        }
+    } else {
+        if (plate.x >= blocker->x + blocker->w || plate.x + plate.w <= blocker->x) return max_extension;
+        float blocker_face = blocker->y;
+        float plate_retracted_face = body.y + body.h + piston->plate_height;
+        if (blocker_face >= plate_retracted_face) {
+            max_extension = blocker_face - plate_retracted_face;
+        }
+    }
+
+    return PistonClampF(max_extension, 0.0f, piston->travel);
+}
 RectF PistonTravelDirtyRect(const PistonDevice* piston) {
     RectF rect = {};
     if (!piston) {
         return rect;
     }
-    rect.x = piston->x - 8.0f;
-    rect.y = piston->y - 8.0f;
-    rect.w = piston->width + 16.0f;
-    rect.h = piston->body_height + piston->travel + piston->plate_height + 16.0f;
+    RectF body = PistonBodyRect(piston);
+    RectF retracted_plate = PistonPlateRectAt(piston, 0.0f);
+    float dir_x;
+    float dir_y;
+    PistonDirectionVector(piston, &dir_x, &dir_y);
+
+    rect = body;
+    float x0 = retracted_plate.x < rect.x ? retracted_plate.x : rect.x;
+    float y0 = retracted_plate.y < rect.y ? retracted_plate.y : rect.y;
+    float x1 = retracted_plate.x + retracted_plate.w > rect.x + rect.w ? retracted_plate.x + retracted_plate.w : rect.x + rect.w;
+    float y1 = retracted_plate.y + retracted_plate.h > rect.y + rect.h ? retracted_plate.y + retracted_plate.h : rect.y + rect.h;
+    if (dir_x > 0.0f) {
+        x1 += piston->travel;
+    } else if (dir_x < 0.0f) {
+        x0 -= piston->travel;
+    } else if (dir_y > 0.0f) {
+        y1 += piston->travel;
+    } else if (dir_y < 0.0f) {
+        y0 -= piston->travel;
+    }
+
+    rect.x = x0 - 8.0f;
+    rect.y = y0 - 8.0f;
+    rect.w = x1 - x0 + 16.0f;
+    rect.h = y1 - y0 + 16.0f;
     return rect;
 }
 
 int PistonOverlapsRectAt(const PistonDevice* piston, float piston_time_seconds, const RectF* rect) {
     RectF shaft = PistonShaftRectAt(piston, piston_time_seconds);
-    if (shaft.h > 0.001f && RectsOverlap(&shaft, rect)) {
+    if (shaft.w > 0.001f && shaft.h > 0.001f && RectsOverlap(&shaft, rect)) {
         return 1;
     }
     RectF plate = PistonPlateRectAt(piston, piston_time_seconds);

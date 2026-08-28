@@ -16,6 +16,13 @@ struct SpeakerDevice {
     float height;
 };
 
+enum PistonDirection {
+    PISTON_DOWN,
+    PISTON_UP,
+    PISTON_RIGHT,
+    PISTON_LEFT,
+};
+
 struct PistonDevice {
     float x;
     float y;
@@ -26,6 +33,7 @@ struct PistonDevice {
     float travel;
     float cycle_seconds;
     float phase;
+    PistonDirection direction = PISTON_DOWN;
 };
 
 struct GravityBoxDef {

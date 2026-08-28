@@ -749,11 +749,12 @@ static void DrawSettingsMenu(const StageRenderState* state) {
     SettingsUiDrawMenu(&colors, &tutorial);
 }
 
-static void DrawPistonDevice(const StageRenderState* state, const PistonDevice* piston) {
+static void DrawPistonDevice(const StageRenderState* state, const PistonDevice* piston, int piston_index) {
     RenderContext* render = state->render;
+    float extension = state->piston_effective_extension ? state->piston_effective_extension[piston_index] : PistonPoseAt(piston, state->piston_time_seconds).extension;
     RectF body = PistonBodyRect(piston);
-    RectF shaft = PistonShaftRectAt(piston, state->piston_time_seconds);
-    RectF plate = PistonPlateRectAt(piston, state->piston_time_seconds);
+    RectF shaft = PistonShaftRectForExtension(piston, extension);
+    RectF plate = PistonPlateRectForExtension(piston, extension);
 
     int bx = WorldX(render, body.x);
     int by = WorldY(render, body.y);
@@ -790,7 +791,7 @@ static void DrawPistonDevice(const StageRenderState* state, const PistonDevice* 
 }
 static void DrawRoomPistons(const StageRenderState* state) {
     for (int i = 0; i < state->room->piston_count; ++i) {
-        DrawPistonDevice(state, &state->room->pistons[i]);
+        DrawPistonDevice(state, &state->room->pistons[i], i);
     }
 }
 

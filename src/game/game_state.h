@@ -5,6 +5,7 @@
 #include "player.h"
 
 static constexpr int GAME_MAX_GRAVITY_BOXES = 4;
+static constexpr int GAME_MAX_PISTONS = 16;
 static constexpr int GAME_MAX_PRESSURE_SWITCHES = 8;
 static constexpr int GAME_MAX_PRESSURE_PLATFORMS = 4;
 
@@ -44,6 +45,7 @@ struct GameState {
     float speaker_push_vx;
     float speaker_push_vy;
     float piston_time_seconds;
+    float piston_effective_extension[GAME_MAX_PISTONS];
     RectF gravity_boxes[GAME_MAX_GRAVITY_BOXES];
     float gravity_box_vx[GAME_MAX_GRAVITY_BOXES];
     float gravity_box_vy[GAME_MAX_GRAVITY_BOXES];
