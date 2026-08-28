@@ -20,6 +20,8 @@ struct Player {
     float visual_vy;
     float face_dir;
     float jump_squash_timer;
+    float jump_buffer_timer;
+    float coyote_timer;
     float run_cycle;
     int run_step;
     int grounded;

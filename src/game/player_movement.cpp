@@ -8,6 +8,17 @@ static float MovementClampF(float value, float lo, float hi) {
     return value;
 }
 
+static void MovementTickTimer(float* timer, float dt) {
+    if (*timer <= 0.0f) {
+        *timer = 0.0f;
+        return;
+    }
+    *timer -= dt;
+    if (*timer < 0.0f) {
+        *timer = 0.0f;
+    }
+}
+
 static int PlatformSolidCount(const RoomDef* room) {
     return room->platform_count;
 }
@@ -152,6 +163,7 @@ PlayerMovementResult UpdatePlayerMovement(Player* player,
                                           float dt,
                                           float move,
                                           int jump_pressed,
+                                          int jump_released,
                                           int jump_active,
                                           int gravity_active,
                                           GravityDirection gravity_direction,
@@ -165,6 +177,10 @@ PlayerMovementResult UpdatePlayerMovement(Player* player,
     const float speed = 360.0f;
     const float gravity = 1550.0f;
     const float jump = -675.0f;
+    const float jump_buffer_seconds = 0.12f;
+    const float coyote_seconds = 0.10f;
+    const float jump_cut_multiplier = 0.52f;
+    const float fall_gravity_multiplier = 1.35f;
 
     feedback->type_a_blocked_this_frame = 0;
 
@@ -177,20 +193,44 @@ PlayerMovementResult UpdatePlayerMovement(Player* player,
 
     int was_grounded = player->grounded;
     int jump_started = 0;
+    if (jump_active) {
+        if (jump_pressed) {
+            player->jump_buffer_timer = jump_buffer_seconds;
+        } else {
+            MovementTickTimer(&player->jump_buffer_timer, dt);
+        }
+    } else {
+        player->jump_buffer_timer = 0.0f;
+    }
+    if (player->grounded) {
+        player->coyote_timer = coyote_seconds;
+    } else {
+        MovementTickTimer(&player->coyote_timer, dt);
+    }
+
     float gravity_speed = MovementVelocityOnAxis(player, gravity_x, gravity_y);
     float tangent_speed = move * speed;
     tangent_speed += external_vx * (float)tangent_x + external_vy * (float)tangent_y;
     gravity_speed += external_vx * (float)gravity_x + external_vy * (float)gravity_y;
     if (jump_active &&
-        jump_pressed &&
-        player->grounded) {
+        player->jump_buffer_timer > 0.0f &&
+        player->coyote_timer > 0.0f) {
         gravity_speed = jump;
         player->grounded = 0;
+        player->jump_buffer_timer = 0.0f;
+        player->coyote_timer = 0.0f;
         jump_started = 1;
+    }
+    if (jump_active &&
+        jump_released &&
+        !jump_started &&
+        gravity_speed < 0.0f) {
+        gravity_speed *= jump_cut_multiplier;
     }
 
     if (gravity_active) {
-        gravity_speed += gravity * dt;
+        float gravity_multiplier = gravity_speed > 0.0f ? fall_gravity_multiplier : 1.0f;
+        gravity_speed += gravity * gravity_multiplier * dt;
     }
     gravity_speed = MovementClampF(gravity_speed, -900.0f, 1100.0f);
     float gravity_speed_before_resolve = gravity_speed;
