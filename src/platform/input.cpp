@@ -24,8 +24,8 @@ void InputUpdate() {
     g_input.down[KEY_DOWN] = KeyDown(VK_DOWN);
     g_input.down[KEY_LEFT] = KeyDown(VK_LEFT);
     g_input.down[KEY_RIGHT] = KeyDown(VK_RIGHT);
-    g_input.down[KEY_X] = KeyDown('X');
-    g_input.down[KEY_Z] = KeyDown('Z');
+    g_input.down[KEY_X] = KeyDown('Z');
+    g_input.down[KEY_Z] = KeyDown('X');
     g_input.down[KEY_ESCAPE] = KeyDown(VK_ESCAPE);
     g_input.down[KEY_F11] = KeyDown(VK_F11);
     g_input.down[KEY_R] = KeyDown('R');

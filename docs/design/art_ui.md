@@ -108,7 +108,7 @@ BRICK COLLISION이 OFF일 때도 ON 상태의 OFFSET BRICK 기본 좌표와 40x4
 튜토리얼 강조:
 
 - Cyan `#35CFC3`는 튜토리얼 타겟 전용 색이 아니라 현재 포커스 색이다.
-- ROOM 01에서 BRICK에 막힌 뒤 `X` 힌트가 나오고, SETTINGS 내부에서는 `시스템` CATEGORY와 `BRICK 충돌` SETTING을 순서대로 강조한다.
+- ROOM 01에서 BRICK에 막힌 뒤 `Z` 힌트가 나오고, SETTINGS 내부에서는 `시스템` CATEGORY와 `BRICK 충돌` SETTING을 순서대로 강조한다.
 - 튜토리얼 유도는 대상 텍스트의 작은 pulse를 사용한다. 별도 underline은 사용하지 않는다. 이 효과는 포커스가 CATEGORY/SETTING 어디에 있든 `BRICK 충돌`을 OFF로 만들어 튜토리얼이 완료될 때까지 유지한다.
 
 남은 확인:

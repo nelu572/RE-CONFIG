@@ -7,7 +7,7 @@
 
 enum TutorialStep {
     TUTOR_NONE,
-    TUTOR_ROOM01_X,
+    TUTOR_ROOM01_SETTINGS_KEY,
     TUTOR_SETTINGS_CATEGORY,
     TUTOR_SETTINGS_ITEM,
     TUTOR_DONE
@@ -84,7 +84,7 @@ static RectI TutorialClampRect(RectI rect) {
 }
 
 static int TutorialWorldHintTargetVisible(int current_room) {
-    return g_tutorial_step == TUTOR_ROOM01_X && !SettingsUiIsOpen() && current_room == 1;
+    return g_tutorial_step == TUTOR_ROOM01_SETTINGS_KEY && !SettingsUiIsOpen() && current_room == 1;
 }
 
 void TutorialUiResetStageState() {
@@ -109,10 +109,10 @@ void TutorialUiUpdate(float dt, int current_room, int type_a_active, int type_a_
         g_tutorial_step = TUTOR_DONE;
     } else if (current_room == 1 && type_a_active && !SettingsUiIsOpen()) {
         if (type_a_blocked_this_frame && g_tutorial_step == TUTOR_NONE) {
-            g_tutorial_step = TUTOR_ROOM01_X;
+            g_tutorial_step = TUTOR_ROOM01_SETTINGS_KEY;
         }
     } else if (SettingsUiIsOpen()) {
-        if (g_tutorial_step == TUTOR_ROOM01_X) {
+        if (g_tutorial_step == TUTOR_ROOM01_SETTINGS_KEY) {
             g_tutorial_step = TUTOR_SETTINGS_CATEGORY;
             SettingsUiMarkDirty();
         }
@@ -197,13 +197,9 @@ void TutorialUiDrawWorldHint(RenderContext* render, const RoomDef* room, const P
     DrawRect(render, x + w - 9, y + 6, 3, 32, frame);
     DrawRect(render, x + w - 21, y + 6, 15, 3, frame);
     DrawRect(render, x + w - 21, y + 35, 15, 3, frame);
-    uint32_t x_color = TutorialFadeColor(COL_TUTORIAL_CYAN, pulse_alpha);
-    int cx = x + w / 2;
-    int cy = y + 22;
-    int x_half_w = 7 + pulse_px;
-    int x_half_h = 9 + pulse_px;
-    DrawThickLine(render, cx - x_half_w, cy - x_half_h, cx + x_half_w, cy + x_half_h, 3, x_color);
-    DrawThickLine(render, cx + x_half_w, cy - x_half_h, cx - x_half_w, cy + x_half_h, 3, x_color);
+    uint32_t key_color = TutorialFadeColor(COL_TUTORIAL_CYAN, pulse_alpha);
+    int key_x = x + w / 2 - 10;
+    DrawTextUi(key_x, y + 2, L"Z", 30, key_color, 1);
 }
 
 SettingsUiTutorialState TutorialUiSettingsState() {

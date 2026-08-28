@@ -138,6 +138,7 @@ static AppState g_app_transition_target_state = APP_STATE_MAIN_MENU;
 static int g_app_transition_pending = 0;
 static int g_app_transition_target_room = 0;
 static int g_stage_select_entry_from_room = -1;
+static int g_last_played_room = START_ROOM_INDEX;
 static float g_app_transition_amount = 0.0f;
 static float g_app_transition_hold_seconds = 0.0f;
 static constexpr float APP_TRANSITION_HOLD_SECONDS = 0.09f;
@@ -351,6 +352,7 @@ static void EnterStageNow(int room_index) {
     SettingsUiClose();
     PauseMenuClose(&g_pause_menu);
     g_game.current_room = ClampRoomIndex(room_index);
+    g_last_played_room = g_game.current_room;
     g_app_state = APP_STATE_GAME;
     ResetStage();
 }
@@ -368,6 +370,7 @@ static void DebugResetDataAndEnterMainMenu() {
     g_app_transition_last_seconds = 0.0;
 
     g_game.current_room = START_ROOM_INDEX;
+    g_last_played_room = g_game.current_room;
     ResetStage();
     EnterMainMenuNow();
 }
@@ -393,6 +396,9 @@ static void StartAppTransition(AppState target_state, int room_index) {
 
     SettingsUiClose();
     AudioPlayTransition(SettingsUiSfxVolume());
+    if (target_state == APP_STATE_MAIN_MENU) {
+        g_last_played_room = target_room;
+    }
     g_app_transition_target_state = target_state;
     g_app_transition_target_room = target_room;
     g_app_transition_pending = 1;
@@ -596,14 +602,14 @@ static void DrawCornerHintSegment(int key_x, int label_x, int y, const wchar_t* 
 static void DrawMainMenuControlHints() {
     const int y = FB_H - 42;
     DrawCornerHintSegment(FB_W - 276, FB_W - 226, y, L"↑↓", L"이동");
-    DrawCornerHintSegment(FB_W - 136, FB_W - 108, y, L"Z", L"선택");
+    DrawCornerHintSegment(FB_W - 136, FB_W - 108, y, L"X", L"선택");
 }
 
 static void DrawStageSelectControlHints() {
     const int y = FB_H - 42;
     DrawCornerHintSegment(FB_W - 418, FB_W - 368, y, L"←→", L"이동");
-    DrawCornerHintSegment(FB_W - 274, FB_W - 246, y, L"Z", L"진입");
-    DrawCornerHintSegment(FB_W - 152, FB_W - 124, y, L"X", L"뒤로");
+    DrawCornerHintSegment(FB_W - 274, FB_W - 246, y, L"X", L"진입");
+    DrawCornerHintSegment(FB_W - 152, FB_W - 124, y, L"Z", L"뒤로");
 }
 
 static StageCacheState CurrentStageCacheState() {
@@ -659,10 +665,13 @@ static int StageSelectPreviousStagesCleared(int stage_index) {
 }
 
 static int StageSelectStageUnlocked(int stage_index) {
-    if (stage_index == START_ROOM_INDEX) {
-        return StageSelectStageImplemented(stage_index);
-    }
-    return StageSelectStageImplemented(stage_index) && StageSelectPreviousStagesCleared(stage_index);
+    // Developer build: keep every implemented stage open while iterating on room order.
+    return StageSelectStageImplemented(stage_index);
+
+    // if (stage_index == START_ROOM_INDEX) {
+    //     return StageSelectStageImplemented(stage_index);
+    // }
+    // return StageSelectStageImplemented(stage_index) && StageSelectPreviousStagesCleared(stage_index);
 }
 
 static int StageSelectStageSelectable(int stage_index) {
@@ -1204,6 +1213,7 @@ extern "C" void WinMainCRTStartup() {
     g_game.camera.x = 0.0f;
     g_game.camera.y = 0.0f;
     g_game.current_room = START_ROOM_INDEX;
+    g_last_played_room = g_game.current_room;
     ResetStage();
     SettingsUiColors settings_colors = CurrentSettingsColors();
     SettingsUiBuildMenuCache(&settings_colors);
@@ -1295,7 +1305,7 @@ extern "C" void WinMainCRTStartup() {
             if (!AppTransitionActive()) {
                 MainMenuUpdate(&g_main_menu);
                 if (g_main_menu.action == MAIN_MENU_ACTION_START) {
-                    StartAppTransition(APP_STATE_STAGE_SELECT, START_ROOM_INDEX);
+                    StartAppTransition(APP_STATE_STAGE_SELECT, g_last_played_room);
                 }
                 if (g_main_menu.action == MAIN_MENU_ACTION_EXIT) {
                     g_running = 0;
