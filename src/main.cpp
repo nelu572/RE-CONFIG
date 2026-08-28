@@ -74,10 +74,14 @@ static float g_stage_select_player_visual_sx = 1.0f;
 static float g_stage_select_player_visual_sy = 1.0f;
 static double g_stage_select_last_seconds = 0.0;
 static int g_stage_select_cleared[STAGE_SELECT_DISPLAY_COUNT];
+static int g_last_played_room = START_ROOM_INDEX;
 
 static constexpr unsigned int STAGE_PROGRESS_MAGIC = 0x31535652u;
-static constexpr unsigned int STAGE_PROGRESS_VERSION = 2u;
-static constexpr int STAGE_PROGRESS_DATA_SIZE = 8 + STAGE_SELECT_DISPLAY_COUNT;
+static constexpr unsigned int STAGE_PROGRESS_VERSION = 3u;
+static constexpr unsigned int STAGE_PROGRESS_CLEARS_ONLY_VERSION = 2u;
+static constexpr int STAGE_PROGRESS_V2_DATA_SIZE = 8 + STAGE_SELECT_DISPLAY_COUNT;
+static constexpr int STAGE_PROGRESS_CLEARED_OFFSET = 12;
+static constexpr int STAGE_PROGRESS_DATA_SIZE = STAGE_PROGRESS_CLEARED_OFFSET + STAGE_SELECT_DISPLAY_COUNT;
 
 static void StageProgressWriteU32(unsigned char* data, int offset, unsigned int value) {
     data[offset + 0] = (unsigned char)(value & 255u);
@@ -93,12 +97,46 @@ static unsigned int StageProgressReadU32(const unsigned char* data, int offset) 
            ((unsigned int)data[offset + 3] << 24);
 }
 
+static int StageProgressClampRoomIndex(int room_index) {
+    int room_count = DevelopedRoomCount();
+    if (room_count <= 0) {
+        return 0;
+    }
+    if (room_index < 0) {
+        return 0;
+    }
+    if (room_index >= room_count) {
+        return room_count - 1;
+    }
+    return room_index;
+}
+
+static int StageProgressRoomAfterHighestCleared() {
+    int highest_cleared = -1;
+    int room_count = DevelopedRoomCount();
+    int count = room_count < STAGE_SELECT_DISPLAY_COUNT ? room_count : STAGE_SELECT_DISPLAY_COUNT;
+    for (int i = 0; i < count; ++i) {
+        if (g_stage_select_cleared[i]) {
+            highest_cleared = i;
+        }
+    }
+    if (highest_cleared < 0) {
+        return START_ROOM_INDEX;
+    }
+    return StageProgressClampRoomIndex(highest_cleared + 1);
+}
+
 static void StageProgressSave() {
     unsigned char data[STAGE_PROGRESS_DATA_SIZE];
+    for (int i = 0; i < STAGE_PROGRESS_DATA_SIZE; ++i) {
+        data[i] = 0;
+    }
+
     StageProgressWriteU32(data, 0, STAGE_PROGRESS_MAGIC);
     StageProgressWriteU32(data, 4, STAGE_PROGRESS_VERSION);
+    StageProgressWriteU32(data, 8, (unsigned int)StageProgressClampRoomIndex(g_last_played_room));
     for (int i = 0; i < (int)(sizeof(g_stage_select_cleared) / sizeof(g_stage_select_cleared[0])); ++i) {
-        data[8 + i] = g_stage_select_cleared[i] ? 1 : 0;
+        data[STAGE_PROGRESS_CLEARED_OFFSET + i] = g_stage_select_cleared[i] ? 1 : 0;
     }
 
     HANDLE file = CreateFileA("save.dat", GENERIC_WRITE, 0, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
@@ -112,19 +150,42 @@ static void StageProgressSave() {
 
 static void StageProgressLoad() {
     unsigned char data[STAGE_PROGRESS_DATA_SIZE];
+    for (int i = 0; i < STAGE_PROGRESS_DATA_SIZE; ++i) {
+        data[i] = 0;
+    }
+
     HANDLE file = CreateFileA("save.dat", GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
     if (file == INVALID_HANDLE_VALUE) {
         return;
     }
     DWORD read = 0;
-    int ok = ReadFile(file, data, (DWORD)sizeof(data), &read, 0) && read == (DWORD)sizeof(data);
+    int ok = ReadFile(file, data, (DWORD)sizeof(data), &read, 0);
     CloseHandle(file);
-    if (!ok || StageProgressReadU32(data, 0) != STAGE_PROGRESS_MAGIC || StageProgressReadU32(data, 4) != STAGE_PROGRESS_VERSION) {
+    if (!ok || read < 8 || StageProgressReadU32(data, 0) != STAGE_PROGRESS_MAGIC) {
+        return;
+    }
+
+    unsigned int version = StageProgressReadU32(data, 4);
+    int cleared_offset = 8;
+    if (version == STAGE_PROGRESS_VERSION) {
+        if (read < STAGE_PROGRESS_DATA_SIZE) {
+            return;
+        }
+        g_last_played_room = StageProgressClampRoomIndex((int)StageProgressReadU32(data, 8));
+        cleared_offset = STAGE_PROGRESS_CLEARED_OFFSET;
+    } else if (version == STAGE_PROGRESS_CLEARS_ONLY_VERSION) {
+        if (read < STAGE_PROGRESS_V2_DATA_SIZE) {
+            return;
+        }
+    } else {
         return;
     }
 
     for (int i = 0; i < (int)(sizeof(g_stage_select_cleared) / sizeof(g_stage_select_cleared[0])); ++i) {
-        g_stage_select_cleared[i] = data[8 + i] ? 1 : 0;
+        g_stage_select_cleared[i] = data[cleared_offset + i] ? 1 : 0;
+    }
+    if (version == STAGE_PROGRESS_CLEARS_ONLY_VERSION) {
+        g_last_played_room = StageProgressRoomAfterHighestCleared();
     }
 }
 enum AppState {
@@ -138,7 +199,6 @@ static AppState g_app_transition_target_state = APP_STATE_MAIN_MENU;
 static int g_app_transition_pending = 0;
 static int g_app_transition_target_room = 0;
 static int g_stage_select_entry_from_room = -1;
-static int g_last_played_room = START_ROOM_INDEX;
 static float g_app_transition_amount = 0.0f;
 static float g_app_transition_hold_seconds = 0.0f;
 static constexpr float APP_TRANSITION_HOLD_SECONDS = 0.09f;
@@ -353,6 +413,7 @@ static void EnterStageNow(int room_index) {
     PauseMenuClose(&g_pause_menu);
     g_game.current_room = ClampRoomIndex(room_index);
     g_last_played_room = g_game.current_room;
+    StageProgressSave();
     g_app_state = APP_STATE_GAME;
     ResetStage();
 }
@@ -360,6 +421,7 @@ static void EnterStageNow(int room_index) {
 static void DebugResetDataAndEnterMainMenu() {
     PauseMenuClose(&g_pause_menu);
     ClearBytes(g_stage_select_cleared, sizeof(g_stage_select_cleared));
+    g_last_played_room = START_ROOM_INDEX;
     StageProgressSave();
 
     g_app_transition_target_state = APP_STATE_MAIN_MENU;
@@ -398,6 +460,7 @@ static void StartAppTransition(AppState target_state, int room_index) {
     AudioPlayTransition(SettingsUiSfxVolume());
     if (target_state == APP_STATE_MAIN_MENU) {
         g_last_played_room = target_room;
+        StageProgressSave();
     }
     g_app_transition_target_state = target_state;
     g_app_transition_target_room = target_room;
@@ -438,6 +501,15 @@ static void DrawAppTransition() {
     ExitSequenceDrawTransitionAmount(&g_render, g_app_transition_amount);
 }
 
+static void StageProgressSaveCurrentPlace() {
+    if (g_app_state == APP_STATE_GAME) {
+        g_last_played_room = g_game.current_room;
+    } else if (g_app_state == APP_STATE_STAGE_SELECT) {
+        g_last_played_room = g_stage_select_index;
+    }
+    StageProgressSave();
+}
+
 static void UpdateStage(float dt) {
     GameUpdateStage(&g_game, dt, !g_perf_config.disable_static_cache);
     PlayGameAudioEvents(g_game.audio_events);
@@ -447,13 +519,14 @@ static void UpdateStage(float dt) {
         int cleared_room = g_game.cleared_room_this_frame;
         if (!g_stage_select_cleared[g_game.cleared_room_this_frame]) {
             g_stage_select_cleared[g_game.cleared_room_this_frame] = 1;
-            StageProgressSave();
         }
         g_game.cleared_room_this_frame = -1;
         int next_room = cleared_room + 1;
         if (next_room >= DevelopedRoomCount()) {
             next_room = cleared_room;
         }
+        g_last_played_room = next_room;
+        StageProgressSave();
         g_stage_select_entry_from_room = next_room == cleared_room ? -1 : cleared_room;
         StartAppTransition(APP_STATE_STAGE_SELECT, next_room);
     }
@@ -1030,6 +1103,8 @@ static void UpdateStageSelect() {
         ++g_stage_select_index;
     }
     if (g_stage_select_index != previous_index) {
+        g_last_played_room = g_stage_select_index;
+        StageProgressSave();
         StageSelectBeginMoveTo(g_stage_select_index);
         return;
     }
@@ -1159,6 +1234,7 @@ static LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wparam, LPA
             return 1;
         case WM_CLOSE:
         case WM_DESTROY:
+            StageProgressSaveCurrentPlace();
             g_running = 0;
             PostQuitMessage(0);
             return 0;
@@ -1214,7 +1290,7 @@ extern "C" void WinMainCRTStartup() {
 
     g_game.camera.x = 0.0f;
     g_game.camera.y = 0.0f;
-    g_game.current_room = START_ROOM_INDEX;
+    g_game.current_room = StageProgressClampRoomIndex(g_last_played_room);
     g_last_played_room = g_game.current_room;
     ResetStage();
     SettingsUiColors settings_colors = CurrentSettingsColors();

@@ -811,13 +811,14 @@ static void DrawPressureSwitchDevice(const StageRenderState* state, const Pressu
         int cap_h = StageMaxI(14, h * 7 / 16);
         int cap_w = w;
         int cap_x = x;
-        int cap_y = y + h - travel - cap_h;
+        int cap_y = y + travel;
         int stem_w = StageMaxI(8, w / 8);
         int stem_x = x + (w - stem_w) / 2;
-        int stem_y = y + mount_h - 1;
-        int stem_h = StageMaxI(5, cap_y - stem_y + 3);
+        int mount_y = y + h - mount_h;
+        int stem_y = cap_y + cap_h - 3;
+        int stem_h = StageMaxI(5, mount_y - stem_y + 3);
 
-        DrawRect(render, x, y, w, mount_h, mount_color);
+        DrawRect(render, x, mount_y, w, mount_h, mount_color);
         DrawRect(render, stem_x, stem_y, stem_w, stem_h, stem_color);
         DrawRect(render, cap_x, cap_y, cap_w, cap_h, press_shadow);
         DrawRect(render, cap_x + 2, cap_y + 2, StageMaxI(2, cap_w - 4), StageMaxI(2, cap_h - 4), press);

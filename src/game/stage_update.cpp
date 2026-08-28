@@ -199,7 +199,9 @@ static RectF GamePressureSwitchSolidAt(const GameState* state, int switch_index)
     float anim = GameClampF(state->pressure_switch_anim[switch_index], 0.0f, 1.0f);
     float travel = anim * 6.0f;
     if (rect.w >= rect.h) {
-        rect.h = GameClampF(rect.h - travel, 4.0f, rect.h);
+        float next_h = GameClampF(rect.h - travel, 4.0f, rect.h);
+        rect.y += rect.h - next_h;
+        rect.h = next_h;
     } else {
         float side_travel = GameClampF(rect.w * 0.20f, 4.0f, 10.0f) + 2.0f;
         side_travel = GameClampF(side_travel, 0.0f, rect.w - 4.0f);
@@ -877,8 +879,8 @@ static int GamePressureSwitchTouchedByRect(const PressureSwitchDevice* sw, const
     if (sw->rect.w >= sw->rect.h) {
         probe.x += side_inset;
         probe.w -= side_inset * 2.0f;
-        probe.y = sw->rect.y + sw->rect.h;
-        probe.h = contact_margin;
+        probe.y = sw->rect.y - contact_margin;
+        probe.h = contact_margin * 2.0f;
     } else {
         float side_travel = GameClampF(sw->rect.w * 0.20f, 4.0f, 10.0f) + 2.0f;
         side_travel = GameClampF(side_travel, 0.0f, sw->rect.w - 4.0f);
