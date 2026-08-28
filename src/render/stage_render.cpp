@@ -822,16 +822,25 @@ static void DrawPressureSwitchDevice(const StageRenderState* state, const Pressu
         DrawRect(render, cap_x, cap_y, cap_w, cap_h, press_shadow);
         DrawRect(render, cap_x + 2, cap_y + 2, StageMaxI(2, cap_w - 4), StageMaxI(2, cap_h - 4), press);
     } else {
-        int cap_x = x + 2;
+        int max_travel = StageMaxI(4, StageMinI(10, w / 5));
+        int cap_w = StageMaxI(10, w * 3 / 10);
+        int mount_w = StageMaxI(7, w / 5);
+        int side_travel = (int)(anim * (float)max_travel + 0.5f);
+        int cap_x = x + 2 + side_travel;
         int cap_y = y + 8;
-        int cap_w = StageMaxI(6, w / 2 - travel);
         int cap_h = StageMaxI(10, h - 16);
+        int mount_x = x + 2 + max_travel + cap_w;
         int connector_x = cap_x + cap_w;
-        int connector_y = y + 4;
-        int connector_w = StageMaxI(5, w - cap_w - 3);
-        int connector_h = StageMaxI(12, h - 8);
+        int connector_w = mount_x - connector_x;
+        int connector_h = StageMaxI(5, h / 12);
+        int connector_y = y + h / 2 - connector_h / 2;
+        int mount_y = y + 5;
+        int mount_h = StageMaxI(12, h - 10);
 
-        DrawRect(render, connector_x, connector_y, connector_w, connector_h, stem_color);
+        DrawRect(render, mount_x, mount_y, mount_w, mount_h, mount_color);
+        if (connector_w > 0) {
+            DrawRect(render, connector_x, connector_y, connector_w, connector_h, stem_color);
+        }
         DrawRect(render, cap_x, cap_y, cap_w, cap_h, press_shadow);
         DrawRect(render, cap_x + 2, cap_y + 3, StageMaxI(2, cap_w - 4), StageMaxI(2, cap_h - 6), press);
     }

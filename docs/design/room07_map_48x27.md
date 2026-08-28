@@ -23,7 +23,7 @@ ROOM 07은 스피커, 박스, 스위치를 조합하는 첫 방이다. 박스를
 - P : 플레이어 시작 위치
 - B : 중력 영향을 받는 박스 시작 영역
 - K : 스피커 본체 영역
-- T : 박스 전용 측면 스위치
+- T : 측면 스위치
 - H : 스위치 작동 시 가로로 열리는 플랫폼 / 문
 - V : 스위치 작동 시 세로로 열리는 플랫폼 / 문
 - E : EXIT 배치 예약 영역
@@ -80,7 +80,7 @@ ROOM 07은 스피커, 박스, 스위치를 조합하는 첫 방이다. 박스를
 - P, B, K, T, H, V, E는 플랫폼이 아니라 오브젝트 배치 마커로 처리한다.
 - K는 SpeakerDevice로 만든다.
 - B는 GravityBoxDef로 만든다.
-- T는 PressureSwitchDevice로 만든다.
+- T는 PressureSwitchDevice로 만들고 기본적으로 PRESSURE_SWITCH_ANY를 사용한다. 단, 방 설계상 필요한 경우 예외 activator를 사용할 수 있다.
 - H와 V는 모두 PressurePlatformDevice로 만들고, H는 open_offset_x, V는 open_offset_y를 사용한다.
 - H와 V의 열림 거리는 이동 방향의 마커 길이와 같게 둔다.
 - E는 RoomDef.exit로 만든다.

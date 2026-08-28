@@ -201,7 +201,10 @@ static RectF GamePressureSwitchSolidAt(const GameState* state, int switch_index)
     if (rect.w >= rect.h) {
         rect.h = GameClampF(rect.h - travel, 4.0f, rect.h);
     } else {
-        rect.w = GameClampF(rect.w - travel, 4.0f, rect.w);
+        float side_travel = GameClampF(rect.w * 0.20f, 4.0f, 10.0f) + 2.0f;
+        side_travel = GameClampF(side_travel, 0.0f, rect.w - 4.0f);
+        rect.x += side_travel;
+        rect.w = GameClampF(rect.w - side_travel, 4.0f, rect.w);
     }
     return rect;
 }
@@ -816,16 +819,19 @@ static void GamePushGravityBoxByPlayer(GameState* state, int box_index, const Re
     RectF before = state->gravity_boxes[box_index];
     if (axis_x != 0) {
         state->gravity_boxes[box_index].x += amount;
-        state->gravity_box_vx[box_index] = 0.0f;
+        state->gravity_box_vx[box_index] = amount;
     } else if (axis_y != 0) {
         state->gravity_boxes[box_index].y += amount;
-        state->gravity_box_vy[box_index] = 0.0f;
+        state->gravity_box_vy[box_index] = amount;
     }
 
     int gravity_x;
     int gravity_y;
     GameGravityVector(state->gravity_direction, &gravity_x, &gravity_y);
     GameResolveGravityBoxAxis(state, box_index, dynamic_solids, dynamic_solid_count, 0, axis_x, axis_y, gravity_x, gravity_y);
+
+    if (axis_x != 0) state->gravity_box_vx[box_index] = 0.0f;
+    if (axis_y != 0) state->gravity_box_vy[box_index] = 0.0f;
 
     RectF* box = &state->gravity_boxes[box_index];
     float moved = axis_x != 0 ? box->x - before.x : box->y - before.y;
@@ -874,7 +880,9 @@ static int GamePressureSwitchTouchedByRect(const PressureSwitchDevice* sw, const
         probe.y = sw->rect.y + sw->rect.h;
         probe.h = contact_margin;
     } else {
-        probe.x = sw->rect.x - contact_margin;
+        float side_travel = GameClampF(sw->rect.w * 0.20f, 4.0f, 10.0f) + 2.0f;
+        side_travel = GameClampF(side_travel, 0.0f, sw->rect.w - 4.0f);
+        probe.x = sw->rect.x + side_travel - contact_margin;
         probe.w = contact_margin;
         probe.y += side_inset;
         probe.h -= side_inset * 2.0f;

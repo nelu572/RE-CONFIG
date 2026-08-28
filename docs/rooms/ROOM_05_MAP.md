@@ -5,7 +5,7 @@
 이 파일은 ROOM 05의 현재 코드 맵을 문서로 옮긴 48x27 타일맵 초안이다.
 사용자가 이 맵을 수정하면, 이후 src/game/rooms/room05.cpp를 이 타일맵 기준으로 반영한다.
 
-ROOM 05는 박스와 박스 전용 측면 스위치를 학습하는 방이다. 플레이어가 박스를 오른쪽으로 밀어 스위치를 누르면 EXIT 앞의 세로 문이 열린다.
+ROOM 05는 박스와 측면 스위치의 상호작용을 학습하는 방이다. 플레이어가 박스를 오른쪽으로 밀어 스위치를 누르면 EXIT 앞의 세로 문이 열린다.
 
 ## 맵 규격
 
@@ -22,14 +22,14 @@ ROOM 05는 박스와 박스 전용 측면 스위치를 학습하는 방이다. �
 - . : 플레이 가능한 빈 공간
 - P : 플레이어 시작 위치
 - B : 중력 영향을 받는 박스 시작 영역
-- T : 박스 전용 측면 스위치
+- T : 측면 스위치
 - V : 스위치 작동 시 세로로 열리는 플랫폼 / 문
 - E : EXIT 배치 예약 영역
 
 ## 필요한 오브젝트별 표기 방식
 
 B는 현재 코드의 GravityBoxDef 시작 영역이다.
-T는 현재 코드의 PressureSwitchDevice이며, PRESSURE_SWITCH_BOX로 설정되어 있다.
+T는 현재 코드의 PressureSwitchDevice이며, 기본적으로 모든 물리 오브젝트가 누를 수 있는 PRESSURE_SWITCH_ANY로 설정되어 있다. 단, 방 설계에 따라 예외 activator를 사용할 수 있다. ROOM 05에서는 플레이어도 순간적으로 누를 수 있지만 문을 유지해 EXIT까지 가려면 B 박스가 필요하다.
 V는 현재 코드의 PressurePlatformDevice이며, open_offset_y = -T(3)를 사용한다.
 
 ## 48 x 27 타일맵
@@ -75,7 +75,7 @@ V는 현재 코드의 PressurePlatformDevice이며, open_offset_y = -T(3)를 사
 - 연속된 #는 가능한 한 큰 RectF 플랫폼으로 병합한다.
 - P, B, T, V, E는 플랫폼이 아니라 오브젝트 배치 마커로 처리한다.
 - B는 GravityBoxDef로 만든다.
-- T는 PressureSwitchDevice로 만든다.
+- T는 PressureSwitchDevice로 만들고 PRESSURE_SWITCH_ANY를 사용한다.
 - V는 PressurePlatformDevice로 만들고 open_offset_y를 사용한다.
 - V의 열림 거리는 현재 코드처럼 3T다.
 - E는 RoomDef.exit로 만든다.

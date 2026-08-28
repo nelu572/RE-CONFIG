@@ -36,7 +36,7 @@ static const GravityBoxDef g_room06_gravity_boxes[] = {
 };
 
 static const PressureSwitchDevice g_room06_pressure_switches[] = {
-    { { T(32), T(3), T(1), T(2) }, PRESSURE_SWITCH_BOX },
+    { { T(32), T(3), T(1), T(2) }, PRESSURE_SWITCH_ANY },
 };
 
 static const PressurePlatformDevice g_room06_pressure_platforms[] = {
