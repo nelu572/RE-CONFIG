@@ -181,50 +181,6 @@ RectF PistonPlateRectAt(const PistonDevice* piston, float piston_time_seconds) {
 }
 
 
-float PistonMaxExtensionBeforeRect(const PistonDevice* piston, const RectF* blocker) {
-    if (!piston || !blocker) {
-        return piston ? piston->travel : 0.0f;
-    }
-
-    RectF body = PistonBodyRect(piston);
-    RectF plate = PistonPlateRectForExtension(piston, 0.0f);
-    float dir_x;
-    float dir_y;
-    PistonDirectionVector(piston, &dir_x, &dir_y);
-    float max_extension = piston->travel;
-
-    if (dir_x > 0.0f) {
-        if (plate.y >= blocker->y + blocker->h || plate.y + plate.h <= blocker->y) return max_extension;
-        float blocker_face = blocker->x;
-        float plate_retracted_face = body.x + body.w + piston->plate_height;
-        if (blocker_face >= plate_retracted_face) {
-            max_extension = blocker_face - plate_retracted_face;
-        }
-    } else if (dir_x < 0.0f) {
-        if (plate.y >= blocker->y + blocker->h || plate.y + plate.h <= blocker->y) return max_extension;
-        float blocker_face = blocker->x + blocker->w;
-        float plate_retracted_face = body.x - piston->plate_height;
-        if (blocker_face <= plate_retracted_face) {
-            max_extension = plate_retracted_face - blocker_face;
-        }
-    } else if (dir_y < 0.0f) {
-        if (plate.x >= blocker->x + blocker->w || plate.x + plate.w <= blocker->x) return max_extension;
-        float blocker_face = blocker->y + blocker->h;
-        float plate_retracted_face = body.y - piston->plate_height;
-        if (blocker_face <= plate_retracted_face) {
-            max_extension = plate_retracted_face - blocker_face;
-        }
-    } else {
-        if (plate.x >= blocker->x + blocker->w || plate.x + plate.w <= blocker->x) return max_extension;
-        float blocker_face = blocker->y;
-        float plate_retracted_face = body.y + body.h + piston->plate_height;
-        if (blocker_face >= plate_retracted_face) {
-            max_extension = blocker_face - plate_retracted_face;
-        }
-    }
-
-    return PistonClampF(max_extension, 0.0f, piston->travel);
-}
 RectF PistonTravelDirtyRect(const PistonDevice* piston) {
     RectF rect = {};
     if (!piston) {

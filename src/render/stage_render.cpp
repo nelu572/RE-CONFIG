@@ -774,19 +774,41 @@ static void DrawPistonDevice(const StageRenderState* state, const PistonDevice* 
     uint32_t light_color = StageLerpColor(state->platform_color, state->text_dim_color, 0.22f);
     uint32_t plate_color = StageLerpColor(state->platform_color, state->text_color, 0.10f);
 
+    int horizontal_piston = piston->direction == PISTON_LEFT || piston->direction == PISTON_RIGHT;
+
     DrawRect(render, bx, by, bw, bh, body_color);
-    DrawRect(render, bx, by + bh - 7, bw, 7, dark_color);
-    DrawRect(render, bx + 8, by + 8, bw - 16, 5, light_color);
+    if (horizontal_piston) {
+        DrawRect(render, bx, by, 7, bh, dark_color);
+        DrawRect(render, bx + 8, by + 10, 5, bh - 20, light_color);
+    } else {
+        DrawRect(render, bx, by + bh - 7, bw, 7, dark_color);
+        DrawRect(render, bx + 8, by + 8, bw - 16, 5, light_color);
+    }
     DrawRectOutline(render, bx, by, bw, bh, dark_color);
 
     if (sh > 0) {
         DrawRect(render, sx, sy, sw, sh, dark_color);
-        DrawRect(render, sx + sw / 2 - 2, sy, 4, sh, body_color);
+        if (horizontal_piston) {
+            DrawRect(render, sx, sy + sh / 2 - 2, sw, 4, body_color);
+        } else {
+            DrawRect(render, sx + sw / 2 - 2, sy, 4, sh, body_color);
+        }
     }
 
     DrawRect(render, px, py, pw, ph, plate_color);
-    DrawRect(render, px, py + ph - 9, pw, 9, dark_color);
-    DrawRect(render, px + 10, py + 8, pw - 20, 4, light_color);
+    if (piston->direction == PISTON_LEFT) {
+        DrawRect(render, px, py, 9, ph, dark_color);
+        DrawRect(render, px + 8, py + 10, 4, ph - 20, light_color);
+    } else if (piston->direction == PISTON_RIGHT) {
+        DrawRect(render, px + pw - 9, py, 9, ph, dark_color);
+        DrawRect(render, px + pw - 12, py + 10, 4, ph - 20, light_color);
+    } else if (piston->direction == PISTON_UP) {
+        DrawRect(render, px, py, pw, 9, dark_color);
+        DrawRect(render, px + 10, py + 8, pw - 20, 4, light_color);
+    } else {
+        DrawRect(render, px, py + ph - 9, pw, 9, dark_color);
+        DrawRect(render, px + 10, py + 8, pw - 20, 4, light_color);
+    }
     DrawRectOutline(render, px, py, pw, ph, dark_color);
 }
 static void DrawRoomPistons(const StageRenderState* state) {

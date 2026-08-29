@@ -50,6 +50,7 @@ struct GameState {
     float gravity_box_vx[GAME_MAX_GRAVITY_BOXES];
     float gravity_box_vy[GAME_MAX_GRAVITY_BOXES];
     int gravity_box_grounded[GAME_MAX_GRAVITY_BOXES];
+    int gravity_box_piston_driven[GAME_MAX_GRAVITY_BOXES];
     int pressure_switch_pressed[GAME_MAX_PRESSURE_SWITCHES];
     float pressure_switch_anim[GAME_MAX_PRESSURE_SWITCHES];
     float pressure_platform_open_amount[GAME_MAX_PRESSURE_PLATFORMS];
