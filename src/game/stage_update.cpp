@@ -1530,7 +1530,6 @@ static GameSpeakerPushVelocity GameComputeSpeakerPushVelocityForRect(const GameS
 struct GameControlInput {
     float move;
     int jump_pressed;
-    int jump_released;
 };
 
 static void GameApplyResolvedPlayerRect(GameState* state, const RectF* rect, int axis_x, int axis_y) {
@@ -1652,28 +1651,23 @@ static GameControlInput GameReadControlInput(GravityDirection gravity_direction)
     GameControlInput input;
     input.move = 0.0f;
     input.jump_pressed = 0;
-    input.jump_released = 0;
 
     if (gravity_direction == GRAVITY_LEFT) {
         if (InputIsDown(KEY_UP)) input.move -= 1.0f;
         if (InputIsDown(KEY_DOWN)) input.move += 1.0f;
         input.jump_pressed = InputWasPressed(KEY_RIGHT);
-        input.jump_released = InputWasReleased(KEY_RIGHT);
     } else if (gravity_direction == GRAVITY_RIGHT) {
         if (InputIsDown(KEY_UP)) input.move -= 1.0f;
         if (InputIsDown(KEY_DOWN)) input.move += 1.0f;
         input.jump_pressed = InputWasPressed(KEY_LEFT);
-        input.jump_released = InputWasReleased(KEY_LEFT);
     } else if (gravity_direction == GRAVITY_UP) {
         if (InputIsDown(KEY_LEFT)) input.move -= 1.0f;
         if (InputIsDown(KEY_RIGHT)) input.move += 1.0f;
         input.jump_pressed = InputWasPressed(KEY_DOWN);
-        input.jump_released = InputWasReleased(KEY_DOWN);
     } else {
         if (InputIsDown(KEY_LEFT)) input.move -= 1.0f;
         if (InputIsDown(KEY_RIGHT)) input.move += 1.0f;
         input.jump_pressed = InputWasPressed(KEY_UP);
-        input.jump_released = InputWasReleased(KEY_UP);
     }
 
     return input;
@@ -1766,7 +1760,6 @@ void GameUpdateStage(GameState* state, float dt, int use_static_cache) {
                                                           dt,
                                                           control.move,
                                                           control.jump_pressed,
-                                                          control.jump_released,
                                                           jump_active,
                                                           GameFeatureActive(state, FEATURE_GRAVITY),
                                                           state->gravity_direction,
