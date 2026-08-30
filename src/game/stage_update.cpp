@@ -1089,6 +1089,90 @@ static int GamePistonSolidOverlapsRectForExtension(const PistonDevice* piston, f
     return RectsOverlap(&plate, rect);
 }
 
+// Static world solids block the plate in either travel direction. BRICK is
+// excluded only while BRICK collision is disabled.
+static void GameLimitPistonTravelAtSolid(const RectF* start_plate,
+                                         const RectF* target_plate,
+                                         float start_extension,
+                                         float target_extension,
+                                         const RectF* solid,
+                                         float* blocked_extension) {
+    if (RectsOverlap(start_plate, solid)) {
+        *blocked_extension = start_extension;
+        return;
+    }
+
+    float move_x = target_plate->x - start_plate->x;
+    float move_y = target_plate->y - start_plate->y;
+    if (!GameMovingRectsCrossAxisOverlap(start_plate, target_plate, solid, move_x, move_y)) {
+        return;
+    }
+
+    float contact_extension = target_extension;
+    int crosses_solid = 0;
+    if (move_x > 0.0f) {
+        float start_face = start_plate->x + start_plate->w;
+        float target_face = target_plate->x + target_plate->w;
+        crosses_solid = start_face <= solid->x && target_face > solid->x;
+        contact_extension = start_extension + (target_extension - start_extension) * (solid->x - start_face) / (target_face - start_face);
+    } else if (move_x < 0.0f) {
+        float solid_face = solid->x + solid->w;
+        float start_face = start_plate->x;
+        float target_face = target_plate->x;
+        crosses_solid = start_face >= solid_face && target_face < solid_face;
+        contact_extension = start_extension + (target_extension - start_extension) * (start_face - solid_face) / (start_face - target_face);
+    } else if (move_y > 0.0f) {
+        float start_face = start_plate->y + start_plate->h;
+        float target_face = target_plate->y + target_plate->h;
+        crosses_solid = start_face <= solid->y && target_face > solid->y;
+        contact_extension = start_extension + (target_extension - start_extension) * (solid->y - start_face) / (target_face - start_face);
+    } else if (move_y < 0.0f) {
+        float solid_face = solid->y + solid->h;
+        float start_face = start_plate->y;
+        float target_face = target_plate->y;
+        crosses_solid = start_face >= solid_face && target_face < solid_face;
+        contact_extension = start_extension + (target_extension - start_extension) * (start_face - solid_face) / (start_face - target_face);
+    }
+
+    int extending = target_extension > start_extension;
+    if (crosses_solid && (extending ? contact_extension < *blocked_extension : contact_extension > *blocked_extension)) {
+        *blocked_extension = contact_extension;
+    }
+}
+
+static float GamePistonExtensionBeforeStaticSolid(const GameState* state,
+                                                  const PistonDevice* piston,
+                                                  float start_extension,
+                                                  float target_extension) {
+    if (target_extension == start_extension) {
+        return target_extension;
+    }
+
+    const RoomDef* room = GameCurrentRoom(state);
+    RectF start_plate = PistonPlateRectForExtension(piston, start_extension);
+    RectF target_plate = PistonPlateRectForExtension(piston, target_extension);
+    float blocked_extension = target_extension;
+    for (int i = 0; i < room->platform_count; ++i) {
+        GameLimitPistonTravelAtSolid(&start_plate, &target_plate, start_extension, target_extension, &room->platforms[i], &blocked_extension);
+    }
+    if (GameFeatureActive(state, FEATURE_COLLISION_TYPE_A)) {
+        for (int i = 0; i < room->type_a_count; ++i) {
+            GameLimitPistonTravelAtSolid(&start_plate, &target_plate, start_extension, target_extension, &room->type_a_walls[i], &blocked_extension);
+        }
+    }
+
+    RectF device_solids[GAME_MAX_DYNAMIC_SOLIDS];
+    int device_solid_count = 0;
+    device_solid_count = GameAppendPressurePlatformSolids(state, device_solids, device_solid_count, GAME_MAX_DYNAMIC_SOLIDS);
+    device_solid_count = GameAppendPressureSwitchSolids(state, device_solids, device_solid_count, GAME_MAX_DYNAMIC_SOLIDS);
+    for (int i = 0; i < device_solid_count; ++i) {
+        GameLimitPistonTravelAtSolid(&start_plate, &target_plate, start_extension, target_extension, &device_solids[i], &blocked_extension);
+    }
+
+    float minimum_extension = start_extension < target_extension ? start_extension : target_extension;
+    float maximum_extension = start_extension > target_extension ? start_extension : target_extension;
+    return GameClampF(blocked_extension, minimum_extension, maximum_extension);
+}
 static int GameApplyPistonExtensionStep(GameState* state, int piston_index, const PistonDevice* piston, float previous_extension, float current_extension, float frame_dt) {
     state->piston_effective_extension[piston_index] = current_extension;
 
@@ -1116,9 +1200,27 @@ static int GameApplyPistonExtensionStep(GameState* state, int piston_index, cons
     return 1;
 }
 
+static float GamePistonTargetAtAllowedSpeed(const PistonDevice* piston,
+                                            float start_extension,
+                                            float piston_time_seconds,
+                                            float frame_time_seconds) {
+    float pose_target = PistonPoseAt(piston, piston_time_seconds).extension;
+    float previous_pose_target = PistonPoseAt(piston, piston_time_seconds - frame_time_seconds).extension;
+    float allowed_distance = GameAbsF(pose_target - previous_pose_target);
+    if (allowed_distance <= 0.001f && piston->cycle_seconds > 0.001f) {
+        allowed_distance = piston->travel * frame_time_seconds / (piston->cycle_seconds * 0.18f);
+    }
+
+    float remaining_distance = pose_target - start_extension;
+    if (GameAbsF(remaining_distance) <= allowed_distance) {
+        return pose_target;
+    }
+    return start_extension + (remaining_distance > 0.0f ? allowed_distance : -allowed_distance);
+}
 static void GameUpdateRoomPistons(GameState* state, float dt) {
     state->player_on_piston_support = 0;
-    state->piston_time_seconds += dt * SettingsUiGameSpeedScale();
+    float piston_time_delta = dt * SettingsUiGameSpeedScale();
+    state->piston_time_seconds += piston_time_delta;
     if (state->piston_time_seconds > 600.0f) {
         state->piston_time_seconds -= 600.0f;
     }
@@ -1128,7 +1230,8 @@ static void GameUpdateRoomPistons(GameState* state, float dt) {
     for (int i = 0; i < piston_count; ++i) {
         const PistonDevice* piston = &room->pistons[i];
         float start_extension = state->piston_effective_extension[i];
-        float target_extension = PistonPoseAt(piston, state->piston_time_seconds).extension;
+        float target_extension = GamePistonTargetAtAllowedSpeed(piston, start_extension, state->piston_time_seconds, piston_time_delta);
+        target_extension = GamePistonExtensionBeforeStaticSolid(state, piston, start_extension, target_extension);
         float delta = target_extension - start_extension;
         int step_count = (int)(GameAbsF(delta) / 8.0f) + 1;
         if (step_count > 192) {
