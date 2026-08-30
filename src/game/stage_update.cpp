@@ -555,6 +555,7 @@ RectF GamePlayerRect(const GameState* state) {
 }
 
 void GameResetStage(GameState* state) {
+    DeleteState saved_delete_state = state->delete_state;
     const RoomDef* room = GameCurrentRoom(state);
     state->room_start_state = GameBuildRoomStartState(room);
     state->player.x = state->room_start_state.player_x;
@@ -592,7 +593,13 @@ void GameResetStage(GameState* state) {
     state->player_dead = 0;
     state->death_respawn_timer = 0.0f;
     SettingsUiReset();
-    SettingsUiSetItemValue(SettingsGravityDirectionItemIndex(), (int)state->gravity_direction);
+    for (int feature = 0; feature < FEATURE_COUNT; ++feature) {
+        GameSetFeatureActive(state, (DeleteFeature)feature, saved_delete_state.deleted[feature] == 0);
+    }
+    int gravity_item_index = SettingsGravityDirectionItemIndex();
+    if (gravity_item_index >= 0) {
+        GameSetGravityDirection(state, (GravityDirection)SettingsUiItemValue(gravity_item_index));
+    }
     GameSetPlayerFlexibility(state, SettingsUiItemValue(SettingsFlexibilityItemIndex()));
     RectF pr = GamePlayerRect(state);
     CameraResetToRoom(&state->camera, room, &pr);

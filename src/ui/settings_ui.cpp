@@ -40,6 +40,7 @@ static int g_settings_cache_valid = 0;
 static int g_settings_cache_building = 0;
 static int g_settings_tutorial_target_active = 0;
 static float g_settings_tutorial_pulse_seconds = 0.0f;
+static int g_settings_values_initialized = 0;
 static uint32_t g_settings_cache_supersample_pixels[RENDER_W * RENDER_H];
 static unsigned char g_settings_cache_alpha[RENDER_W * RENDER_H];
 static const uint32_t COL_TUTORIAL_TARGET = MODAL_UI_CYAN;
@@ -361,9 +362,14 @@ void SettingsUiReset() {
     }
     for (int i = 0; i < SETTINGS_UI_MAX_ITEMS; ++i) {
         g_settings_item_alpha[i] = 0.0f;
-        g_settings_value_index[i] = 0;
     }
-    SettingsInitDisplayValues();
+    if (!g_settings_values_initialized) {
+        for (int i = 0; i < SETTINGS_UI_MAX_ITEMS; ++i) {
+            g_settings_value_index[i] = 0;
+        }
+        SettingsInitDisplayValues();
+        g_settings_values_initialized = 1;
+    }
     for (int i = 0; i < FEATURE_COUNT; ++i) {
         g_feature_toggle_motion[i] = g_feature_active && g_feature_active((DeleteFeature)i) ? 1.0f : 0.0f;
     }
