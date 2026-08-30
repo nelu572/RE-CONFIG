@@ -45,6 +45,7 @@ struct GameState {
     float speaker_push_vx;
     float speaker_push_vy;
     float piston_time_seconds;
+    int player_on_piston_support;
     float piston_effective_extension[GAME_MAX_PISTONS];
     RectF gravity_boxes[GAME_MAX_GRAVITY_BOXES];
     float gravity_box_vx[GAME_MAX_GRAVITY_BOXES];

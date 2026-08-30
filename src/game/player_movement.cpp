@@ -262,6 +262,7 @@ PlayerMovementResult UpdatePlayerMovement(Player* player,
                                           int jump_pressed,
                                           int jump_active,
                                           int gravity_active,
+                                          int skip_ground_gravity,
                                           GravityDirection gravity_direction,
                                           int type_a_collision_active,
                                           const RectF* extra_solids,
@@ -310,13 +311,13 @@ PlayerMovementResult UpdatePlayerMovement(Player* player,
     if (jump_active &&
         player->jump_buffer_timer > 0.0f &&
         player->coyote_timer > 0.0f) {
-        gravity_speed = jump;
+        gravity_speed = gravity_speed < 0.0f ? gravity_speed + jump : jump;
         player->grounded = 0;
         player->jump_buffer_timer = 0.0f;
         player->coyote_timer = 0.0f;
         jump_started = 1;
     }
-    if (gravity_active) {
+    if (gravity_active && !(skip_ground_gravity && was_grounded && !jump_started)) {
         float gravity_multiplier = gravity_speed > 0.0f ? fall_gravity_multiplier : 1.0f;
         gravity_speed += gravity * gravity_multiplier * dt;
     }

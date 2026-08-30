@@ -52,6 +52,7 @@ static int GameAppendGravityBoxSolids(const GameState* state, RectF* out_solids,
 static int GameAppendPressurePlatformSolids(const GameState* state, RectF* out_solids, int count, int max_solids);
 static int GameAppendPressureSwitchSolids(const GameState* state, RectF* out_solids, int count, int max_solids);
 static GameSpeakerPushVelocity GameComputeSpeakerPushVelocityForRect(const GameState* state, const RectF* rect, int grounded);
+static int GameTryClearGravityBoxesForMovingPlayer(GameState* state, const RectF* previous_player, const RectF* current_player, float move_x, float move_y, int ignored_box_index);
 static void GameStartPlayerDeath(GameState* state);
 
 int GameFeatureActive(const GameState* state, DeleteFeature feature) {
@@ -613,6 +614,7 @@ void GameResetStage(GameState* state) {
     state->speaker_push_vx = 0.0f;
     state->speaker_push_vy = 0.0f;
     state->piston_time_seconds = 0.0f;
+    state->player_on_piston_support = 0;
     int reset_piston_count = room->piston_count < GAME_MAX_PISTONS ? room->piston_count : GAME_MAX_PISTONS;
     for (int i = 0; i < GAME_MAX_PISTONS; ++i) {
         state->piston_effective_extension[i] = i < reset_piston_count ? PistonPoseAt(&room->pistons[i], state->piston_time_seconds).extension : 0.0f;
@@ -733,15 +735,113 @@ static int GameMovingPistonPushCandidate(const PistonDevice* piston,
     return 1;
 }
 
-static void GameApplyPistonPushToPlayer(GameState* state, const RectF* candidate, float move_x, float move_y) {
+static float GamePistonPlayerPushVelocityScale() {
+    float speed_scale = SettingsUiGameSpeedScale();
+    if (speed_scale < 0.75f) {
+        return 0.85f;
+    }
+    if (speed_scale > 1.15f) {
+        return 1.95f;
+    }
+    return 1.35f;
+}
+
+static void GameApplyPistonPushToPlayer(GameState* state, const RectF* candidate, float move_x, float move_y, float frame_dt) {
     state->player.x = candidate->x;
     state->player.y = candidate->y;
-    if (move_x != 0.0f) {
-        state->player.vx = 0.0f;
+    if (frame_dt <= 0.0001f) {
+        return;
     }
-    if (move_y != 0.0f) {
-        state->player.vy = 0.0f;
+
+    float velocity_scale = GamePistonPlayerPushVelocityScale();
+    if (move_x > 0.0f) {
+        float push_vx = move_x / frame_dt * velocity_scale;
+        if (state->player.vx < push_vx) state->player.vx = push_vx;
+    } else if (move_x < 0.0f) {
+        float push_vx = move_x / frame_dt * velocity_scale;
+        if (state->player.vx > push_vx) state->player.vx = push_vx;
     }
+    if (move_y > 0.0f) {
+        float push_vy = move_y / frame_dt * velocity_scale;
+        if (state->player.vy < push_vy) state->player.vy = push_vy;
+    } else if (move_y < 0.0f) {
+        float push_vy = move_y / frame_dt * velocity_scale;
+        if (state->player.vy > push_vy) state->player.vy = push_vy;
+    }
+}
+
+static void GamePistonGravityVector(GravityDirection direction, int* x, int* y) {
+    *x = 0;
+    *y = 1;
+    if (direction == GRAVITY_UP) {
+        *y = -1;
+    } else if (direction == GRAVITY_RIGHT) {
+        *x = 1;
+        *y = 0;
+    } else if (direction == GRAVITY_LEFT) {
+        *x = -1;
+        *y = 0;
+    }
+}
+
+static int GameRectSupportedBySolidAlongGravity(const RectF* rect, const RectF* solid, int gravity_x, int gravity_y) {
+    const float epsilon = 2.5f;
+    if (gravity_y > 0) {
+        return GameRangesOverlap(rect->x, rect->x + rect->w, solid->x, solid->x + solid->w) &&
+               GameAbsF((rect->y + rect->h) - solid->y) <= epsilon;
+    }
+    if (gravity_y < 0) {
+        return GameRangesOverlap(rect->x, rect->x + rect->w, solid->x, solid->x + solid->w) &&
+               GameAbsF(rect->y - (solid->y + solid->h)) <= epsilon;
+    }
+    if (gravity_x > 0) {
+        return GameRangesOverlap(rect->y, rect->y + rect->h, solid->y, solid->y + solid->h) &&
+               GameAbsF((rect->x + rect->w) - solid->x) <= epsilon;
+    }
+    if (gravity_x < 0) {
+        return GameRangesOverlap(rect->y, rect->y + rect->h, solid->y, solid->y + solid->h) &&
+               GameAbsF(rect->x - (solid->x + solid->w)) <= epsilon;
+    }
+    return 0;
+}
+
+
+static void GameCarryPlayerOnPistonPlate(GameState* state, const PistonDevice* piston, float previous_extension, float current_extension, float frame_dt) {
+    RectF previous_plate = PistonPlateRectForExtension(piston, previous_extension);
+    RectF current_plate = PistonPlateRectForExtension(piston, current_extension);
+    float move_x = current_plate.x - previous_plate.x;
+    float move_y = current_plate.y - previous_plate.y;
+    if (move_x == 0.0f && move_y == 0.0f) {
+        return;
+    }
+
+    int gravity_x;
+    int gravity_y;
+    GamePistonGravityVector(state->gravity_direction, &gravity_x, &gravity_y);
+    float move_with_gravity = move_x * (float)gravity_x + move_y * (float)gravity_y;
+    if (move_with_gravity <= 0.0f) {
+        return;
+    }
+
+    RectF pr = GamePlayerRect(state);
+    if (!GameRectSupportedBySolidAlongGravity(&pr, &previous_plate, gravity_x, gravity_y)) {
+        return;
+    }
+
+    RectF candidate = pr;
+    candidate.x += move_x;
+    candidate.y += move_y;
+    if (GameRectOverlapsLevelSolids(state, &candidate, 0)) {
+        return;
+    }
+    if (!GameTryClearGravityBoxesForMovingPlayer(state, &pr, &candidate, move_x, move_y, -1)) {
+        return;
+    }
+
+    state->player.x = candidate.x;
+    state->player.y = candidate.y;
+    state->player.grounded = 1;
+    state->player_on_piston_support = 1;
 }
 
 static int GameMovingSolidPushCandidate(const RectF* previous_solid,
@@ -882,7 +982,7 @@ static int GameTryClearGravityBoxesForMovingPlayer(GameState* state, const RectF
     return 1;
 }
 
-static int GameTryPushPlayerByMovingSolid(GameState* state, const RectF* previous_solid, const RectF* current_solid, float move_x, float move_y, int ignored_box_index) {
+static int GameTryPushPlayerByMovingSolid(GameState* state, const RectF* previous_solid, const RectF* current_solid, float move_x, float move_y, int ignored_box_index, float frame_dt) {
     RectF pr = GamePlayerRect(state);
     RectF candidate = pr;
     if (!GameMovingSolidPushCandidate(previous_solid, current_solid, &pr, move_x, move_y, &candidate)) {
@@ -896,10 +996,10 @@ static int GameTryPushPlayerByMovingSolid(GameState* state, const RectF* previou
         return 0;
     }
 
-    GameApplyPistonPushToPlayer(state, &candidate, move_x, move_y);
+    GameApplyPistonPushToPlayer(state, &candidate, move_x, move_y, frame_dt);
     return 2;
 }
-static int GameTryPushPlayerByMovingPiston(GameState* state, const PistonDevice* piston, float previous_extension, float current_extension) {
+static int GameTryPushPlayerByMovingPiston(GameState* state, const PistonDevice* piston, float previous_extension, float current_extension, float frame_dt) {
     RectF pr = GamePlayerRect(state);
     RectF candidate = pr;
     float move_x = 0.0f;
@@ -915,11 +1015,11 @@ static int GameTryPushPlayerByMovingPiston(GameState* state, const PistonDevice*
         return 0;
     }
 
-    GameApplyPistonPushToPlayer(state, &candidate, move_x, move_y);
+    GameApplyPistonPushToPlayer(state, &candidate, move_x, move_y, frame_dt);
     return 1;
 }
 
-static int GameTryPushGravityBoxesByMovingPiston(GameState* state, int piston_index, const PistonDevice* piston, float previous_extension, float current_extension) {
+static int GameTryPushGravityBoxesByMovingPiston(GameState* state, int piston_index, const PistonDevice* piston, float previous_extension, float current_extension, float frame_dt) {
     int pushed_any_box = 0;
     int pushed_player_by_box = 0;
     const RoomDef* room = GameCurrentRoom(state);
@@ -961,7 +1061,7 @@ static int GameTryPushGravityBoxesByMovingPiston(GameState* state, int piston_in
                 }
             }
         }
-        int player_push = GameTryPushPlayerByMovingSolid(state, &before, &candidate, move_x, move_y, i);
+        int player_push = GameTryPushPlayerByMovingSolid(state, &before, &candidate, move_x, move_y, i, frame_dt);
         if (player_push == 0) {
             GameRestoreGravityBoxState(state, saved_boxes, saved_vx, saved_vy, saved_piston_driven);
             return -1;
@@ -989,10 +1089,10 @@ static int GamePistonSolidOverlapsRectForExtension(const PistonDevice* piston, f
     return RectsOverlap(&plate, rect);
 }
 
-static int GameApplyPistonExtensionStep(GameState* state, int piston_index, const PistonDevice* piston, float previous_extension, float current_extension) {
+static int GameApplyPistonExtensionStep(GameState* state, int piston_index, const PistonDevice* piston, float previous_extension, float current_extension, float frame_dt) {
     state->piston_effective_extension[piston_index] = current_extension;
 
-    int box_push = GameTryPushGravityBoxesByMovingPiston(state, piston_index, piston, previous_extension, current_extension);
+    int box_push = GameTryPushGravityBoxesByMovingPiston(state, piston_index, piston, previous_extension, current_extension, frame_dt);
     if (box_push < 0) {
         GameStartPlayerDeath(state);
         return -1;
@@ -1002,10 +1102,11 @@ static int GameApplyPistonExtensionStep(GameState* state, int piston_index, cons
         return 0;
     }
 
-    if (box_push != 3 && !GameTryPushPlayerByMovingPiston(state, piston, previous_extension, current_extension)) {
+    if (box_push != 3 && !GameTryPushPlayerByMovingPiston(state, piston, previous_extension, current_extension, frame_dt)) {
         GameStartPlayerDeath(state);
         return -1;
     }
+    GameCarryPlayerOnPistonPlate(state, piston, previous_extension, current_extension, frame_dt);
 
     RectF pr = GamePlayerRect(state);
     if (GameAbsF(current_extension - previous_extension) > 0.001f && GamePistonSolidOverlapsRectForExtension(piston, current_extension, &pr)) {
@@ -1016,6 +1117,7 @@ static int GameApplyPistonExtensionStep(GameState* state, int piston_index, cons
 }
 
 static void GameUpdateRoomPistons(GameState* state, float dt) {
+    state->player_on_piston_support = 0;
     state->piston_time_seconds += dt * SettingsUiGameSpeedScale();
     if (state->piston_time_seconds > 600.0f) {
         state->piston_time_seconds -= 600.0f;
@@ -1037,7 +1139,7 @@ static void GameUpdateRoomPistons(GameState* state, float dt) {
         for (int step = 1; step <= step_count; ++step) {
             float t = (float)step / (float)step_count;
             float current_extension = start_extension + delta * t;
-            int result = GameApplyPistonExtensionStep(state, i, piston, previous_extension, current_extension);
+            int result = GameApplyPistonExtensionStep(state, i, piston, previous_extension, current_extension, dt);
             if (result < 0) {
                 return;
             }
@@ -1769,6 +1871,7 @@ void GameUpdateStage(GameState* state, float dt, int use_static_cache) {
                                                           control.jump_pressed,
                                                           jump_active,
                                                           GameFeatureActive(state, FEATURE_GRAVITY),
+                                                          state->player_on_piston_support,
                                                           state->gravity_direction,
                                                           GameFeatureActive(state, FEATURE_COLLISION_TYPE_A),
                                                           dynamic_solids,
