@@ -32,8 +32,8 @@ static uint32_t StageLerpColor(uint32_t a, uint32_t b, float t) {
 static void DrawPlatform(const StageRenderState* state, const RectF* r) {
     int x = WorldX(state->render, r->x);
     int y = WorldY(state->render, r->y);
-    int w = (int)(r->w + 0.5f);
-    int h = (int)(r->h + 0.5f);
+    int w = WorldW(state->render, r->w);
+    int h = WorldH(state->render, r->h);
     DrawRect(state->render, x, y, w, h, state->platform_color);
 }
 
@@ -43,6 +43,14 @@ static int StageMaxI(int a, int b) {
 
 static int StageMinI(int a, int b) {
     return a < b ? a : b;
+}
+
+static int StageWorldPixels(RenderContext* render, int pixels) {
+    if (pixels == 0) {
+        return 0;
+    }
+    int scaled = WorldW(render, (float)(pixels < 0 ? -pixels : pixels));
+    return pixels < 0 ? -scaled : scaled;
 }
 
 static int StageAbsI(int value) {
@@ -138,8 +146,8 @@ static void DrawTypeAWall(const StageRenderState* state, const RectF* wall, int 
 static void DrawBrickRect(const StageRenderState* state, const RectF* wall, uint32_t base_color, uint32_t pattern_color) {
     int x = WorldX(state->render, wall->x);
     int y = WorldY(state->render, wall->y);
-    int w = (int)(wall->w + 0.5f);
-    int h = (int)(wall->h + 0.5f);
+    int w = WorldW(state->render, wall->w);
+    int h = WorldH(state->render, wall->h);
     DrawRect(state->render, x, y, w, h, base_color);
     DrawTypeATilePattern(state, x, y, w, h, pattern_color);
 }
@@ -350,8 +358,8 @@ static void DrawTypeABrickTileWireTrace(const StageRenderState* state,
 static void DrawTypeAOffAnimatedTrace(const StageRenderState* state, const RectF* wall, uint32_t pattern_color) {
     int x = WorldX(state->render, wall->x);
     int y = WorldY(state->render, wall->y);
-    int w = (int)(wall->w + 0.5f);
-    int h = (int)(wall->h + 0.5f);
+    int w = WorldW(state->render, wall->w);
+    int h = WorldH(state->render, wall->h);
     const int tile_size = 40;
     uint32_t trace_color = StageScaleColor(pattern_color, 0.42f);
     for (int local_y = 0, tile_row = 0; local_y < h; local_y += tile_size, ++tile_row) {
@@ -512,15 +520,19 @@ static void DrawSpeakerDevice(const StageRenderState* state, const SpeakerDevice
     SpeakerAnimation anim = SpeakerAnimationForTime(state->speaker_time_seconds, state->speaker_volume);
     int base_x = WorldX(render, speaker->x);
     int base_y = WorldY(render, speaker->y);
-    int base_w = (int)(speaker->width + 0.5f);
-    int base_h = (int)(speaker->height + 0.5f);
+    int base_w = WorldW(render, speaker->width);
+    int base_h = WorldH(render, speaker->height);
+    int body_x = StageWorldPixels(render, anim.body_x);
+    int body_y = StageWorldPixels(render, anim.body_y);
+    int body_w_extra = StageWorldPixels(render, anim.body_w_extra);
+    int body_h_extra = StageWorldPixels(render, anim.body_h_extra);
     int room_center_x = WorldX(render, state->room->bounds.x + state->room->bounds.w * 0.5f);
     int speaker_center_x = WorldX(render, speaker->x + speaker->width * 0.5f);
     int mounted_left = speaker_center_x < room_center_x;
-    int x = mounted_left ? base_x - anim.body_x : base_x + anim.body_x - anim.body_w_extra;
-    int y = base_y + anim.body_y - anim.body_h_extra / 2;
-    int w = base_w + anim.body_w_extra;
-    int h = base_h + anim.body_h_extra;
+    int x = mounted_left ? base_x - body_x : base_x + body_x - body_w_extra;
+    int y = base_y + body_y - body_h_extra / 2;
+    int w = base_w + body_w_extra;
+    int h = base_h + body_h_extra;
     int side_w = StageMaxI(12, w * 10 / 100);
     int front_w = w - side_w;
     int body_left = x;
@@ -680,6 +692,7 @@ static void DrawSpeakerWaveCircle(const StageRenderState* state,
 }
 
 static void DrawSpeakerWaves(const StageRenderState* state, const SpeakerDevice* speaker) {
+    RenderContext* render = state->render;
     float volume = StageClampF(state->speaker_volume, 0.0f, 1.0f);
     if (volume <= 0.001f) {
         return;
@@ -697,7 +710,7 @@ static void DrawSpeakerWaves(const StageRenderState* state, const SpeakerDevice*
             continue;
         }
         float fade = StageClampF(1.0f - radius / SPEAKER_WAVE_RANGE, 0.0f, 1.0f);
-        int thickness = 1 + (int)((1.0f + fade * 2.0f) * volume + 0.5f);
+        int thickness = WorldW(render, (float)(1 + (int)((1.0f + fade * 2.0f) * volume + 0.5f)));
         uint32_t wave_color = (i & 1) ? SPEAKER_BRIGHT : SPEAKER_HIGHLIGHT;
         DrawSpeakerWaveCircle(state, source_x, source_y, (int)(radius + 0.5f), thickness, wave_color, fade * 0.82f * volume);
     }
@@ -725,16 +738,16 @@ static void DrawPistonDevice(const StageRenderState* state, const PistonDevice* 
 
     int bx = WorldX(render, body.x);
     int by = WorldY(render, body.y);
-    int bw = (int)(body.w + 0.5f);
-    int bh = (int)(body.h + 0.5f);
+    int bw = WorldW(render, body.w);
+    int bh = WorldH(render, body.h);
     int sx = WorldX(render, shaft.x);
     int sy = WorldY(render, shaft.y);
-    int sw = (int)(shaft.w + 0.5f);
-    int sh = (int)(shaft.h + 0.5f);
+    int sw = WorldW(render, shaft.w);
+    int sh = WorldH(render, shaft.h);
     int px = WorldX(render, plate.x);
     int py = WorldY(render, plate.y);
-    int pw = (int)(plate.w + 0.5f);
-    int ph = (int)(plate.h + 0.5f);
+    int pw = WorldW(render, plate.w);
+    int ph = WorldH(render, plate.h);
 
     uint32_t body_color = StageLerpColor(state->platform_color, state->effect_color, 0.24f);
     uint32_t dark_color = StageLerpColor(state->bg_color, state->platform_color, 0.58f);
@@ -795,8 +808,8 @@ static void DrawPressureSwitchDevice(const StageRenderState* state, const Pressu
     RenderContext* render = state->render;
     int x = WorldX(render, sw->rect.x);
     int y = WorldY(render, sw->rect.y);
-    int w = (int)(sw->rect.w + 0.5f);
-    int h = (int)(sw->rect.h + 0.5f);
+    int w = WorldW(render, sw->rect.w);
+    int h = WorldH(render, sw->rect.h);
     uint32_t mount_color = StageLerpColor(state->text_color, state->platform_color, 0.16f);
     uint32_t stem_color = StageLerpColor(state->text_color, state->platform_color, 0.28f);
     uint32_t press = pressed ? 0xFF3030u : 0xE1192Du;
@@ -924,8 +937,8 @@ static int BoxSpriteSourceCornerPixel(int sx, int sy) {
 static void DrawGravityBox(const StageRenderState* state, const RectF* box) {
     int x = WorldX(state->render, box->x);
     int y = WorldY(state->render, box->y);
-    int w = (int)(box->w + 0.5f);
-    int h = (int)(box->h + 0.5f);
+    int w = WorldW(state->render, box->w);
+    int h = WorldH(state->render, box->h);
 
     for (int i = 0; i < BOX_SPRITE_RECT_COUNT; ++i) {
         const BoxSpriteRect* rect = &BOX_SPRITE_RECTS[i];

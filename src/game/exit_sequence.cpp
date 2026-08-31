@@ -346,8 +346,8 @@ RectI ExitSequenceDirtyRect(RenderContext* render, const RectF* exit_rect) {
     RectI rect = {
         WorldX(render, visual.x) - 14,
         WorldY(render, visual.y) - 14,
-        (int)(visual.w + 0.5f) + 28,
-        (int)(visual.h + 0.5f) + 28
+        WorldW(render, visual.w) + 28,
+        WorldH(render, visual.h) + 28
     };
     return ExitClampRect(rect);
 }
@@ -356,9 +356,9 @@ void ExitSequenceDrawExit(RenderContext* render, const RectF* exit_rect) {
     RectF visual = ExitSequenceVisualRect(exit_rect);
     int x = WorldX(render, visual.x);
     int y = WorldY(render, visual.y);
-    int w = (int)(visual.w + 0.5f);
-    int h = (int)(visual.h + 0.5f);
-    int thickness = 8;
+    int w = WorldW(render, visual.w);
+    int h = WorldH(render, visual.h);
+    int thickness = WorldW(render, 8.0f);
 
     FillExitDoor(render, x, y, w, h, thickness, g_exit_open_amount);
     DrawExitFrame(render, x, y, w, h, thickness);
