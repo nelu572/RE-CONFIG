@@ -258,35 +258,6 @@ static RectF StagePressurePlatformRectAt(const PressurePlatformDevice* platform,
     return rect;
 }
 
-static int StagePointInsideRect(float x, float y, const RectF* rect) {
-    return x >= rect->x && x < rect->x + rect->w &&
-           y >= rect->y && y < rect->y + rect->h;
-}
-
-static int SpeakerWaveMaskedBySolids(const StageRenderState* state, int screen_x, int screen_y) {
-    float world_x = ScreenToWorldX(state->render->camera, (float)screen_x);
-    float world_y = ScreenToWorldY(state->render->camera, (float)screen_y);
-    for (int i = 0; i < state->room->platform_count; ++i) {
-        if (StagePointInsideRect(world_x, world_y, &state->room->platforms[i])) {
-            return 1;
-        }
-    }
-    if (state->type_a_active) {
-        for (int i = 0; i < state->room->type_a_count; ++i) {
-            if (StagePointInsideRect(world_x, world_y, &state->room->type_a_walls[i])) {
-                return 1;
-            }
-        }
-    }
-    for (int i = 0; i < state->room->pressure_platform_count; ++i) {
-        float open_amount = state->pressure_platform_open_amount ? state->pressure_platform_open_amount[i] : 0.0f;
-        RectF platform = StagePressurePlatformRectAt(&state->room->pressure_platforms[i], open_amount);
-        if (StagePointInsideRect(world_x, world_y, &platform)) {
-            return 1;
-        }
-    }
-    return 0;
-}
 static void DrawSpeakerAlphaLine(const StageRenderState* state,
                                  int x0,
                                  int y0,
@@ -309,9 +280,7 @@ static void DrawSpeakerAlphaLine(const StageRenderState* state,
     int steps = StageMaxI(StageAbsI(dx), StageAbsI(dy));
     int half = thickness / 2;
     if (steps <= 0) {
-        if (!SpeakerWaveMaskedBySolids(state, x0, y0)) {
-            BlendPixel(render, x0, y0, r, g, b, alpha);
-        }
+        BlendPixel(render, x0, y0, r, g, b, alpha);
         return;
     }
 
@@ -320,9 +289,7 @@ static void DrawSpeakerAlphaLine(const StageRenderState* state,
         int y = y0 + dy * i / steps;
         for (int oy = -half; oy <= half; ++oy) {
             for (int ox = -half; ox <= half; ++ox) {
-                if (!SpeakerWaveMaskedBySolids(state, x + ox, y + oy)) {
-                    BlendPixel(render, x + ox, y + oy, r, g, b, alpha);
-                }
+                BlendPixel(render, x + ox, y + oy, r, g, b, alpha);
             }
         }
     }
@@ -463,7 +430,7 @@ static const uint32_t SPEAKER_HIGHLIGHT = 0x00f08a92;
 static const uint32_t SPEAKER_DARK = 0x0070272f;
 static const uint32_t SPEAKER_DEEP_DARK = 0x004b2428;
 static const uint32_t SPEAKER_BRACKET = 0x007b2b34;
-static constexpr float SPEAKER_WAVE_SPACING = 240.0f;
+static constexpr float SPEAKER_WAVE_SPACING = 300.0f;
 static constexpr float SPEAKER_WAVE_SPEED = 520.0f;
 static constexpr float SPEAKER_WAVE_RANGE = 1080.0f;
 static constexpr float SPEAKER_WAVE_START_RADIUS = 42.0f;
@@ -721,7 +688,7 @@ static void DrawSpeakerWaves(const StageRenderState* state, const SpeakerDevice*
     float travel = StageWrap01((float)state->speaker_time_seconds * SPEAKER_WAVE_SPEED / SPEAKER_WAVE_SPACING) * SPEAKER_WAVE_SPACING;
     float source_x = speaker->x + speaker->width * 0.45f;
     float source_y = speaker->y + speaker->height * 0.66f;
-    for (int i = 0; i < 6; ++i) {
+    for (int i = 0; i < 4; ++i) {
         float radius = travel + (float)i * SPEAKER_WAVE_SPACING;
         if (radius > SPEAKER_WAVE_RANGE) {
             continue;
@@ -730,7 +697,7 @@ static void DrawSpeakerWaves(const StageRenderState* state, const SpeakerDevice*
             continue;
         }
         float fade = StageClampF(1.0f - radius / SPEAKER_WAVE_RANGE, 0.0f, 1.0f);
-        int thickness = 1 + (int)((2.0f + fade * 5.0f) * volume + 0.5f);
+        int thickness = 1 + (int)((1.0f + fade * 2.0f) * volume + 0.5f);
         uint32_t wave_color = (i & 1) ? SPEAKER_BRIGHT : SPEAKER_HIGHLIGHT;
         DrawSpeakerWaveCircle(state, source_x, source_y, (int)(radius + 0.5f), thickness, wave_color, fade * 0.82f * volume);
     }
@@ -817,6 +784,13 @@ static void DrawRoomPistons(const StageRenderState* state) {
     }
 }
 
+static PressureSwitchMount StagePressureSwitchMountFor(const PressureSwitchDevice* sw) {
+    if (sw->mount != PRESSURE_SWITCH_MOUNT_AUTO) {
+        return sw->mount;
+    }
+    return sw->rect.w >= sw->rect.h ? PRESSURE_SWITCH_MOUNT_DOWN : PRESSURE_SWITCH_MOUNT_RIGHT;
+}
+
 static void DrawPressureSwitchDevice(const StageRenderState* state, const PressureSwitchDevice* sw, int pressed, float anim) {
     RenderContext* render = state->render;
     int x = WorldX(render, sw->rect.x);
@@ -827,19 +801,22 @@ static void DrawPressureSwitchDevice(const StageRenderState* state, const Pressu
     uint32_t stem_color = StageLerpColor(state->text_color, state->platform_color, 0.28f);
     uint32_t press = pressed ? 0xFF3030u : 0xE1192Du;
     uint32_t press_shadow = 0x8A101Au;
-    int travel = (int)(anim * 7.0f + 0.5f);
+    PressureSwitchMount mount = StagePressureSwitchMountFor(sw);
 
-    if (w >= h) {
+    if (mount == PRESSURE_SWITCH_MOUNT_DOWN || mount == PRESSURE_SWITCH_MOUNT_UP) {
+        int travel = (int)(anim * 7.0f + 0.5f);
         int mount_h = StageMaxI(8, h / 4);
         int cap_h = StageMaxI(14, h * 7 / 16);
         int cap_w = w;
         int cap_x = x;
-        int cap_y = y + travel;
+        int cap_y = mount == PRESSURE_SWITCH_MOUNT_DOWN ? y + travel : y + h - cap_h - travel;
         int stem_w = StageMaxI(8, w / 8);
         int stem_x = x + (w - stem_w) / 2;
-        int mount_y = y + h - mount_h;
-        int stem_y = cap_y + cap_h - 3;
-        int stem_h = StageMaxI(5, mount_y - stem_y + 3);
+        int mount_y = mount == PRESSURE_SWITCH_MOUNT_DOWN ? y + h - mount_h : y;
+        int stem_y = mount == PRESSURE_SWITCH_MOUNT_DOWN ? cap_y + cap_h - 3 : mount_y + mount_h - 3;
+        int stem_h = mount == PRESSURE_SWITCH_MOUNT_DOWN ?
+            StageMaxI(5, mount_y - stem_y + 3) :
+            StageMaxI(5, cap_y - stem_y + 3);
 
         DrawRect(render, x, mount_y, w, mount_h, mount_color);
         DrawRect(render, stem_x, stem_y, stem_w, stem_h, stem_color);
@@ -848,14 +825,16 @@ static void DrawPressureSwitchDevice(const StageRenderState* state, const Pressu
     } else {
         int max_travel = StageMaxI(4, StageMinI(10, w / 5));
         int cap_w = StageMaxI(10, w * 3 / 10);
-        int mount_w = StageMaxI(7, w / 5);
         int side_travel = (int)(anim * (float)max_travel + 0.5f);
-        int cap_x = x + 2 + side_travel;
+        int cap_x = mount == PRESSURE_SWITCH_MOUNT_RIGHT ? x + 2 + side_travel : x + w - 2 - side_travel - cap_w;
         int cap_y = y + 8;
         int cap_h = StageMaxI(10, h - 16);
-        int mount_x = x + 2 + max_travel + cap_w;
-        int connector_x = cap_x + cap_w;
-        int connector_w = mount_x - connector_x;
+        int mount_w = StageMaxI(7, w / 5);
+        int mount_x = mount == PRESSURE_SWITCH_MOUNT_RIGHT ?
+            x + 2 + max_travel + cap_w :
+            x + w - 2 - max_travel - cap_w - mount_w;
+        int connector_x = mount == PRESSURE_SWITCH_MOUNT_RIGHT ? cap_x + cap_w : mount_x + mount_w;
+        int connector_w = mount == PRESSURE_SWITCH_MOUNT_RIGHT ? mount_x - connector_x : cap_x - connector_x;
         int connector_h = StageMaxI(5, h / 12);
         int connector_y = y + h / 2 - connector_h / 2;
         int mount_y = y + 5;
@@ -993,6 +972,11 @@ void StageRenderDrawStatic(const StageRenderState* state) {
 }
 
 void StageRenderDrawDynamic(const StageRenderState* state) {
+    // Waves are drawn first, then redrawn static solids naturally mask them.
+    for (int i = 0; i < state->room->speaker_count; ++i) {
+        DrawSpeakerWaves(state, &state->room->speakers[i]);
+    }
+    StageRenderDrawStatic(state);
     if (state->highlight_type_a || state->type_a_bump_visible || state->type_a_setting_feedback_visible) {
         for (int i = 0; i < state->room->type_a_count; ++i) {
             DrawTypeAWall(state, &state->room->type_a_walls[i], 1);
@@ -1017,10 +1001,6 @@ void StageRenderDrawDynamic(const StageRenderState* state) {
                         state->player_particles,
                         state->player_particle_count,
                         StageLerpColor(state->platform_color, state->type_a_off_pattern_color, 0.48f));
-    for (int i = 0; i < state->room->speaker_count; ++i) {
-        DrawSpeakerWaves(state, &state->room->speakers[i]);
-    }
-
     DrawContextUi(state);
     if (state->settings_overlay_visible) {
         RectI full = { 0, 0, FB_W, FB_H };

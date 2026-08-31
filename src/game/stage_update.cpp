@@ -171,6 +171,30 @@ static int GameRoomPressurePlatformCount(const RoomDef* room) {
     return room->pressure_platform_count < GAME_MAX_PRESSURE_PLATFORMS ? room->pressure_platform_count : GAME_MAX_PRESSURE_PLATFORMS;
 }
 
+static PressureSwitchMount GamePressureSwitchMountFor(const PressureSwitchDevice* sw) {
+    if (sw->mount != PRESSURE_SWITCH_MOUNT_AUTO) {
+        return sw->mount;
+    }
+    return sw->rect.w >= sw->rect.h ? PRESSURE_SWITCH_MOUNT_DOWN : PRESSURE_SWITCH_MOUNT_RIGHT;
+}
+
+static int GamePressureSwitchMaskPressed(const GameState* state, unsigned int switch_mask) {
+    const RoomDef* room = GameCurrentRoom(state);
+    int switch_count = GameRoomPressureSwitchCount(room);
+    if (switch_count <= 0) {
+        return 0;
+    }
+
+    if (switch_mask == 0) {
+        switch_mask = (1u << switch_count) - 1u;
+    }
+    for (int i = 0; i < switch_count; ++i) {
+        if ((switch_mask & (1u << i)) != 0 && !state->pressure_switch_pressed[i]) {
+            return 0;
+        }
+    }
+    return 1;
+}
 static RectF GamePressurePlatformRectAt(const PressurePlatformDevice* platform, float open_amount) {
     RectF rect = platform->rect;
     open_amount = open_amount < 0.0f ? 0.0f : (open_amount > 1.0f ? 1.0f : open_amount);
@@ -205,17 +229,23 @@ static int GameAppendPressurePlatformSolids(const GameState* state, RectF* out_s
 
 static RectF GamePressureSwitchSolidAt(const GameState* state, int switch_index) {
     const RoomDef* room = GameCurrentRoom(state);
-    RectF rect = room->pressure_switches[switch_index].rect;
+    const PressureSwitchDevice* sw = &room->pressure_switches[switch_index];
+    RectF rect = sw->rect;
     float anim = GameClampF(state->pressure_switch_anim[switch_index], 0.0f, 1.0f);
-    float travel = anim * 6.0f;
-    if (rect.w >= rect.h) {
+    PressureSwitchMount mount = GamePressureSwitchMountFor(sw);
+    if (mount == PRESSURE_SWITCH_MOUNT_DOWN || mount == PRESSURE_SWITCH_MOUNT_UP) {
+        float travel = anim * 6.0f;
         float next_h = GameClampF(rect.h - travel, 4.0f, rect.h);
-        rect.y += rect.h - next_h;
+        if (mount == PRESSURE_SWITCH_MOUNT_DOWN) {
+            rect.y += rect.h - next_h;
+        }
         rect.h = next_h;
     } else {
         float side_travel = GameClampF(rect.w * 0.20f, 4.0f, 10.0f) + 2.0f;
         side_travel = GameClampF(side_travel, 0.0f, rect.w - 4.0f);
-        rect.x += side_travel;
+        if (mount == PRESSURE_SWITCH_MOUNT_RIGHT) {
+            rect.x += side_travel;
+        }
         rect.w = GameClampF(rect.w - side_travel, 4.0f, rect.w);
     }
     return rect;
@@ -1536,20 +1566,23 @@ static void GamePushGravityBoxesByPlayerInput(GameState* state, float move, floa
 
 static int GamePressureSwitchTouchedByRect(const PressureSwitchDevice* sw, const RectF* rect) {
     const float contact_margin = 3.0f;
-    const float side_inset = 0.0f;
     RectF probe = sw->rect;
-    if (sw->rect.w >= sw->rect.h) {
-        probe.x += side_inset;
-        probe.w -= side_inset * 2.0f;
+    PressureSwitchMount mount = GamePressureSwitchMountFor(sw);
+    if (mount == PRESSURE_SWITCH_MOUNT_DOWN) {
         probe.y = sw->rect.y - contact_margin;
+        probe.h = contact_margin * 2.0f;
+    } else if (mount == PRESSURE_SWITCH_MOUNT_UP) {
+        probe.y = sw->rect.y + sw->rect.h - contact_margin;
         probe.h = contact_margin * 2.0f;
     } else {
         float side_travel = GameClampF(sw->rect.w * 0.20f, 4.0f, 10.0f) + 2.0f;
         side_travel = GameClampF(side_travel, 0.0f, sw->rect.w - 4.0f);
-        probe.x = sw->rect.x + side_travel - contact_margin;
-        probe.w = contact_margin;
-        probe.y += side_inset;
-        probe.h -= side_inset * 2.0f;
+        if (mount == PRESSURE_SWITCH_MOUNT_RIGHT) {
+            probe.x = sw->rect.x + side_travel - contact_margin;
+        } else {
+            probe.x = sw->rect.x + sw->rect.w - side_travel - contact_margin;
+        }
+        probe.w = contact_margin * 2.0f;
     }
     if (probe.w <= 0.0f || probe.h <= 0.0f) {
         return 0;
@@ -1576,22 +1609,25 @@ static void GameUpdateRoomPressureSwitches(GameState* state, float dt) {
                 }
             }
         }
-        if (pressed != state->pressure_switch_pressed[i]) {
+        if (!pressed && sw->activator == PRESSURE_SWITCH_ANY) {
+            int piston_count = room->piston_count < GAME_MAX_PISTONS ? room->piston_count : GAME_MAX_PISTONS;
+            for (int piston_index = 0; piston_index < piston_count; ++piston_index) {
+                RectF plate = PistonPlateRectForExtension(&room->pistons[piston_index], state->piston_effective_extension[piston_index]);
+                if (GamePressureSwitchTouchedByRect(sw, &plate)) {
+                    pressed = 1;
+                    break;
+                }
+            }
+        }        if (pressed != state->pressure_switch_pressed[i]) {
             state->audio_events |= GAME_AUDIO_SWITCH;
         }
         state->pressure_switch_pressed[i] = pressed;
         state->pressure_switch_anim[i] = GameFlexApproachF(state->pressure_switch_anim[i], pressed ? 1.0f : 0.0f, dt, 18.0f, 18.0f);
     }
 
-    int unlocked = switch_count <= 0 && !room->exit_requires_pressure_switches;
-    if (switch_count > 0) {
-        unlocked = 1;
-        for (int i = 0; i < switch_count; ++i) {
-            if (!state->pressure_switch_pressed[i]) {
-                unlocked = 0;
-                break;
-            }
-        }
+    int unlocked = switch_count > 0 && GamePressureSwitchMaskPressed(state, 0);
+    if (switch_count <= 0) {
+        unlocked = !room->exit_requires_pressure_switches;
     }
     state->room_exit_unlocked = unlocked;
 
@@ -1600,8 +1636,9 @@ static void GameUpdateRoomPressureSwitches(GameState* state, float dt) {
     float sim_dt = dt * SettingsUiGameSpeedScale();
     for (int i = 0; i < platform_count; ++i) {
         float current = state->pressure_platform_open_amount[i];
-        float target = unlocked ? 1.0f : 0.0f;
-        float speed = unlocked ? PRESSURE_PLATFORM_OPEN_SPEED : PRESSURE_PLATFORM_CLOSE_SPEED;
+        int platform_unlocked = GamePressureSwitchMaskPressed(state, room->pressure_platforms[i].required_switch_mask);
+        float target = platform_unlocked ? 1.0f : 0.0f;
+        float speed = platform_unlocked ? PRESSURE_PLATFORM_OPEN_SPEED : PRESSURE_PLATFORM_CLOSE_SPEED;
         float next = GameFlexApproachF(current, target, sim_dt, speed, speed);
         if (next < current && !GamePressurePlatformTargetClear(state, i, next, &pr_now)) {
             next = current;

@@ -11,6 +11,7 @@
 - [레벨과 튜토리얼](design/level_tutorial.md)
 - [아트와 UI](design/art_ui.md)
 - [확정 사항과 미확정 사항](design/decisions_open_items.md)
+- [구현 변경 규칙](IMPLEMENTATION_RULES.md)
 
 ## 문서 상태
 

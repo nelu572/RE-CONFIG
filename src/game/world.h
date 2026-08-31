@@ -46,15 +46,26 @@ enum PressureSwitchActivator {
     PRESSURE_SWITCH_ANY,
 };
 
+enum PressureSwitchMount {
+    PRESSURE_SWITCH_MOUNT_AUTO,
+    PRESSURE_SWITCH_MOUNT_RIGHT,
+    PRESSURE_SWITCH_MOUNT_LEFT,
+    PRESSURE_SWITCH_MOUNT_DOWN,
+    PRESSURE_SWITCH_MOUNT_UP,
+};
+
 struct PressureSwitchDevice {
     RectF rect;
     PressureSwitchActivator activator;
+    PressureSwitchMount mount = PRESSURE_SWITCH_MOUNT_AUTO;
 };
 
 struct PressurePlatformDevice {
     RectF rect;
     float open_offset_x;
     float open_offset_y;
+    // Zero keeps the legacy behavior: every pressure switch in the room is required.
+    unsigned int required_switch_mask = 0;
 };
 
 struct RoomDef {
