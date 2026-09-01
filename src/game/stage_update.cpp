@@ -508,7 +508,7 @@ static RectF GamePlayerVisualRectForScale(const GameState* state, float sx, floa
 }
 
 static int GamePlayerStretchBlocked(const GameState* state) {
-    RectF stretch = GamePlayerVisualRectForScale(state, 0.76f, 1.34f);
+    RectF stretch = GamePlayerVisualRectForScale(state, 0.92f, 1.12f);
     return GameRectOverlapsSolids(state, &stretch);
 }
 

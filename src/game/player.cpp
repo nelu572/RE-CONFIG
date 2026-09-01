@@ -141,14 +141,10 @@ static RectF PlayerVisualBodyRect(const Player* player, GravityDirection gravity
     int gravity_x;
     int gravity_y;
     PlayerGravityVector(gravity_direction, &gravity_x, &gravity_y);
-    float collision_gravity_size = gravity_x != 0 ? pr.w : pr.h;
-    float collision_tangent_size = gravity_x != 0 ? pr.h : pr.w;
-    int soft_visual = PlayerAbsF(collision_gravity_size - PLAYER_DEFAULT_COLLISION_H) > 0.01f ||
-                      PlayerAbsF(collision_tangent_size - PLAYER_DEFAULT_COLLISION_W) > 0.01f;
     float sx = PlayerClampF(player->visual_sx, 0.72f, 1.34f);
     float sy = PlayerClampF(player->visual_sy, 0.60f, 1.36f);
-    float tangent_size = soft_visual ? collision_tangent_size : PLAYER_VISUAL_SIZE * sx;
-    float gravity_size = soft_visual ? collision_gravity_size : PLAYER_VISUAL_SIZE * sy;
+    float tangent_size = PLAYER_VISUAL_SIZE * sx;
+    float gravity_size = PLAYER_VISUAL_SIZE * sy;
     if (tangent_size < 26.0f) tangent_size = 26.0f;
     if (gravity_size < 24.0f) gravity_size = 24.0f;
 
@@ -493,7 +489,7 @@ void UpdatePlayerPresentation(Player* player, PlayerParticle* particles, int par
         if (soft_visual) {
             player->visual_vx *= 0.35f;
             player->visual_vy *= 0.35f;
-            player->jump_squash_timer = stretch_blocked ? 0.0f : 0.130f;
+            player->jump_squash_timer = stretch_blocked ? 0.0f : 0.095f;
         } else {
             player->visual_sx = 1.14f;
             player->visual_sy = 0.84f;
@@ -506,8 +502,8 @@ void UpdatePlayerPresentation(Player* player, PlayerParticle* particles, int par
     }
     if (landed) {
         if (soft_visual) {
-            player->visual_sx = PlayerClampF(player->visual_sx, 1.06f, 1.20f);
-            player->visual_sy = PlayerClampF(player->visual_sy, 0.84f, 0.98f);
+            player->visual_sx = PlayerClampF(player->visual_sx, 1.08f, 1.18f);
+            player->visual_sy = PlayerClampF(player->visual_sy, 0.80f, 0.94f);
             player->visual_vx = 0.9f;
             player->visual_vy = -0.7f;
         } else {
@@ -533,22 +529,22 @@ void UpdatePlayerPresentation(Player* player, PlayerParticle* particles, int par
         if (player->jump_squash_timer < 0.0f) {
             player->jump_squash_timer = 0.0f;
         }
-        float timer_seconds = soft_visual ? 0.130f : 0.055f;
+        float timer_seconds = soft_visual ? 0.095f : 0.055f;
         float elapsed = timer_seconds - player->jump_squash_timer;
         if (soft_visual) {
-            const float delay_seconds = 0.020f;
-            const float stretch_seconds = 0.055f;
+            const float delay_seconds = 0.012f;
+            const float stretch_seconds = 0.040f;
             if (elapsed < delay_seconds) {
-                target_sx = 0.98f;
-                target_sy = 1.02f;
+                target_sx = 0.99f;
+                target_sy = 1.01f;
             } else if (elapsed < delay_seconds + stretch_seconds) {
                 float stretch_t = PlayerSmooth01((elapsed - delay_seconds) / stretch_seconds);
-                target_sx = 0.98f + (0.76f - 0.98f) * stretch_t;
-                target_sy = 1.02f + (1.34f - 1.02f) * stretch_t;
+                target_sx = 0.99f + (0.88f - 0.99f) * stretch_t;
+                target_sy = 1.01f + (1.18f - 1.01f) * stretch_t;
             } else {
                 float release_t = PlayerSmooth01((elapsed - delay_seconds - stretch_seconds) / (timer_seconds - delay_seconds - stretch_seconds));
-                target_sx = 0.76f + (0.91f - 0.76f) * release_t;
-                target_sy = 1.34f + (1.14f - 1.34f) * release_t;
+                target_sx = 0.88f + (0.96f - 0.88f) * release_t;
+                target_sy = 1.18f + (1.08f - 1.18f) * release_t;
             }
         } else {
             float t = PlayerSmooth01(1.0f - player->jump_squash_timer / timer_seconds);
@@ -565,8 +561,8 @@ void UpdatePlayerPresentation(Player* player, PlayerParticle* particles, int par
         target_sy = 0.905f;
     } else if (!player->grounded) {
         if (soft_visual) {
-            target_sx = collision_tangent_scale;
-            target_sy = collision_height_scale;
+            target_sx = 0.98f;
+            target_sy = 1.04f;
         } else if (gravity_speed < 0.0f) {
             float rise = PlayerClampF((-gravity_speed) / 675.0f, 0.0f, 1.0f);
             target_sx = 1.0f - rise * 0.055f;
@@ -582,8 +578,8 @@ void UpdatePlayerPresentation(Player* player, PlayerParticle* particles, int par
     }
 
     if (soft_visual && player->grounded && player->jump_squash_timer <= 0.0f) {
-        target_sx = collision_tangent_scale;
-        target_sy = collision_height_scale;
+        target_sx = 1.16f;
+        target_sy = 0.80f;
     }
 
     int soft_input = soft_visual && PlayerAbsF(move) > 0.01f;
