@@ -9,12 +9,12 @@ static const RectF g_room04_platforms[] = {
 };
 
 static const PistonDevice g_room04_pistons[] = {
-    { T(18), T(8), T(5), T(1.00f), T(1.05f), T(1.00f), T(9.00f), 1.10f, 0.00f },
-    { T(23), T(8), T(5), T(1.00f), T(1.05f), T(1.00f), T(9.00f), 1.10f, 0.06f },
-    { T(30), T(8), T(5), T(1.00f), T(1.05f), T(1.00f), T(9.00f), 1.10f, 0.24f },
-    { T(35), T(8), T(5), T(1.00f), T(1.05f), T(1.00f), T(9.00f), 1.10f, 0.30f },
-    { T(42), T(8), T(5), T(1.00f), T(1.05f), T(1.00f), T(9.00f), 1.10f, 0.48f },
-    { T(47), T(8), T(5), T(1.00f), T(1.05f), T(1.00f), T(9.00f), 1.10f, 0.54f },
+    { T(18), T(8), T(5), T(1.00f), T(1.05f), T(1.00f), T(9.00f), 0.00f },
+    { T(23), T(8), T(5), T(1.00f), T(1.05f), T(1.00f), T(9.00f), 0.06f },
+    { T(30), T(8), T(5), T(1.00f), T(1.05f), T(1.00f), T(9.00f), 0.24f },
+    { T(35), T(8), T(5), T(1.00f), T(1.05f), T(1.00f), T(9.00f), 0.30f },
+    { T(42), T(8), T(5), T(1.00f), T(1.05f), T(1.00f), T(9.00f), 0.48f },
+    { T(47), T(8), T(5), T(1.00f), T(1.05f), T(1.00f), T(9.00f), 0.54f },
 };
 
 extern const RoomDef g_room04 = {
@@ -34,4 +34,3 @@ extern const RoomDef g_room04 = {
     g_room04_pistons,
     (int)(sizeof(g_room04_pistons) / sizeof(g_room04_pistons[0])),
 };
-

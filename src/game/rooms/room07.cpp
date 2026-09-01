@@ -20,11 +20,11 @@ static const RectF g_room07_type_a_walls[] = {
 };
 
 static const PistonDevice g_room07_pistons[] = {
-    { T(74), T(5), T(5), T(1.00f), T(0.90f), T(1.00f), T(12), 1.35f, 0.40f, PISTON_DOWN },
-    { T(22), T(8), T(5), T(1.00f), T(0.90f), T(1.00f), T(15), 1.18f, 0.00f, PISTON_DOWN },
-    { T(2), T(19), T(5), T(1.00f), T(0.90f), T(1.00f), T(18), 1.10f, 0.00f, PISTON_RIGHT },
-    { T(38), T(20), T(5), T(1.00f), T(0.90f), T(1.00f), T(53), 1.10f, 0.00f, PISTON_RIGHT },
-    { T(31), T(24), T(5), T(1.00f), T(0.90f), T(1.00f), T(8), 1.55f, 0.35f, PISTON_UP },
+    { T(74), T(5), T(5), T(1.00f), T(0.90f), T(1.00f), T(12), 0.40f, PISTON_DOWN },
+    { T(22), T(8), T(5), T(1.00f), T(0.90f), T(1.00f), T(15), 0.00f, PISTON_DOWN },
+    { T(2), T(19), T(5), T(1.00f), T(0.90f), T(1.00f), T(18), 0.00f, PISTON_RIGHT },
+    { T(38), T(20), T(5), T(1.00f), T(0.90f), T(1.00f), T(53), 0.00f, PISTON_RIGHT },
+    { T(31), T(24), T(5), T(1.00f), T(0.90f), T(1.00f), T(8), 0.35f, PISTON_UP },
 };
 
 extern const RoomDef g_room07 = {

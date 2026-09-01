@@ -59,11 +59,11 @@ static int PistonIsHorizontal(const PistonDevice* piston) {
 
 PistonPose PistonPoseAt(const PistonDevice* piston, float piston_time_seconds) {
     PistonPose pose = {};
-    if (!piston || piston->cycle_seconds <= 0.001f) {
+    if (!piston) {
         return pose;
     }
 
-    float phase = PistonWrap01(piston_time_seconds / piston->cycle_seconds + piston->phase);
+    float phase = PistonWrap01(piston_time_seconds / PISTON_CYCLE_SECONDS + piston->phase);
     if (phase < 0.14f) {
         pose.extension = 0.0f;
         pose.descending = 0;

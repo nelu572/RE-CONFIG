@@ -25,9 +25,9 @@ static const SpeakerDevice g_room08_speakers[] = {
 
 static const PistonDevice g_room08_pistons[] = {
     // The upper piston blocks the final leftward run to EXIT.
-    { T(18), T(8), T(5), T(1.00f), T(0.90f), T(1.00f), T(8), 1.35f, 0.25f, PISTON_DOWN },
+    { T(18), T(8), T(5), T(1.00f), T(0.90f), T(1.00f), T(8), 0.25f, PISTON_DOWN },
     // This wide rising piston delivers the player into the speaker's vertical lane.
-    { T(34), T(52), T(11), T(1.00f), T(0.90f), T(1.00f), T(13), 1.60f, 0.00f, PISTON_UP },
+    { T(34), T(52), T(11), T(1.00f), T(0.90f), T(1.00f), T(13), 0.00f, PISTON_UP },
 };
 
 static const GravityBoxDef g_room08_gravity_boxes[] = {
