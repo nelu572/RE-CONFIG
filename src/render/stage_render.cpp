@@ -259,14 +259,6 @@ static int SpeakerClipLineToRoomAir(const SpeakerRoomAirRect* rect,
     return 1;
 }
 
-static RectF StagePressurePlatformRectAt(const PressurePlatformDevice* platform, float open_amount) {
-    RectF rect = platform->rect;
-    open_amount = StageClampF(open_amount, 0.0f, 1.0f);
-    rect.x += platform->open_offset_x * open_amount;
-    rect.y += platform->open_offset_y * open_amount;
-    return rect;
-}
-
 static void DrawSpeakerAlphaLine(const StageRenderState* state,
                                  int x0,
                                  int y0,
@@ -798,13 +790,6 @@ static void DrawRoomPistons(const StageRenderState* state) {
     }
 }
 
-static PressureSwitchMount StagePressureSwitchMountFor(const PressureSwitchDevice* sw) {
-    if (sw->mount != PRESSURE_SWITCH_MOUNT_AUTO) {
-        return sw->mount;
-    }
-    return sw->rect.w >= sw->rect.h ? PRESSURE_SWITCH_MOUNT_DOWN : PRESSURE_SWITCH_MOUNT_RIGHT;
-}
-
 static void DrawPressureSwitchDevice(const StageRenderState* state, const PressureSwitchDevice* sw, int pressed, float anim) {
     RenderContext* render = state->render;
     int x = WorldX(render, sw->rect.x);
@@ -815,7 +800,7 @@ static void DrawPressureSwitchDevice(const StageRenderState* state, const Pressu
     uint32_t stem_color = StageLerpColor(state->text_color, state->platform_color, 0.28f);
     uint32_t press = pressed ? 0xFF3030u : 0xE1192Du;
     uint32_t press_shadow = 0x8A101Au;
-    PressureSwitchMount mount = StagePressureSwitchMountFor(sw);
+    PressureSwitchMount mount = PressureSwitchMountFor(state->room, sw);
 
     if (mount == PRESSURE_SWITCH_MOUNT_DOWN || mount == PRESSURE_SWITCH_MOUNT_UP) {
         int travel = (int)(anim * 7.0f + 0.5f);
@@ -874,9 +859,7 @@ static void DrawRoomPressureSwitches(const StageRenderState* state) {
 
 static void DrawPressurePlatformDevice(const StageRenderState* state, const PressurePlatformDevice* platform, float open_amount) {
     open_amount = StageClampF(open_amount, 0.0f, 1.0f);
-    RectF current = platform->rect;
-    current.x += platform->open_offset_x * open_amount;
-    current.y += platform->open_offset_y * open_amount;
+    RectF current = PressurePlatformRectAt(platform, open_amount);
 
     RectF pieces[16];
     RectF next[16];

@@ -106,3 +106,5 @@ struct RoomDef {
 const RoomDef* GetRoom(int index);
 int RoomCount();
 int DevelopedRoomCount();
+RectF PressurePlatformRectAt(const PressurePlatformDevice* platform, float open_amount);
+PressureSwitchMount PressureSwitchMountFor(const RoomDef* room, const PressureSwitchDevice* sw);

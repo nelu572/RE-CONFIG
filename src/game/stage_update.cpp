@@ -22,12 +22,12 @@ static constexpr float SPEAKER_AIR_PUSH_SCALE = 1.35f;
 static constexpr float SPEAKER_PUSH_SMOOTH_SPEED = 18.0f;
 static constexpr float PLAYER_FLEX_NORMAL_TANGENT = 40.0f;
 static constexpr float PLAYER_FLEX_NORMAL_GRAVITY = 40.0f;
-static constexpr float PLAYER_FLEX_SOFT_IDLE_TANGENT = 49.0f;
+static constexpr float PLAYER_FLEX_SOFT_IDLE_TANGENT = 46.4f;
 static constexpr float PLAYER_FLEX_SOFT_IDLE_GRAVITY = 30.0f;
-static constexpr float PLAYER_FLEX_SOFT_MOVE_TANGENT = 52.0f;
-static constexpr float PLAYER_FLEX_SOFT_MOVE_GRAVITY = 29.0f;
-static constexpr float PLAYER_FLEX_SOFT_AIR_TANGENT = 28.0f;
-static constexpr float PLAYER_FLEX_SOFT_AIR_GRAVITY = 53.6f;
+static constexpr float PLAYER_FLEX_SOFT_MOVE_TANGENT = 46.4f;
+static constexpr float PLAYER_FLEX_SOFT_MOVE_GRAVITY = 30.0f;
+static constexpr float PLAYER_FLEX_SOFT_AIR_TANGENT = 39.2f;
+static constexpr float PLAYER_FLEX_SOFT_AIR_GRAVITY = 41.6f;
 static constexpr float PLAYER_FLEX_SOFT_APPROACH_SPEED = 95.0f;
 static constexpr float PLAYER_FLEX_FIRM_GROW_SPEED = 220.0f;
 static constexpr int GAME_MAX_DYNAMIC_SOLIDS = 32;
@@ -184,13 +184,6 @@ static int GameRoomPressurePlatformCount(const RoomDef* room) {
     return room->pressure_platform_count < GAME_MAX_PRESSURE_PLATFORMS ? room->pressure_platform_count : GAME_MAX_PRESSURE_PLATFORMS;
 }
 
-static PressureSwitchMount GamePressureSwitchMountFor(const PressureSwitchDevice* sw) {
-    if (sw->mount != PRESSURE_SWITCH_MOUNT_AUTO) {
-        return sw->mount;
-    }
-    return sw->rect.w >= sw->rect.h ? PRESSURE_SWITCH_MOUNT_DOWN : PRESSURE_SWITCH_MOUNT_RIGHT;
-}
-
 static int GamePressureSwitchMaskPressed(const GameState* state, unsigned int switch_mask) {
     const RoomDef* room = GameCurrentRoom(state);
     int switch_count = GameRoomPressureSwitchCount(room);
@@ -208,14 +201,6 @@ static int GamePressureSwitchMaskPressed(const GameState* state, unsigned int sw
     }
     return 1;
 }
-static RectF GamePressurePlatformRectAt(const PressurePlatformDevice* platform, float open_amount) {
-    RectF rect = platform->rect;
-    open_amount = open_amount < 0.0f ? 0.0f : (open_amount > 1.0f ? 1.0f : open_amount);
-    rect.x += platform->open_offset_x * open_amount;
-    rect.y += platform->open_offset_y * open_amount;
-    return rect;
-}
-
 static float GamePressurePlatformAmountPerSecond(const PressurePlatformDevice* platform, float pixels_per_second) {
     float travel = GameAbsF(platform->open_offset_x) + GameAbsF(platform->open_offset_y);
     return travel > 0.001f ? pixels_per_second / travel : 1.0f;
@@ -223,7 +208,7 @@ static float GamePressurePlatformAmountPerSecond(const PressurePlatformDevice* p
 
 static int GamePressurePlatformTargetClear(const GameState* state, int platform_index, float open_amount) {
     const RoomDef* room = GameCurrentRoom(state);
-    RectF platform_rect = GamePressurePlatformRectAt(&room->pressure_platforms[platform_index], open_amount);
+    RectF platform_rect = PressurePlatformRectAt(&room->pressure_platforms[platform_index], open_amount);
     int box_count = GameRoomGravityBoxCount(room);
     for (int i = 0; i < box_count; ++i) {
         if (RectsOverlap(&state->gravity_boxes[i], &platform_rect)) {
@@ -237,7 +222,7 @@ static int GameAppendPressurePlatformSolids(const GameState* state, RectF* out_s
     const RoomDef* room = GameCurrentRoom(state);
     int platform_count = GameRoomPressurePlatformCount(room);
     for (int i = 0; i < platform_count && count < max_solids; ++i) {
-        out_solids[count++] = GamePressurePlatformRectAt(&room->pressure_platforms[i], state->pressure_platform_open_amount[i]);
+        out_solids[count++] = PressurePlatformRectAt(&room->pressure_platforms[i], state->pressure_platform_open_amount[i]);
     }
     return count;
 }
@@ -247,7 +232,7 @@ static RectF GamePressureSwitchSolidAt(const GameState* state, int switch_index)
     const PressureSwitchDevice* sw = &room->pressure_switches[switch_index];
     RectF rect = sw->rect;
     float anim = GameClampF(state->pressure_switch_anim[switch_index], 0.0f, 1.0f);
-    PressureSwitchMount mount = GamePressureSwitchMountFor(sw);
+    PressureSwitchMount mount = PressureSwitchMountFor(room, sw);
     if (mount == PRESSURE_SWITCH_MOUNT_DOWN || mount == PRESSURE_SWITCH_MOUNT_UP) {
         float travel = anim * 6.0f;
         float next_h = GameClampF(rect.h - travel, 4.0f, rect.h);
@@ -381,12 +366,6 @@ static RectF GamePlayerFlexRectWithSize(const GameState* state, float tangent_si
     }
     return candidate;
 }
-
-static int GamePlayerFlexSizeClear(const GameState* state, float tangent_size, float gravity_size, GravityDirection anchor_direction) {
-    RectF candidate = GamePlayerFlexRectWithSize(state, tangent_size, gravity_size, anchor_direction);
-    return !GameRectOverlapsSolids(state, &candidate);
-}
-
 static int GamePlayerResizeSolidCount(const RoomDef* room, int type_a_collision_active, int extra_solid_count) {
     return room->platform_count + (type_a_collision_active ? room->type_a_count : 0) + extra_solid_count;
 }
@@ -512,13 +491,6 @@ static int GamePlayerStretchBlocked(const GameState* state) {
     return GameRectOverlapsSolids(state, &stretch);
 }
 
-static int GamePlayerSoftJumpFits(const GameState* state) {
-    return GamePlayerFlexSizeClear(state,
-                                   PLAYER_FLEX_SOFT_AIR_TANGENT,
-                                   PLAYER_FLEX_SOFT_AIR_GRAVITY,
-                                   state->gravity_direction);
-}
-
 static void GameApplyPlayerFlexibility(GameState* state, int value, float move, int airborne, GravityDirection anchor_direction, float dt) {
     float tangent_size = PLAYER_FLEX_NORMAL_TANGENT;
     float gravity_size = PLAYER_FLEX_NORMAL_GRAVITY;
@@ -540,6 +512,17 @@ static void GameApplyPlayerFlexibility(GameState* state, int value, float move, 
     float grow_speed = value == SETTINGS_FLEXIBILITY_SOFT ? PLAYER_FLEX_SOFT_APPROACH_SPEED : PLAYER_FLEX_FIRM_GROW_SPEED;
     tangent_size = GameFlexApproachF(current_tangent_size, tangent_size, dt, grow_speed, PLAYER_FLEX_SOFT_APPROACH_SPEED);
     gravity_size = GameFlexApproachF(current_gravity_size, gravity_size, dt, grow_speed, PLAYER_FLEX_SOFT_APPROACH_SPEED);
+
+    if (value == SETTINGS_FLEXIBILITY_SOFT && airborne) {
+        RectF full_air = GamePlayerFlexRectWithSize(state,
+                                                    PLAYER_FLEX_SOFT_AIR_TANGENT,
+                                                    PLAYER_FLEX_SOFT_AIR_GRAVITY,
+                                                    anchor_direction);
+        if (GameRectOverlapsSolids(state, &full_air)) {
+            tangent_size = current_tangent_size;
+            gravity_size = current_gravity_size;
+        }
+    }
 
     float next_w = tangent_size;
     float next_h = gravity_size;
@@ -1928,10 +1911,11 @@ static void GamePushGravityBoxesByPlayerInput(GameState* state, float move, floa
     }
 }
 
-static int GamePressureSwitchTouchedByRect(const PressureSwitchDevice* sw, const RectF* rect) {
+static int GamePressureSwitchTouchedByRect(const GameState* state, const PressureSwitchDevice* sw, const RectF* rect) {
+    const RoomDef* room = GameCurrentRoom(state);
     const float contact_margin = 3.0f;
     RectF probe = sw->rect;
-    PressureSwitchMount mount = GamePressureSwitchMountFor(sw);
+    PressureSwitchMount mount = PressureSwitchMountFor(room, sw);
     if (mount == PRESSURE_SWITCH_MOUNT_DOWN) {
         probe.y = sw->rect.y - contact_margin;
         probe.h = contact_margin * 2.0f;
@@ -1963,11 +1947,11 @@ static void GameUpdateRoomPressureSwitches(GameState* state, float dt) {
         const PressureSwitchDevice* sw = &room->pressure_switches[i];
         int pressed = 0;
         if (sw->activator == PRESSURE_SWITCH_PLAYER || sw->activator == PRESSURE_SWITCH_ANY) {
-            pressed = GamePressureSwitchTouchedByRect(sw, &pr);
+            pressed = GamePressureSwitchTouchedByRect(state, sw, &pr);
         }
         if (!pressed && (sw->activator == PRESSURE_SWITCH_BOX || sw->activator == PRESSURE_SWITCH_ANY)) {
             for (int box_index = 0; box_index < box_count; ++box_index) {
-                if (GamePressureSwitchTouchedByRect(sw, &state->gravity_boxes[box_index])) {
+                if (GamePressureSwitchTouchedByRect(state, sw, &state->gravity_boxes[box_index])) {
                     pressed = 1;
                     break;
                 }
@@ -1977,7 +1961,7 @@ static void GameUpdateRoomPressureSwitches(GameState* state, float dt) {
             int piston_count = room->piston_count < GAME_MAX_PISTONS ? room->piston_count : GAME_MAX_PISTONS;
             for (int piston_index = 0; piston_index < piston_count; ++piston_index) {
                 RectF plate = PistonPlateRectForExtension(&room->pistons[piston_index], state->piston_effective_extension[piston_index]);
-                if (GamePressureSwitchTouchedByRect(sw, &plate)) {
+                if (GamePressureSwitchTouchedByRect(state, sw, &plate)) {
                     pressed = 1;
                     break;
                 }
@@ -1986,7 +1970,7 @@ static void GameUpdateRoomPressureSwitches(GameState* state, float dt) {
         if (!pressed && sw->activator == PRESSURE_SWITCH_WALKER_ENEMY) {
             int enemy_count = GameRoomWalkerEnemyCount(room);
             for (int enemy_index = 0; enemy_index < enemy_count; ++enemy_index) {
-                if (GamePressureSwitchTouchedByRect(sw, &state->walker_enemies[enemy_index])) {
+                if (GamePressureSwitchTouchedByRect(state, sw, &state->walker_enemies[enemy_index])) {
                     pressed = 1;
                     break;
                 }
@@ -2020,8 +2004,8 @@ static void GameUpdateRoomPressureSwitches(GameState* state, float dt) {
             next = current;
         }
         if (next != current) {
-            RectF previous_platform = GamePressurePlatformRectAt(&room->pressure_platforms[i], current);
-            RectF current_platform = GamePressurePlatformRectAt(&room->pressure_platforms[i], next);
+            RectF previous_platform = PressurePlatformRectAt(&room->pressure_platforms[i], current);
+            RectF current_platform = PressurePlatformRectAt(&room->pressure_platforms[i], next);
             GameCarryPlayerOnPressurePlatform(state, &previous_platform, &current_platform);
         }
         state->pressure_platform_open_amount[i] = next;
@@ -2367,15 +2351,6 @@ void GameUpdateStage(GameState* state, float dt, int use_static_cache) {
     GameApplyPlayerFlexibility(state, flexibility, control.move, !state->player.grounded, GameFlexAnchorDirection(!state->player.grounded, state->gravity_direction), dt);
 
     int jump_active = GameFeatureActive(state, FEATURE_JUMP);
-    int wants_jump = control.jump_pressed || state->player.jump_buffer_timer > 0.0f;
-    int can_jump_from_grace = state->player.grounded || state->player.coyote_timer > 0.0f;
-    if (jump_active &&
-        wants_jump &&
-        can_jump_from_grace &&
-        flexibility == SETTINGS_FLEXIBILITY_SOFT &&
-        !GamePlayerSoftJumpFits(state)) {
-        jump_active = 0;
-    }
 
     GameSpeakerPushVelocity speaker_push = GameSmoothSpeakerPush(state, GameComputeSpeakerPushVelocity(state), dt);
 
