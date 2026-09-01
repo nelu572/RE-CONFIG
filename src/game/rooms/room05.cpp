@@ -13,8 +13,8 @@ static const RectF g_room05_platforms[] = {
 };
 
 static const GravityBoxDef g_room05_gravity_boxes[] = {
-    { { T(5.25f), T(11.25f), T(1.5f), T(1.5f) } },
-    { { T(20.75f), T(18.75f), T(1.5f), T(1.5f) } },
+    { DefaultGravityBoxAt(T(5.25f), T(11.25f)) },
+    { DefaultGravityBoxAt(T(20.75f), T(18.75f)) },
 };
 
 static const PressureSwitchDevice g_room05_pressure_switches[] = {

@@ -32,7 +32,7 @@ static const SpeakerDevice g_room06_speakers[] = {
 };
 
 static const GravityBoxDef g_room06_gravity_boxes[] = {
-    { { T(18), T(3), T(2), T(2) } },
+    { DefaultGravityBoxAt(T(18.25f), T(3.25f)) },
 };
 
 static const PressureSwitchDevice g_room06_pressure_switches[] = {

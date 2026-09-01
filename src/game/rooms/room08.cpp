@@ -31,7 +31,7 @@ static const PistonDevice g_room08_pistons[] = {
 };
 
 static const GravityBoxDef g_room08_gravity_boxes[] = {
-    { { T(8), T(50.5f), T(1.5f), T(1.5f) } },
+    { DefaultGravityBoxAt(T(8), T(50.5f)) },
 };
 
 static const PressureSwitchDevice g_room08_pressure_switches[] = {
