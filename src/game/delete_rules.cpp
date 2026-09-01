@@ -39,12 +39,6 @@ static const wchar_t* const g_flex_values[] = {
     L"말랑함",
 };
 
-static const wchar_t* const g_camera_values[] = {
-    L"가까이",
-    L"기본",
-    L"멀리",
-};
-
 static const wchar_t* const g_speed_values[] = {
     L"느림",
     L"보통",
@@ -56,8 +50,6 @@ static const SettingsItemDef g_settings_items[] = {
     { SETTINGS_GAMEPLAY, FEATURE_COUNT, L"기믹 속도", SETTINGS_VALUE_STEPS, SETTINGS_ITEM_IMPLEMENTED, g_speed_values, SETTINGS_GAME_SPEED_COUNT, SETTINGS_GAME_SPEED_NORMAL },
     { SETTINGS_AUDIO, FEATURE_COUNT, L"BGM 음량", SETTINGS_VALUE_STEPS, SETTINGS_ITEM_IMPLEMENTED, g_volume_values, 11, 7 },
     { SETTINGS_AUDIO, FEATURE_COUNT, L"효과음 음량", SETTINGS_VALUE_STEPS, SETTINGS_ITEM_IMPLEMENTED, g_volume_values, 11, 7 },
-    { SETTINGS_VIDEO, FEATURE_COUNT, L"무채색", SETTINGS_VALUE_TOGGLE, SETTINGS_ITEM_PLANNED, g_toggle_values, 2, 1 },
-    { SETTINGS_VIDEO, FEATURE_COUNT, L"카메라 크기", SETTINGS_VALUE_CHOICES, SETTINGS_ITEM_PLANNED, g_camera_values, 3, 1 },
     { SETTINGS_VIDEO, FEATURE_COUNT, L"해상도 / 화면비", SETTINGS_VALUE_PENDING, SETTINGS_ITEM_PLANNED, 0, 0, 0 },
 #if 0
     { SETTINGS_SYSTEM, FEATURE_COUNT, L"중력 방향", SETTINGS_VALUE_CHOICES, SETTINGS_ITEM_IMPLEMENTED, g_gravity_direction_values, 4, GRAVITY_DOWN },
