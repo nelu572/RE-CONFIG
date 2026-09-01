@@ -16,3 +16,5 @@ float WorldToScreenX(const Camera* camera, float x);
 float WorldToScreenY(const Camera* camera, float y);
 float ScreenToWorldX(const Camera* camera, float x);
 float ScreenToWorldY(const Camera* camera, float y);
+float CameraViewportWidth(const Camera* camera);
+float CameraViewportHeight(const Camera* camera);

@@ -614,7 +614,7 @@ void DrawPlayerParticles(RenderContext* render, const PlayerParticle* particles,
         float t = PlayerClampF(p->age / p->life, 0.0f, 1.0f);
         float fade = 1.0f - PlayerSmooth01(t);
         float scale = 1.0f - t * 0.62f;
-        int radius = (int)(p->size * scale + 0.5f);
+        int radius = WorldW(render, p->size * scale);
         if (radius < 1 || fade <= 0.05f) {
             continue;
         }
@@ -625,8 +625,8 @@ void DrawPlayerParticles(RenderContext* render, const PlayerParticle* particles,
 void DrawPlayer(RenderContext* render, const Player* player, uint32_t player_color, uint32_t face_color, GravityDirection gravity_direction) {
     PlayerVisualAxes axes = PlayerBuildVisualAxes(player, gravity_direction);
     RectF body = axes.body;
-    int body_w = (int)(body.w + 0.5f);
-    int body_h = (int)(body.h + 0.5f);
+    int body_w = WorldW(render, body.w);
+    int body_h = WorldH(render, body.h);
     int x = WorldX(render, body.x);
     int y = WorldY(render, body.y);
 
@@ -652,11 +652,11 @@ void DrawPlayer(RenderContext* render, const Player* player, uint32_t player_col
         float eye_center_y = axes.center_y +
                              (float)axes.gravity_y * head_offset +
                              (float)axes.tangent_y * (look_offset + side * eye_separation);
-        int eye_w = axes.gravity_x != 0 ? eye_gravity : eye_tangent;
-        int eye_h = axes.gravity_x != 0 ? eye_tangent : eye_gravity;
+        int eye_w = WorldW(render, (float)(axes.gravity_x != 0 ? eye_gravity : eye_tangent));
+        int eye_h = WorldH(render, (float)(axes.gravity_x != 0 ? eye_tangent : eye_gravity));
         DrawRect(render,
-                 WorldX(render, eye_center_x - (float)eye_w * 0.5f),
-                 WorldY(render, eye_center_y - (float)eye_h * 0.5f),
+                 WorldX(render, eye_center_x) - eye_w / 2,
+                 WorldY(render, eye_center_y) - eye_h / 2,
                  eye_w,
                  eye_h,
                  face_color);

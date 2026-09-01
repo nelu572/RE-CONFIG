@@ -293,6 +293,20 @@ int WorldY(RenderContext* render, float y) {
     return sy >= 0.0f ? (int)(sy + 0.5f) : (int)(sy - 0.5f);
 }
 
+int WorldW(RenderContext* render, float w) {
+    float screen_w = w;
+    if (screen_w <= 0.0f) return 0;
+    int result = (int)(screen_w + 0.5f);
+    return result > 0 ? result : 1;
+}
+
+int WorldH(RenderContext* render, float h) {
+    float screen_h = h;
+    if (screen_h <= 0.0f) return 0;
+    int result = (int)(screen_h + 0.5f);
+    return result > 0 ? result : 1;
+}
+
 void DrawWorldThickLine(RenderContext* render, float x0, float y0, float x1, float y1, int size, uint32_t color) {
-    DrawThickLine(render, WorldX(render, x0), WorldY(render, y0), WorldX(render, x1), WorldY(render, y1), size, color);
+    DrawThickLine(render, WorldX(render, x0), WorldY(render, y0), WorldX(render, x1), WorldY(render, y1), WorldW(render, (float)size), color);
 }

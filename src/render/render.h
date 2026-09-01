@@ -35,4 +35,6 @@ void BlendPixel(RenderContext* render, int x, int y, float r, float g, float b, 
 void DrawAlphaTriangle(RenderContext* render, const TrailVertex* a, const TrailVertex* b, const TrailVertex* c);
 int WorldX(RenderContext* render, float x);
 int WorldY(RenderContext* render, float y);
+int WorldW(RenderContext* render, float w);
+int WorldH(RenderContext* render, float h);
 void DrawWorldThickLine(RenderContext* render, float x0, float y0, float x1, float y1, int size, uint32_t color);
