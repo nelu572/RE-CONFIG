@@ -10,6 +10,8 @@
 #include "stage_cache.h"
 #include "tutorial_ui.h"
 
+#include <math.h>
+
 static constexpr float GAME_DEATH_RESPAWN_DELAY = 0.58f;
 static constexpr float SPEAKER_WAVE_RANGE = 1080.0f;
 static constexpr float SPEAKER_PUSH_SPEED = 2200.0f;
@@ -37,10 +39,10 @@ static constexpr float GRAVITY_BOX_PUSH_SPEED = 120.0f;
 static constexpr float GRAVITY_BOX_SPEAKER_MIN_PUSH_SPEED = 200.0f;
 static constexpr float PRESSURE_PLATFORM_OPEN_SPEED = 8.0f;
 static constexpr float PRESSURE_PLATFORM_CLOSE_SPEED = 12.0f;
-static constexpr float WALKER_ENEMY_APPROACH_RANGE = 100.0f;
-static constexpr float WALKER_ENEMY_SPIKE_RETRACT_SECONDS = 0.32f;
+static constexpr float WALKER_ENEMY_APPROACH_RANGE = 200.0f;
+static constexpr float WALKER_ENEMY_SPIKE_RETRACT_SECONDS = 0.60f;
 static constexpr float WALKER_ENEMY_SPIKE_DEPLOY_DELAY_SECONDS = 0.045f;
-static constexpr float WALKER_ENEMY_LEAVE_RANGE = 120.0f;
+static constexpr float WALKER_ENEMY_LEAVE_RANGE = 240.0f;
 static constexpr float WALKER_ENEMY_TURN_SQUASH_SECONDS = 0.10f;
 
 struct GameSpeakerPushVelocity {
@@ -1409,6 +1411,160 @@ static int GameWalkerEnemyPlayerWithinRange(const GameState* state,
     return dx * dx + dy * dy <= range * range;
 }
 
+static float GameWalkerTriangleEdge(float ax, float ay, float bx, float by, float px, float py) {
+    return (px - ax) * (by - ay) - (py - ay) * (bx - ax);
+}
+
+static int GameWalkerPointInRect(const RectF* rect, float x, float y) {
+    return x >= rect->x && x <= rect->x + rect->w && y >= rect->y && y <= rect->y + rect->h;
+}
+
+static int GameWalkerPointInTriangle(float ax, float ay,
+                                     float bx, float by,
+                                     float cx, float cy,
+                                     float px, float py) {
+    float edge0 = GameWalkerTriangleEdge(ax, ay, bx, by, px, py);
+    float edge1 = GameWalkerTriangleEdge(bx, by, cx, cy, px, py);
+    float edge2 = GameWalkerTriangleEdge(cx, cy, ax, ay, px, py);
+    return (edge0 >= 0.0f && edge1 >= 0.0f && edge2 >= 0.0f) ||
+           (edge0 <= 0.0f && edge1 <= 0.0f && edge2 <= 0.0f);
+}
+
+static int GameWalkerPointOnSegment(float ax, float ay, float bx, float by, float px, float py) {
+    static constexpr float epsilon = 0.001f;
+    return px >= (ax < bx ? ax : bx) - epsilon &&
+           px <= (ax > bx ? ax : bx) + epsilon &&
+           py >= (ay < by ? ay : by) - epsilon &&
+           py <= (ay > by ? ay : by) + epsilon;
+}
+
+static int GameWalkerSegmentsTouch(float ax, float ay, float bx, float by,
+                                   float cx, float cy, float dx, float dy) {
+    static constexpr float epsilon = 0.001f;
+    float ab_c = GameWalkerTriangleEdge(ax, ay, bx, by, cx, cy);
+    float ab_d = GameWalkerTriangleEdge(ax, ay, bx, by, dx, dy);
+    float cd_a = GameWalkerTriangleEdge(cx, cy, dx, dy, ax, ay);
+    float cd_b = GameWalkerTriangleEdge(cx, cy, dx, dy, bx, by);
+    if (((ab_c > epsilon && ab_d < -epsilon) || (ab_c < -epsilon && ab_d > epsilon)) &&
+        ((cd_a > epsilon && cd_b < -epsilon) || (cd_a < -epsilon && cd_b > epsilon))) {
+        return 1;
+    }
+    if (ab_c >= -epsilon && ab_c <= epsilon && GameWalkerPointOnSegment(ax, ay, bx, by, cx, cy)) return 1;
+    if (ab_d >= -epsilon && ab_d <= epsilon && GameWalkerPointOnSegment(ax, ay, bx, by, dx, dy)) return 1;
+    if (cd_a >= -epsilon && cd_a <= epsilon && GameWalkerPointOnSegment(cx, cy, dx, dy, ax, ay)) return 1;
+    if (cd_b >= -epsilon && cd_b <= epsilon && GameWalkerPointOnSegment(cx, cy, dx, dy, bx, by)) return 1;
+    return 0;
+}
+
+static int GameWalkerTriangleTouchesRect(const RectF* rect,
+                                         float ax, float ay,
+                                         float bx, float by,
+                                         float cx, float cy) {
+    if (GameWalkerPointInRect(rect, ax, ay) ||
+        GameWalkerPointInRect(rect, bx, by) ||
+        GameWalkerPointInRect(rect, cx, cy)) {
+        return 1;
+    }
+    float rect_left = rect->x;
+    float rect_right = rect->x + rect->w;
+    float rect_top = rect->y;
+    float rect_bottom = rect->y + rect->h;
+    if (GameWalkerPointInTriangle(ax, ay, bx, by, cx, cy, rect_left, rect_top) ||
+        GameWalkerPointInTriangle(ax, ay, bx, by, cx, cy, rect_right, rect_top) ||
+        GameWalkerPointInTriangle(ax, ay, bx, by, cx, cy, rect_left, rect_bottom) ||
+        GameWalkerPointInTriangle(ax, ay, bx, by, cx, cy, rect_right, rect_bottom)) {
+        return 1;
+    }
+    const float rect_edges[4][4] = {
+        { rect_left, rect_top, rect_right, rect_top },
+        { rect_right, rect_top, rect_right, rect_bottom },
+        { rect_right, rect_bottom, rect_left, rect_bottom },
+        { rect_left, rect_bottom, rect_left, rect_top },
+    };
+    for (int i = 0; i < 4; ++i) {
+        if (GameWalkerSegmentsTouch(ax, ay, bx, by,
+                                    rect_edges[i][0], rect_edges[i][1], rect_edges[i][2], rect_edges[i][3]) ||
+            GameWalkerSegmentsTouch(bx, by, cx, cy,
+                                    rect_edges[i][0], rect_edges[i][1], rect_edges[i][2], rect_edges[i][3]) ||
+            GameWalkerSegmentsTouch(cx, cy, ax, ay,
+                                    rect_edges[i][0], rect_edges[i][1], rect_edges[i][2], rect_edges[i][3])) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int GameWalkerEnemySpikesTouchPlayer(const GameState* state, int enemy_index, const RectF* player) {
+    float spike_amount = state->walker_enemy_spike_amount[enemy_index];
+    if (spike_amount <= 0.01f) {
+        return 0;
+    }
+
+    const RectF* enemy = &state->walker_enemies[enemy_index];
+    float crouch = state->walker_enemy_squash_amount[enemy_index];
+    float body_w = enemy->w * (1.0f + crouch * 0.08f);
+    float body_x = enemy->x + enemy->w * 0.5f - body_w * 0.5f;
+    float squash_px = enemy->h * 0.18f * crouch;
+    float radius_x = body_w * 0.5f;
+    if (radius_x < 4.0f) radius_x = 4.0f;
+    float dome_height = enemy->h - 4.0f;
+    if (dome_height > radius_x) dome_height = radius_x;
+    float radius_y = dome_height - squash_px;
+    if (radius_y < 4.0f) radius_y = 4.0f;
+    float center_x = body_x + body_w * 0.5f;
+    float ellipse_center_y = enemy->y + squash_px + radius_y;
+    float half_width = body_w / 6.0f;
+    if (half_width < 10.0f) half_width = 10.0f;
+
+    static const float direction_x[7] = { -1.0f, -0.8660254f, -0.5f, 0.0f, 0.5f, 0.8660254f, 1.0f };
+    static const float direction_y[7] = { 0.0f, -0.5f, -0.8660254f, -1.0f, -0.8660254f, -0.5f, 0.0f };
+    static constexpr float visible_spike_length = 20.0f;
+    static constexpr float root_embed_depth = 2.0f;
+    float floor_y = enemy->y + enemy->h;
+
+    for (int i = 0; i < 7; ++i) {
+        float outward_x = direction_x[i];
+        float outward_y = direction_y[i];
+        float ellipse_scale = sqrtf((outward_x * outward_x) / (radius_x * radius_x) +
+                                    (outward_y * outward_y) / (radius_y * radius_y));
+        float outline_x = center_x + outward_x / ellipse_scale;
+        float outline_y = ellipse_center_y + outward_y / ellipse_scale;
+        float base_x = outline_x - outward_x * root_embed_depth;
+        float base_y = outline_y - outward_y * root_embed_depth;
+        float tip_x = outline_x + outward_x * visible_spike_length * spike_amount;
+        float tip_y = outline_y + outward_y * visible_spike_length * spike_amount;
+
+        if (i == 0 || i == 6) {
+            float wedge_height = half_width * spike_amount;
+            float cut_x = outline_x + outward_x * visible_spike_length * 0.65f * spike_amount;
+            float wedge_tip_y = floor_y - wedge_height * 0.60f;
+            if (GameWalkerTriangleTouchesRect(player,
+                                              base_x, floor_y - wedge_height,
+                                              base_x, floor_y,
+                                              tip_x, wedge_tip_y) ||
+                GameWalkerTriangleTouchesRect(player,
+                                              base_x, floor_y,
+                                              cut_x, floor_y,
+                                              tip_x, wedge_tip_y)) {
+                return 1;
+            }
+        } else {
+            float tangent_x = -outward_y;
+            float tangent_y = outward_x;
+            if (GameWalkerTriangleTouchesRect(player,
+                                              base_x - tangent_x * half_width,
+                                              base_y - tangent_y * half_width,
+                                              base_x + tangent_x * half_width,
+                                              base_y + tangent_y * half_width,
+                                              tip_x,
+                                              tip_y)) {
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
 static void GameUpdateWalkerEnemies(GameState* state, float dt) {
     const RoomDef* room = GameCurrentRoom(state);
     int enemy_count = GameRoomWalkerEnemyCount(room);
@@ -1499,7 +1655,8 @@ static void GameUpdateWalkerEnemies(GameState* state, float dt) {
     RectF player = GamePlayerRect(state);
     int enemy_count = GameRoomWalkerEnemyCount(GameCurrentRoom(state));
     for (int i = 0; i < enemy_count; ++i) {
-        if (RectsOverlap(&player, &state->walker_enemies[i])) {
+        if (RectsOverlap(&player, &state->walker_enemies[i]) ||
+            GameWalkerEnemySpikesTouchPlayer(state, i, &player)) {
             return 1;
         }
     }

@@ -76,7 +76,7 @@ static inline void WalkerEnemyBuildRenderGeometry(RenderContext* render,
     static const float direction_y[WALKER_ENEMY_RENDER_SPIKE_COUNT] = {
          0.0f, -0.5f, -0.8660254f, -1.0f, -0.8660254f, -0.5f, 0.0f
     };
-    static constexpr float VISIBLE_SPIKE_LENGTH = 16.0f;
+    static constexpr float VISIBLE_SPIKE_LENGTH = 20.0f;
     static constexpr float SPIKE_ROOT_EMBED_DEPTH = 2.0f;
     float half_width = (float)WalkerEnemyGeometryMaxI(10, out->body_w / 6);
     float ellipse_center_y = (float)(out->top_y + out->radius_y);
