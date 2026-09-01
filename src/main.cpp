@@ -608,6 +608,12 @@ static StageRenderState CurrentStageRenderState() {
     state.gravity_boxes = g_game.gravity_boxes;
     state.gravity_box_count = CurrentRoom()->gravity_box_count;
     if (state.gravity_box_count > GAME_MAX_GRAVITY_BOXES) state.gravity_box_count = GAME_MAX_GRAVITY_BOXES;
+    state.walker_enemies = g_game.walker_enemies;
+    state.walker_enemy_count = CurrentRoom()->walker_enemy_count;
+    if (state.walker_enemy_count > GAME_MAX_WALKER_ENEMIES) state.walker_enemy_count = GAME_MAX_WALKER_ENEMIES;
+    state.walker_enemy_spike_amount = g_game.walker_enemy_spike_amount;
+    state.walker_enemy_squash_amount = g_game.walker_enemy_squash_amount;
+    state.walker_enemy_turn_squash = g_game.walker_enemy_turn_squash;
     state.pressure_switch_pressed = g_game.pressure_switch_pressed;
     state.pressure_switch_anim = g_game.pressure_switch_anim;
     state.pressure_platform_open_amount = g_game.pressure_platform_open_amount;
@@ -693,6 +699,12 @@ static StageCacheState CurrentStageCacheState() {
     state.player = &g_game.player;
     state.player_particles = g_game.player_particles;
     state.player_particle_count = PLAYER_PARTICLE_COUNT;
+    state.walker_enemies = g_game.walker_enemies;
+    state.walker_enemy_count = CurrentRoom()->walker_enemy_count;
+    if (state.walker_enemy_count > GAME_MAX_WALKER_ENEMIES) state.walker_enemy_count = GAME_MAX_WALKER_ENEMIES;
+    state.walker_enemy_spike_amount = g_game.walker_enemy_spike_amount;
+    state.walker_enemy_squash_amount = g_game.walker_enemy_squash_amount;
+    state.walker_enemy_turn_squash = g_game.walker_enemy_turn_squash;
     state.current_room = g_game.current_room;
     state.type_a_active = FeatureActive(FEATURE_COLLISION_TYPE_A);
     state.type_a_highlighted = SettingsHighlightsTypeA();
@@ -1574,4 +1586,3 @@ extern "C" void WinMainCRTStartup() {
     PerfWriteReport();
     ExitProcess(0);
 }
-

@@ -1,6 +1,7 @@
 #include "stage_render.h"
 
 #include "box_sprite_data.h"
+#include "walker_enemy_render_geometry.h"
 
 #include "camera.h"
 #include "exit_sequence.h"
@@ -969,6 +970,143 @@ static void DrawRoomGravityBoxes(const StageRenderState* state) {
         DrawGravityBox(state, &state->gravity_boxes[i]);
     }
 }
+static float WalkerTriangleEdge(float ax, float ay, float bx, float by, float px, float py) {
+    return (px - ax) * (by - ay) - (py - ay) * (bx - ax);
+}
+
+static void DrawWalkerSolidTriangle(RenderContext* render,
+                                    float ax,
+                                    float ay,
+                                    float bx,
+                                    float by,
+                                    float cx,
+                                    float cy,
+                                    uint32_t color) {
+    float scale = (float)render->scale;
+    ax *= scale;
+    ay *= scale;
+    bx *= scale;
+    by *= scale;
+    cx *= scale;
+    cy *= scale;
+    float min_x = ax < bx ? ax : bx;
+    float max_x = ax > bx ? ax : bx;
+    float min_y = ay < by ? ay : by;
+    float max_y = ay > by ? ay : by;
+    if (cx < min_x) min_x = cx;
+    if (cx > max_x) max_x = cx;
+    if (cy < min_y) min_y = cy;
+    if (cy > max_y) max_y = cy;
+    int x0 = (int)min_x - 2;
+    int x1 = (int)max_x + 3;
+    int y0 = (int)min_y - 2;
+    int y1 = (int)max_y + 3;
+    if (x0 < 0) x0 = 0;
+    if (y0 < 0) y0 = 0;
+    if (x1 > render->width) x1 = render->width;
+    if (y1 > render->height) y1 = render->height;
+    float area = WalkerTriangleEdge(ax, ay, bx, by, cx, cy);
+    if (area > -0.001f && area < 0.001f) {
+        return;
+    }
+    float sign = area < 0.0f ? -1.0f : 1.0f;
+    for (int y = y0; y < y1; ++y) {
+        float py = (float)y + 0.5f;
+        for (int x = x0; x < x1; ++x) {
+            float px = (float)x + 0.5f;
+            float e0 = WalkerTriangleEdge(bx, by, cx, cy, px, py) * sign;
+            float e1 = WalkerTriangleEdge(cx, cy, ax, ay, px, py) * sign;
+            float e2 = WalkerTriangleEdge(ax, ay, bx, by, px, py) * sign;
+            if (e0 >= 0.0f && e1 >= 0.0f && e2 >= 0.0f) {
+                render->pixels[y * render->width + x] = color;
+            }
+        }
+    }
+}
+
+static void DrawWalkerSpike(const StageRenderState* state,
+                            const WalkerEnemySpikeGeometry* spike,
+                            uint32_t color) {
+    DrawWalkerSolidTriangle(state->render,
+                            spike->left_x,
+                            spike->left_y,
+                            spike->right_x,
+                            spike->right_y,
+                            spike->tip_x,
+                            spike->tip_y,
+                            color);
+    if (spike->is_side_wedge) {
+        // Fill the clipped lower half so the wedge has a horizontal floor-contact edge.
+        DrawWalkerSolidTriangle(state->render,
+                                spike->right_x,
+                                spike->right_y,
+                                spike->cut_x,
+                                spike->cut_y,
+                                spike->tip_x,
+                                spike->tip_y,
+                                color);
+    }
+}
+
+static void DrawWalkerRoundedTop(const StageRenderState* state,
+                                 int center_x,
+                                 int top_y,
+                                 int radius_x,
+                                 int radius_y,
+                                 uint32_t color) {
+    for (int row = 0; row <= radius_y; ++row) {
+        int vertical = radius_y - row;
+        int inside = radius_y * radius_y - vertical * vertical;
+        int extent = 0;
+        while ((extent + 1) * (extent + 1) * radius_y * radius_y <= radius_x * radius_x * inside) {
+            ++extent;
+        }
+        DrawRect(state->render, center_x - extent, top_y + row, extent * 2 + 1, 1, color);
+    }
+}
+
+static void DrawWalkerEnemy(const StageRenderState* state,
+                            const RectF* enemy,
+                            float spike_amount,
+                            float response_squash,
+                            float turn_squash) {
+    WalkerEnemyRenderGeometry geometry;
+    WalkerEnemyBuildRenderGeometry(state->render,
+                                   enemy,
+                                   spike_amount,
+                                   response_squash,
+                                   turn_squash,
+                                   &geometry);
+    uint32_t body = 0x00f22632;
+    uint32_t spike_color = 0x00ed2b3a;
+
+    // Spikes first: their roots are then buried by the single rounded body, with no extra crest.
+    for (int i = 0; i < geometry.spike_count; ++i) {
+        DrawWalkerSpike(state, &geometry.spikes[i], spike_color);
+    }
+    DrawWalkerRoundedTop(state,
+                         geometry.center_x,
+                         geometry.top_y,
+                         geometry.radius_x,
+                         geometry.radius_y,
+                         body);
+    int base_y = geometry.top_y + geometry.radius_y;
+    DrawRect(state->render,
+             geometry.body_x,
+             base_y,
+             geometry.body_w,
+             geometry.body_y + geometry.body_h - base_y,
+             body);
+
+}
+static void DrawWalkerEnemies(const StageRenderState* state) {
+    for (int i = 0; i < state->walker_enemy_count; ++i) {
+        float spike = state->walker_enemy_spike_amount ? state->walker_enemy_spike_amount[i] : 0.0f;
+        float response_squash = state->walker_enemy_squash_amount ? state->walker_enemy_squash_amount[i] : 0.0f;
+        float turn_squash = state->walker_enemy_turn_squash ? state->walker_enemy_turn_squash[i] : 0.0f;
+        DrawWalkerEnemy(state, &state->walker_enemies[i], spike, response_squash, turn_squash);
+    }
+}
 static void DrawContextUi(const StageRenderState* state) {
     TutorialUiDrawWorldHint(state->render, state->room, state->player);
     ExitSequenceDrawSolvedUi(state->render, state->text_color, state->draw_text_small);
@@ -1002,6 +1140,7 @@ void StageRenderDrawDynamic(const StageRenderState* state) {
     DrawRoomPressureSwitches(state);
     DrawRoomPressurePlatforms(state);
     DrawRoomGravityBoxes(state);
+    DrawWalkerEnemies(state);
     ExitSequenceDrawExit(state->render, &state->room->exit);
     if (state->player_visible) {
         DrawPlayer(state->render,

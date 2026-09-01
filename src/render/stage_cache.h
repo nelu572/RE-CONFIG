@@ -12,6 +12,11 @@ struct StageCacheState {
     const Player* player;
     const PlayerParticle* player_particles;
     int player_particle_count;
+    const RectF* walker_enemies;
+    int walker_enemy_count;
+    const float* walker_enemy_spike_amount;
+    const float* walker_enemy_squash_amount;
+    const float* walker_enemy_turn_squash;
     int current_room;
     int type_a_active;
     int type_a_highlighted;

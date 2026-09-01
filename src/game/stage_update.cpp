@@ -37,6 +37,11 @@ static constexpr float GRAVITY_BOX_PUSH_SPEED = 120.0f;
 static constexpr float GRAVITY_BOX_SPEAKER_MIN_PUSH_SPEED = 200.0f;
 static constexpr float PRESSURE_PLATFORM_OPEN_SPEED = 8.0f;
 static constexpr float PRESSURE_PLATFORM_CLOSE_SPEED = 12.0f;
+static constexpr float WALKER_ENEMY_APPROACH_RANGE = 100.0f;
+static constexpr float WALKER_ENEMY_SPIKE_RETRACT_SECONDS = 0.32f;
+static constexpr float WALKER_ENEMY_SPIKE_DEPLOY_DELAY_SECONDS = 0.045f;
+static constexpr float WALKER_ENEMY_LEAVE_RANGE = 120.0f;
+static constexpr float WALKER_ENEMY_TURN_SQUASH_SECONDS = 0.10f;
 
 struct GameSpeakerPushVelocity {
     float vx;
@@ -157,6 +162,12 @@ static int GameRoomGravityBoxCount(const RoomDef* room) {
     return room->gravity_box_count < GAME_MAX_GRAVITY_BOXES ? room->gravity_box_count : GAME_MAX_GRAVITY_BOXES;
 }
 
+static int GameRoomWalkerEnemyCount(const RoomDef* room) {
+    if (!room || room->walker_enemy_count <= 0) {
+        return 0;
+    }
+    return room->walker_enemy_count < GAME_MAX_WALKER_ENEMIES ? room->walker_enemy_count : GAME_MAX_WALKER_ENEMIES;
+}
 static int GameRoomPressureSwitchCount(const RoomDef* room) {
     if (!room || room->pressure_switch_count <= 0) {
         return 0;
@@ -611,6 +622,22 @@ void GameResetStage(GameState* state) {
     int box_count = GameRoomGravityBoxCount(room);
     for (int i = 0; i < box_count; ++i) {
         state->gravity_boxes[i] = room->gravity_boxes[i].start;
+    }
+    for (int i = 0; i < GAME_MAX_WALKER_ENEMIES; ++i) {
+        state->walker_enemies[i] = { 0.0f, 0.0f, 0.0f, 0.0f };
+        state->walker_enemy_gravity_speed[i] = 0.0f;
+        state->walker_enemy_direction[i] = 1;
+        state->walker_enemy_grounded[i] = 0;
+        state->walker_enemy_spike_amount[i] = 0.0f;
+        state->walker_enemy_spike_delay[i] = 0.0f;
+        state->walker_enemy_squash_amount[i] = 0.0f;
+        state->walker_enemy_turn_squash[i] = 0.0f;
+        state->walker_enemy_player_near[i] = 0;
+    }
+    int walker_enemy_count = GameRoomWalkerEnemyCount(room);
+    for (int i = 0; i < walker_enemy_count; ++i) {
+        state->walker_enemies[i] = room->walker_enemies[i].start;
+        state->walker_enemy_direction[i] = room->walker_enemies[i].initial_direction < 0 ? -1 : 1;
     }
     for (int i = 0; i < GAME_MAX_PRESSURE_SWITCHES; ++i) {
         state->pressure_switch_pressed[i] = 0;
@@ -1237,8 +1264,8 @@ static float GamePistonTargetAtAllowedSpeed(const PistonDevice* piston,
     float pose_target = PistonPoseAt(piston, piston_time_seconds).extension;
     float previous_pose_target = PistonPoseAt(piston, piston_time_seconds - frame_time_seconds).extension;
     float allowed_distance = GameAbsF(pose_target - previous_pose_target);
-    if (allowed_distance <= 0.001f && piston->cycle_seconds > 0.001f) {
-        allowed_distance = piston->travel * frame_time_seconds / (piston->cycle_seconds * 0.18f);
+    if (allowed_distance <= 0.001f) {
+        allowed_distance = piston->travel * frame_time_seconds / (PISTON_CYCLE_SECONDS * 0.18f);
     }
 
     float remaining_distance = pose_target - start_extension;
@@ -1330,6 +1357,154 @@ static void GameGravityVector(GravityDirection direction, int* x, int* y) {
 }
 
 
+static int GameWalkerEnemySolidCount(const GameState* state, const RoomDef* room) {
+    return room->platform_count + (GameFeatureActive(state, FEATURE_COLLISION_TYPE_A) ? room->type_a_count : 0);
+}
+
+static const RectF* GameWalkerEnemySolidAt(const GameState* state, const RoomDef* room, int index) {
+    if (index < room->platform_count) {
+        return &room->platforms[index];
+    }
+    index -= room->platform_count;
+    if (GameFeatureActive(state, FEATURE_COLLISION_TYPE_A) && index < room->type_a_count) {
+        return &room->type_a_walls[index];
+    }
+    return 0;
+}
+
+static int GameMoveWalkerEnemyAxis(GameState* state, int enemy_index, int axis_x, float delta) {
+    if (delta == 0.0f) {
+        return 0;
+    }
+    RectF* enemy = &state->walker_enemies[enemy_index];
+    if (axis_x) {
+        enemy->x += delta;
+    } else {
+        enemy->y += delta;
+    }
+    const RoomDef* room = GameCurrentRoom(state);
+    int collided = 0;
+    int solid_count = GameWalkerEnemySolidCount(state, room);
+    for (int solid_index = 0; solid_index < solid_count; ++solid_index) {
+        const RectF* solid = GameWalkerEnemySolidAt(state, room, solid_index);
+        if (!solid || !RectsOverlap(enemy, solid)) {
+            continue;
+        }
+        if (axis_x) {
+            enemy->x = delta > 0.0f ? solid->x - enemy->w : solid->x + solid->w;
+        } else {
+            enemy->y = delta > 0.0f ? solid->y - enemy->h : solid->y + solid->h;
+        }
+        collided = 1;
+    }
+    return collided;
+}
+
+static int GameWalkerEnemyPlayerWithinRange(const GameState* state,
+                                            const RectF* enemy,
+                                            float range) {
+    RectF player = GamePlayerRect(state);
+    float dx = (player.x + player.w * 0.5f) - (enemy->x + enemy->w * 0.5f);
+    float dy = (player.y + player.h * 0.5f) - (enemy->y + enemy->h * 0.5f);
+    return dx * dx + dy * dy <= range * range;
+}
+
+static void GameUpdateWalkerEnemies(GameState* state, float dt) {
+    const RoomDef* room = GameCurrentRoom(state);
+    int enemy_count = GameRoomWalkerEnemyCount(room);
+    if (enemy_count <= 0) {
+        return;
+    }
+    int gravity_x;
+    int gravity_y;
+    GameGravityVector(state->gravity_direction, &gravity_x, &gravity_y);
+    int tangent_x = gravity_y != 0 ? 1 : 0;
+    const float gravity = 1550.0f;
+    const float max_gravity_speed = 1100.0f;
+    for (int i = 0; i < enemy_count; ++i) {
+        const WalkerEnemyDef* def = &room->walker_enemies[i];
+        int was_near = state->walker_enemy_player_near[i];
+        float detection_range = was_near ? WALKER_ENEMY_LEAVE_RANGE : WALKER_ENEMY_APPROACH_RANGE;
+        int player_near = GameWalkerEnemyPlayerWithinRange(state,
+                                                            &state->walker_enemies[i],
+                                                            detection_range);
+        float spike = state->walker_enemy_spike_amount[i];
+        float delay = state->walker_enemy_spike_delay[i];
+        float crouch = state->walker_enemy_squash_amount[i];
+
+        if (player_near) {
+            // Alert is a locked stop state: crouch persists while the player remains inside leave range.
+            crouch = 1.0f;
+            if (!was_near) {
+                if (spike > 0.001f) {
+                    spike = 1.0f;
+                    delay = 0.0f;
+                } else {
+                    delay = WALKER_ENEMY_SPIKE_DEPLOY_DELAY_SECONDS;
+                }
+            }
+            if (delay > 0.0f) {
+                delay -= dt;
+                if (delay <= 0.0f) {
+                    delay = 0.0f;
+                    spike = 1.0f;
+                }
+            } else {
+                spike = 1.0f;
+            }
+        } else {
+            delay = 0.0f;
+            float recovery_step = WALKER_ENEMY_SPIKE_RETRACT_SECONDS > 0.0f ? dt / WALKER_ENEMY_SPIKE_RETRACT_SECONDS : 1.0f;
+            spike = GameClampF(spike - recovery_step, 0.0f, 1.0f);
+            crouch = GameClampF(crouch - recovery_step, 0.0f, 1.0f);
+        }
+
+        // Resume the saved patrol direction only after both visual states have fully recovered.
+        int patrol_active = !player_near && spike <= 0.0f && crouch <= 0.0f;
+        if (patrol_active) {
+            int direction = state->walker_enemy_direction[i] < 0 ? -1 : 1;
+            float tangent_delta = (float)direction * def->move_speed * dt;
+            if (GameMoveWalkerEnemyAxis(state, i, tangent_x, tangent_delta)) {
+                state->walker_enemy_direction[i] = -direction;
+                state->walker_enemy_turn_squash[i] = 1.0f;
+            }
+        }
+
+        float turn_squash = state->walker_enemy_turn_squash[i];
+        float turn_step = WALKER_ENEMY_TURN_SQUASH_SECONDS > 0.0f ? dt / WALKER_ENEMY_TURN_SQUASH_SECONDS : 1.0f;
+        state->walker_enemy_turn_squash[i] = GameClampF(turn_squash - turn_step, 0.0f, 1.0f);
+
+        state->walker_enemy_grounded[i] = 0;
+        if (!GameFeatureActive(state, FEATURE_GRAVITY)) {
+            state->walker_enemy_gravity_speed[i] = 0.0f;
+        } else {
+            float gravity_speed = state->walker_enemy_gravity_speed[i] + gravity * dt;
+            if (gravity_speed > max_gravity_speed) {
+                gravity_speed = max_gravity_speed;
+            }
+            float gravity_delta = gravity_speed * dt * (float)(gravity_x != 0 ? gravity_x : gravity_y);
+            if (GameMoveWalkerEnemyAxis(state, i, gravity_x != 0, gravity_delta)) {
+                gravity_speed = 0.0f;
+                state->walker_enemy_grounded[i] = 1;
+            }
+            state->walker_enemy_gravity_speed[i] = gravity_speed;
+        }
+
+        state->walker_enemy_player_near[i] = player_near;
+        state->walker_enemy_spike_amount[i] = spike;
+        state->walker_enemy_spike_delay[i] = delay;
+        state->walker_enemy_squash_amount[i] = crouch;
+    }
+}static int GamePlayerTouchesWalkerEnemy(const GameState* state) {
+    RectF player = GamePlayerRect(state);
+    int enemy_count = GameRoomWalkerEnemyCount(GameCurrentRoom(state));
+    for (int i = 0; i < enemy_count; ++i) {
+        if (RectsOverlap(&player, &state->walker_enemies[i])) {
+            return 1;
+        }
+    }
+    return 0;
+}
 static int GameBoxSolidCount(const GameState* state, const RectF* dynamic_solids, int dynamic_solid_count, const RectF* player_rect) {
     const RoomDef* room = GameCurrentRoom(state);
     return room->platform_count +
@@ -1970,6 +2145,11 @@ void GameUpdateStage(GameState* state, float dt, int use_static_cache) {
         return;
     }
 
+    GameUpdateWalkerEnemies(state, dt);
+    if (GamePlayerTouchesWalkerEnemy(state)) {
+        GameStartPlayerDeath(state);
+        return;
+    }
     GameControlInput control = {};
     if (!SettingsUiIsOpen()) {
         control = GameReadControlInput(state->gravity_direction);
@@ -2038,6 +2218,10 @@ void GameUpdateStage(GameState* state, float dt, int use_static_cache) {
         state->audio_events |= GAME_AUDIO_LAND;
     }
 
+    if (GamePlayerTouchesWalkerEnemy(state)) {
+        GameStartPlayerDeath(state);
+        return;
+    }
     UpdatePlayerPresentation(&state->player,
                              state->player_particles,
                              PLAYER_PARTICLE_COUNT,

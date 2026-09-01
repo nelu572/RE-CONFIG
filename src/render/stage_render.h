@@ -29,6 +29,11 @@ struct StageRenderState {
     const float* piston_effective_extension;
     const RectF* gravity_boxes;
     int gravity_box_count;
+    const RectF* walker_enemies;
+    int walker_enemy_count;
+    const float* walker_enemy_spike_amount;
+    const float* walker_enemy_squash_amount;
+    const float* walker_enemy_turn_squash;
     const int* pressure_switch_pressed;
     const float* pressure_switch_anim;
     const float* pressure_platform_open_amount;

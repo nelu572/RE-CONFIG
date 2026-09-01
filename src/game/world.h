@@ -40,6 +40,12 @@ struct GravityBoxDef {
     RectF start;
 };
 
+struct WalkerEnemyDef {
+    RectF start;
+    float move_speed;
+    int initial_direction;
+};
+
 enum PressureSwitchActivator {
     PRESSURE_SWITCH_PLAYER,
     PRESSURE_SWITCH_BOX,
@@ -91,6 +97,8 @@ struct RoomDef {
     const PressurePlatformDevice* pressure_platforms;
     int pressure_platform_count;
     int exit_requires_pressure_switches;
+    const WalkerEnemyDef* walker_enemies = 0;
+    int walker_enemy_count = 0;
 };
 
 const RoomDef* GetRoom(int index);

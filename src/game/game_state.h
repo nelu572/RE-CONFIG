@@ -8,6 +8,7 @@ static constexpr int GAME_MAX_GRAVITY_BOXES = 4;
 static constexpr int GAME_MAX_PISTONS = 16;
 static constexpr int GAME_MAX_PRESSURE_SWITCHES = 8;
 static constexpr int GAME_MAX_PRESSURE_PLATFORMS = 4;
+static constexpr int GAME_MAX_WALKER_ENEMIES = 8;
 
 enum GameAudioEvent {
     GAME_AUDIO_JUMP = 1 << 0,
@@ -56,4 +57,13 @@ struct GameState {
     float pressure_switch_anim[GAME_MAX_PRESSURE_SWITCHES];
     float pressure_platform_open_amount[GAME_MAX_PRESSURE_PLATFORMS];
     int room_exit_unlocked;
+    RectF walker_enemies[GAME_MAX_WALKER_ENEMIES];
+    float walker_enemy_gravity_speed[GAME_MAX_WALKER_ENEMIES];
+    int walker_enemy_direction[GAME_MAX_WALKER_ENEMIES];
+    int walker_enemy_grounded[GAME_MAX_WALKER_ENEMIES];
+    float walker_enemy_spike_amount[GAME_MAX_WALKER_ENEMIES];
+    float walker_enemy_spike_delay[GAME_MAX_WALKER_ENEMIES];
+    float walker_enemy_squash_amount[GAME_MAX_WALKER_ENEMIES];
+    float walker_enemy_turn_squash[GAME_MAX_WALKER_ENEMIES];
+    int walker_enemy_player_near[GAME_MAX_WALKER_ENEMIES];
 };

@@ -7,6 +7,7 @@
 #include "piston.h"
 #include "settings_ui.h"
 #include "tutorial_ui.h"
+#include "walker_enemy_render_geometry.h"
 
 static int g_static_cache_valid = 0;
 static int g_static_cache_type_a_active = -1;
@@ -15,6 +16,7 @@ static float g_static_cache_camera_x = -999999.0f;
 static float g_static_cache_camera_y = -999999.0f;
 static RectI g_prev_player_dirty = { 0, 0, 0, 0 };
 static RectI g_prev_player_particles_dirty = { 0, 0, 0, 0 };
+static RectI g_prev_walker_enemies_dirty = { 0, 0, 0, 0 };
 static RectI g_prev_tutorial_hint_dirty = { 0, 0, 0, 0 };
 static int g_prev_menu_open = 0;
 static int g_prev_room_solved = 0;
@@ -72,6 +74,90 @@ static RectI PlayerParticlesDirtyRect(RenderContext* render, const PlayerParticl
     return active ? FramebufferClampRect(rect) : rect;
 }
 
+static RectI RectUnion(RectI a, RectI b) {
+    if (a.w <= 0 || a.h <= 0) return b;
+    if (b.w <= 0 || b.h <= 0) return a;
+    int right = a.x + a.w;
+    int bottom = a.y + a.h;
+    int b_right = b.x + b.w;
+    int b_bottom = b.y + b.h;
+    if (b.x < a.x) a.x = b.x;
+    if (b.y < a.y) a.y = b.y;
+    if (b_right > right) right = b_right;
+    if (b_bottom > bottom) bottom = b_bottom;
+    a.w = right - a.x;
+    a.h = bottom - a.y;
+    return a;
+}
+
+static int CacheFloorF(float value) {
+    int whole = (int)value;
+    return value < (float)whole ? whole - 1 : whole;
+}
+
+static int CacheCeilF(float value) {
+    int whole = (int)value;
+    return value > (float)whole ? whole + 1 : whole;
+}
+
+static void ExpandWalkerRenderBounds(float x,
+                                     float y,
+                                     float* min_x,
+                                     float* min_y,
+                                     float* max_x,
+                                     float* max_y) {
+    if (x < *min_x) *min_x = x;
+    if (y < *min_y) *min_y = y;
+    if (x > *max_x) *max_x = x;
+    if (y > *max_y) *max_y = y;
+}
+
+static RectI WalkerEnemiesDirtyRect(RenderContext* render,
+                                    const RectF* enemies,
+                                    int enemy_count,
+                                    const float* spike_amounts,
+                                    const float* squash_amounts,
+                                    const float* turn_squash_amounts) {
+    RectI dirty = { 0, 0, 0, 0 };
+    if (!enemies || enemy_count <= 0) {
+        return dirty;
+    }
+    for (int i = 0; i < enemy_count; ++i) {
+        float spike_amount = spike_amounts ? spike_amounts[i] : 0.0f;
+        float squash_amount = squash_amounts ? squash_amounts[i] : 0.0f;
+        float turn_squash = turn_squash_amounts ? turn_squash_amounts[i] : 0.0f;
+        WalkerEnemyRenderGeometry geometry;
+        WalkerEnemyBuildRenderGeometry(render,
+                                       &enemies[i],
+                                       spike_amount,
+                                       squash_amount,
+                                       turn_squash,
+                                       &geometry);
+        float min_x = (float)geometry.body_x;
+        float min_y = (float)geometry.body_y;
+        float max_x = (float)(geometry.body_x + geometry.body_w);
+        float max_y = (float)(geometry.body_y + geometry.body_h);
+        for (int spike = 0; spike < geometry.spike_count; ++spike) {
+            const WalkerEnemySpikeGeometry* vertex = &geometry.spikes[spike];
+            ExpandWalkerRenderBounds(vertex->left_x, vertex->left_y, &min_x, &min_y, &max_x, &max_y);
+            ExpandWalkerRenderBounds(vertex->right_x, vertex->right_y, &min_x, &min_y, &max_x, &max_y);
+            ExpandWalkerRenderBounds(vertex->tip_x, vertex->tip_y, &min_x, &min_y, &max_x, &max_y);
+            if (vertex->is_side_wedge) {
+                ExpandWalkerRenderBounds(vertex->cut_x, vertex->cut_y, &min_x, &min_y, &max_x, &max_y);
+            }
+        }
+        // Keep a small rasterization margin after deriving bounds from the actual rendered vertices.
+        const int padding = 4;
+        RectI bounds = {
+            CacheFloorF(min_x) - padding,
+            CacheFloorF(min_y) - padding,
+            CacheCeilF(max_x) - CacheFloorF(min_x) + padding * 2,
+            CacheCeilF(max_y) - CacheFloorF(min_y) + padding * 2
+        };
+        dirty = RectUnion(dirty, bounds);
+    }
+    return FramebufferClampRect(dirty);
+}
 static RectI TypeAWallsDirtyRect(RenderContext* render, const RoomDef* room) {
     RectI rect = { 860, 610, 190, 300 };
     if (room->type_a_count <= 0) {
@@ -80,14 +166,14 @@ static RectI TypeAWallsDirtyRect(RenderContext* render, const RoomDef* room) {
     const RectF* wall = &room->type_a_walls[0];
     rect.x = WorldX(render, wall->x) - 18;
     rect.y = WorldY(render, wall->y) - 18;
-    rect.w = (int)(wall->w + 0.5f) + 36;
-    rect.h = (int)(wall->h + 0.5f) + 36;
+    rect.w = WorldW(render, wall->w) + 36;
+    rect.h = WorldH(render, wall->h) + 36;
     for (int i = 1; i < room->type_a_count; ++i) {
         wall = &room->type_a_walls[i];
         int x = WorldX(render, wall->x) - 18;
         int y = WorldY(render, wall->y) - 18;
-        int w = (int)(wall->w + 0.5f) + 36;
-        int h = (int)(wall->h + 0.5f) + 36;
+        int w = WorldW(render, wall->w) + 36;
+        int h = WorldH(render, wall->h) + 36;
         int x2 = rect.x + rect.w;
         int y2 = rect.y + rect.h;
         int wx2 = x + w;
@@ -110,8 +196,8 @@ static RectI TypeAContextDirtyRect(RenderContext* render, const RoomDef* room) {
     RectI rect = {
         WorldX(render, wall->x) - 96,
         WorldY(render, wall->y) - 170,
-        (int)(wall->w + 0.5f) + 192,
-        (int)(wall->h + 0.5f) + 228
+        WorldW(render, wall->w) + 192,
+        WorldH(render, wall->h) + 228
     };
     return FramebufferClampRect(rect);
 }
@@ -157,15 +243,15 @@ static RectI PistonsDirtyRect(RenderContext* render, const RoomDef* room) {
     RectI rect = {
         WorldX(render, dirty.x),
         WorldY(render, dirty.y),
-        (int)(dirty.w + 0.5f),
-        (int)(dirty.h + 0.5f)
+        WorldW(render, dirty.w),
+        WorldH(render, dirty.h)
     };
     for (int i = 1; i < room->piston_count; ++i) {
         dirty = PistonTravelDirtyRect(&room->pistons[i]);
         int x = WorldX(render, dirty.x);
         int y = WorldY(render, dirty.y);
-        int w = (int)(dirty.w + 0.5f);
-        int h = (int)(dirty.h + 0.5f);
+        int w = WorldW(render, dirty.w);
+        int h = WorldH(render, dirty.h);
         int x2 = rect.x + rect.w;
         int y2 = rect.y + rect.h;
         int px2 = x + w;
@@ -183,6 +269,7 @@ static RectI PistonsDirtyRect(RenderContext* render, const RoomDef* room) {
 static void CaptureCachedFrameState(const StageCacheState* state) {
     g_prev_player_dirty = PlayerDirtyRect(state->render, state->player);
     g_prev_player_particles_dirty = PlayerParticlesDirtyRect(state->render, state->player_particles, state->player_particle_count);
+    g_prev_walker_enemies_dirty = WalkerEnemiesDirtyRect(state->render, state->walker_enemies, state->walker_enemy_count, state->walker_enemy_spike_amount, state->walker_enemy_squash_amount, state->walker_enemy_turn_squash);
     g_prev_menu_open = state->settings_overlay_visible;
     g_prev_room_solved = state->room_solved;
     g_prev_context_room = state->current_room;
@@ -197,6 +284,7 @@ static void CaptureCachedFrameState(const StageCacheState* state) {
 
 void StageCacheInvalidate() {
     g_static_cache_valid = 0;
+    g_prev_walker_enemies_dirty = { 0, 0, 0, 0 };
 }
 
 void StageCacheEnsure(const StageCacheState* state, StageCacheDrawCallback draw_static) {
@@ -236,6 +324,8 @@ void StageCacheDrawCached(const StageCacheState* state, StageCacheDrawCallback d
         if (state->room->gravity_box_count > 0 || state->room->pressure_switch_count > 0 || state->room->pressure_platform_count > 0) {
             dirty[count++] = { 0, 0, FB_W, FB_H };
         }
+        RectI walker_current_dirty = WalkerEnemiesDirtyRect(state->render, state->walker_enemies, state->walker_enemy_count, state->walker_enemy_spike_amount, state->walker_enemy_squash_amount, state->walker_enemy_turn_squash);
+        dirty[count++] = RectUnion(g_prev_walker_enemies_dirty, walker_current_dirty);
         dirty[count++] = g_prev_player_dirty;
         dirty[count++] = PlayerDirtyRect(state->render, state->player);
         dirty[count++] = g_prev_player_particles_dirty;
