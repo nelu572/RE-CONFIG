@@ -7,7 +7,7 @@
 static constexpr int GAME_MAX_GRAVITY_BOXES = 4;
 static constexpr int GAME_MAX_PISTONS = 16;
 static constexpr int GAME_MAX_PRESSURE_SWITCHES = 8;
-static constexpr int GAME_MAX_PRESSURE_PLATFORMS = 4;
+static constexpr int GAME_MAX_PRESSURE_PLATFORMS = 8;
 static constexpr int GAME_MAX_WALKER_ENEMIES = 8;
 
 enum GameAudioEvent {
