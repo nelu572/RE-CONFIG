@@ -1793,7 +1793,17 @@ static void GameUpdateRoomPressureSwitches(GameState* state, float dt) {
                     break;
                 }
             }
-        }        if (pressed != state->pressure_switch_pressed[i]) {
+        }
+        if (!pressed && sw->activator == PRESSURE_SWITCH_WALKER_ENEMY) {
+            int enemy_count = GameRoomWalkerEnemyCount(room);
+            for (int enemy_index = 0; enemy_index < enemy_count; ++enemy_index) {
+                if (GamePressureSwitchTouchedByRect(sw, &state->walker_enemies[enemy_index])) {
+                    pressed = 1;
+                    break;
+                }
+            }
+        }
+        if (pressed != state->pressure_switch_pressed[i]) {
             state->audio_events |= GAME_AUDIO_SWITCH;
         }
         state->pressure_switch_pressed[i] = pressed;

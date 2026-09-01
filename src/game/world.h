@@ -23,6 +23,8 @@ enum PistonDirection {
     PISTON_LEFT,
 };
 
+static constexpr float PISTON_CYCLE_SECONDS = 1.10f;
+
 struct PistonDevice {
     float x;
     float y;
@@ -31,7 +33,6 @@ struct PistonDevice {
     float shaft_width;
     float plate_height;
     float travel;
-    float cycle_seconds;
     float phase;
     PistonDirection direction = PISTON_DOWN;
 };
@@ -50,6 +51,7 @@ enum PressureSwitchActivator {
     PRESSURE_SWITCH_PLAYER,
     PRESSURE_SWITCH_BOX,
     PRESSURE_SWITCH_ANY,
+    PRESSURE_SWITCH_WALKER_ENEMY,
 };
 
 enum PressureSwitchMount {
