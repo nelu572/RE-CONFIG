@@ -6,10 +6,15 @@
 
 ## 기준 문서
 
+- [문서 책임 가이드](DOCUMENTATION_GUIDE.md)
 - [핵심 콘셉트](design/core_concept.md)
 - [설정 기믹](design/settings_gimmicks.md)
 - [레벨과 튜토리얼](design/level_tutorial.md)
 - [아트와 UI](design/art_ui.md)
+- [기본 이동형 적](design/walker_enemy.md)
+- [압력 스위치와 이동 문](design/pressure_switch.md)
+- [피스톤](design/piston.md)
+- [스피커와 음파](design/speaker.md)
 - [확정 사항과 미확정 사항](design/decisions_open_items.md)
 - [구현 변경 규칙](IMPLEMENTATION_RULES.md)
 

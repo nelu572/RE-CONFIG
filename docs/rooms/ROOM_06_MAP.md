@@ -20,9 +20,8 @@ ROOM 06은 스피커, 박스, 스위치를 조합하는 방이다. 박스를 움
 
 ## 방별 오브젝트 메모
 
-- K 영역은 5T x 9T 스피커 본체를 뜻한다.
-- 음파는 별도 타일로 표시하지 않는다.
-- `1T`는 `PRESSURE_SWITCH_ANY` 스위치 T1이며, `1VV`와 `1HH`는 T1에 연결된 V1·H1 문이다.
+- K의 공통 음파 규칙은 [스피커와 음파](../design/speaker.md)를 따른다.
+- `1T`는 `1VV`·`1HH`를 여는 T1 스위치다. 공통 스위치 규칙은 [압력 스위치와 이동 문](../design/pressure_switch.md)을 따른다.
 - H는 `open_offset_x`, V는 `open_offset_y`를 사용한다.
 
 ## 57 x 27 타일맵
@@ -66,8 +65,5 @@ ROOM 06은 스피커, 박스, 스위치를 조합하는 방이다. 박스를 움
 
 ## 코드 반영 메모
 
-- K는 `SpeakerDevice`로 만든다.
-- B는 `GravityBoxDef`로 만든다.
-- T는 `PressureSwitchDevice`로 만들고 `PRESSURE_SWITCH_ANY`를 사용한다.
-- H와 V는 모두 `PressurePlatformDevice`로 만들고, H는 `open_offset_x`, V는 `open_offset_y`를 사용한다.
-- H와 V의 열림 거리는 이동 방향의 마커 길이와 같게 둔다.
+- K, B, T, H, V의 변환은 [ROOM 맵 가이드](ROOM_MAP_GUIDE.md)를 따른다.
+- H와 V는 각 목표 마커까지 이동해, 스피커를 끈 뒤 EXIT로 돌아가는 경로를 만든다.

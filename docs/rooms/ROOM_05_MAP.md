@@ -20,8 +20,7 @@ ROOM 05는 박스와 측면 스위치의 상호작용을 학습하는 방이다.
 
 ## 방별 오브젝트 메모
 
-- B는 2x2 예약 영역에 실제 1.5T x 1.5T 박스를 생성한다. Q가 없으면 B 영역 정중앙에, Q가 있으면 Q 타일 정중앙에 박스 중심을 둔다.
-- `1T`는 `PRESSURE_SWITCH_ANY` 스위치 T1이고, `1HHHHHHHH`는 T1에 연결된 H1 문이다.
+- `1T`는 `1HHHHHHHH` 게이트 H1을 여는 스위치 T1이다. 공통 스위치 규칙은 [압력 스위치와 이동 문](../design/pressure_switch.md)을 따른다.
 - ROOM 05에서는 플레이어도 순간적으로 T를 누를 수 있지만, 문을 유지해 EXIT까지 가려면 B 박스가 필요하다.
 - H는 `open_offset_x = T(9)`을 사용한다.
 
@@ -64,7 +63,5 @@ ROOM 05는 박스와 측면 스위치의 상호작용을 학습하는 방이다.
 
 ## 코드 반영 메모
 
-- B는 `GravityBoxDef`로 만들고, 2x2 B 영역 중앙에 1.5T x 1.5T 크기로 배치한다.
-- T는 `PressureSwitchDevice`로 만들고 `PRESSURE_SWITCH_ANY`를 사용한다.
-- H는 `PressurePlatformDevice`로 만들고 `open_offset_x`를 사용한다.
-- H의 열림 거리는 마커 길이와 같은 9T다.
+- B, T, H의 변환은 [ROOM 맵 가이드](ROOM_MAP_GUIDE.md)를 따른다.
+- H1은 오른쪽으로 `9T` 열리며, 박스가 T1을 유지해야 EXIT 통로가 계속 열린다.
