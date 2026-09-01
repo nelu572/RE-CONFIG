@@ -18,21 +18,21 @@ static const RectF g_room09_platforms[] = {
 
     // D. The piston leads into the upper crossing route.
     { T(58), T(14), T(9), T(2) },
-    { T(69), T(11), T(7), T(2) },
-    { T(78), T(14), T(7), T(2) },
-    { T(86), T(16), T(4), T(2) },
 
-    // E. The final walker is confined to this lower switch corridor.
-    { T(81), T(18), T(9), T(2) },
-    { T(77), T(20), T(1), T(5) },
-    { T(91), T(20), T(5), T(4) },
-    { T(77), T(24), T(19), T(1) },
-    { T(78), T(25), T(18), T(2) },
+    // E. The temporary right-side jump towers use the latest 137T map layout.
+    { T(77), T(0), T(60), T(5) },
+    { T(88), T(5), T(14), T(5) },
+    { T(134), T(5), T(3), T(19) },
+    { T(77), T(10), T(3), T(14) },
+    { T(88), T(10), T(14), T(9) },
+    { T(88), T(19), T(5), T(4.25f) },
+    { T(97), T(19), T(5), T(3) },
+    { T(97), T(23), T(5), T(1) },
+    { T(77), T(24), T(60), T(3) },
 };
 
 static const WalkerEnemyDef g_room09_walker_enemies[] = {
     { { T(16.25f), T(24.1f), T(1.5f), T(0.9f) }, 120.0f, 1 },
-    { { T(82.25f), T(23.1f), T(1.5f), T(0.9f) }, 120.0f, 1 },
 };
 
 static const PistonDevice g_room09_pistons[] = {
@@ -41,13 +41,13 @@ static const PistonDevice g_room09_pistons[] = {
 };
 
 static const PressureSwitchDevice g_room09_pressure_switches[] = {
-    // Only the final walker may hold this floor switch; the player cannot open the exit route directly.
-    { { T(88), T(23), T(2), T(1) }, PRESSURE_SWITCH_WALKER_ENEMY, PRESSURE_SWITCH_MOUNT_DOWN },
+    // T1 lowers the upper crossing platform into the temporary jump route.
+    { { T(64), T(13), T(2), T(1) }, PRESSURE_SWITCH_ANY, PRESSURE_SWITCH_MOUNT_DOWN },
 };
 
 static const PressurePlatformDevice g_room09_pressure_platforms[] = {
-    // Closed at the final corridor's right edge and lifted above the passage while the switch is held.
-    { { T(90), T(15), T(1), T(5) }, 0.0f, -T(5), 1u << 0 },
+    // V1 starts at rows 3-4 and descends 15T to the v1 position at rows 18-19.
+    { { T(69), T(3), T(5), T(2) }, 0.0f, T(15), 1u << 0 },
 };
 
 extern const RoomDef g_room09 = {
@@ -57,10 +57,10 @@ extern const RoomDef g_room09 = {
     0,
     0,
     0,
-    { T(93), T(17), T(2), T(3) },
+    { -T(4), -T(4), T(1), T(1) },
     T(4),
     T(23),
-    { T(0), T(0), T(96), T(27) },
+    { T(0), T(0), T(137), T(27) },
     T(4),
     GRAVITY_DOWN,
     kDefaultDeleteState,
@@ -72,7 +72,7 @@ extern const RoomDef g_room09 = {
     (int)(sizeof(g_room09_pressure_switches) / sizeof(g_room09_pressure_switches[0])),
     g_room09_pressure_platforms,
     (int)(sizeof(g_room09_pressure_platforms) / sizeof(g_room09_pressure_platforms[0])),
-    1,
+    0,
     g_room09_walker_enemies,
     (int)(sizeof(g_room09_walker_enemies) / sizeof(g_room09_walker_enemies[0])),
 };

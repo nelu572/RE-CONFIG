@@ -37,8 +37,8 @@ static constexpr float GRAVITY_BOX_MAX_GRAVITY_SPEED = 1250.0f;
 static constexpr float GRAVITY_BOX_MAX_TANGENT_SPEED = 480.0f;
 static constexpr float GRAVITY_BOX_PUSH_SPEED = 120.0f;
 static constexpr float GRAVITY_BOX_SPEAKER_MIN_PUSH_SPEED = 200.0f;
-static constexpr float PRESSURE_PLATFORM_OPEN_SPEED = 8.0f;
-static constexpr float PRESSURE_PLATFORM_CLOSE_SPEED = 12.0f;
+static constexpr float PRESSURE_PLATFORM_OPEN_SPEED_PIXELS_PER_SECOND = 560.0f;
+static constexpr float PRESSURE_PLATFORM_CLOSE_SPEED_PIXELS_PER_SECOND = 560.0f;
 static constexpr float WALKER_ENEMY_APPROACH_RANGE = 200.0f;
 static constexpr float WALKER_ENEMY_SPIKE_RETRACT_SECONDS = 0.60f;
 static constexpr float WALKER_ENEMY_SPIKE_DEPLOY_DELAY_SECONDS = 0.045f;
@@ -216,12 +216,14 @@ static RectF GamePressurePlatformRectAt(const PressurePlatformDevice* platform, 
     return rect;
 }
 
-static int GamePressurePlatformTargetClear(const GameState* state, int platform_index, float open_amount, const RectF* player_rect) {
+static float GamePressurePlatformAmountPerSecond(const PressurePlatformDevice* platform, float pixels_per_second) {
+    float travel = GameAbsF(platform->open_offset_x) + GameAbsF(platform->open_offset_y);
+    return travel > 0.001f ? pixels_per_second / travel : 1.0f;
+}
+
+static int GamePressurePlatformTargetClear(const GameState* state, int platform_index, float open_amount) {
     const RoomDef* room = GameCurrentRoom(state);
     RectF platform_rect = GamePressurePlatformRectAt(&room->pressure_platforms[platform_index], open_amount);
-    if (player_rect && RectsOverlap(player_rect, &platform_rect)) {
-        return 0;
-    }
     int box_count = GameRoomGravityBoxCount(room);
     for (int i = 0; i < box_count; ++i) {
         if (RectsOverlap(&state->gravity_boxes[i], &platform_rect)) {
@@ -901,6 +903,36 @@ static void GameCarryPlayerOnPistonPlate(GameState* state, const PistonDevice* p
     state->player.y = candidate.y;
     state->player.grounded = 1;
     state->player_on_piston_support = 1;
+}
+
+static void GameCarryPlayerOnPressurePlatform(GameState* state, const RectF* previous_platform, const RectF* current_platform) {
+    float move_x = current_platform->x - previous_platform->x;
+    float move_y = current_platform->y - previous_platform->y;
+    if (move_x == 0.0f && move_y == 0.0f) {
+        return;
+    }
+
+    int gravity_x;
+    int gravity_y;
+    GamePistonGravityVector(state->gravity_direction, &gravity_x, &gravity_y);
+    RectF player_rect = GamePlayerRect(state);
+    if (!GameRectSupportedBySolidAlongGravity(&player_rect, previous_platform, gravity_x, gravity_y)) {
+        return;
+    }
+
+    RectF candidate = player_rect;
+    candidate.x += move_x;
+    candidate.y += move_y;
+    if (GameRectOverlapsLevelSolids(state, &candidate, 0)) {
+        return;
+    }
+    if (!GameTryClearGravityBoxesForMovingPlayer(state, &player_rect, &candidate, move_x, move_y, -1)) {
+        return;
+    }
+
+    state->player.x = candidate.x;
+    state->player.y = candidate.y;
+    state->player.grounded = 1;
 }
 
 static int GameMovingSolidPushCandidate(const RectF* previous_solid,
@@ -1973,17 +2005,24 @@ static void GameUpdateRoomPressureSwitches(GameState* state, float dt) {
     }
     state->room_exit_unlocked = unlocked;
 
-    RectF pr_now = GamePlayerRect(state);
     int platform_count = GameRoomPressurePlatformCount(room);
     float sim_dt = dt * SettingsUiGameSpeedScale();
     for (int i = 0; i < platform_count; ++i) {
         float current = state->pressure_platform_open_amount[i];
         int platform_unlocked = GamePressureSwitchMaskPressed(state, room->pressure_platforms[i].required_switch_mask);
         float target = platform_unlocked ? 1.0f : 0.0f;
-        float speed = platform_unlocked ? PRESSURE_PLATFORM_OPEN_SPEED : PRESSURE_PLATFORM_CLOSE_SPEED;
-        float next = GameFlexApproachF(current, target, sim_dt, speed, speed);
-        if (next < current && !GamePressurePlatformTargetClear(state, i, next, &pr_now)) {
+        float pixels_per_second = platform_unlocked ?
+            PRESSURE_PLATFORM_OPEN_SPEED_PIXELS_PER_SECOND :
+            PRESSURE_PLATFORM_CLOSE_SPEED_PIXELS_PER_SECOND;
+        float amount_per_second = GamePressurePlatformAmountPerSecond(&room->pressure_platforms[i], pixels_per_second);
+        float next = GameFlexApproachF(current, target, sim_dt, amount_per_second, amount_per_second);
+        if (next < current && !GamePressurePlatformTargetClear(state, i, next)) {
             next = current;
+        }
+        if (next != current) {
+            RectF previous_platform = GamePressurePlatformRectAt(&room->pressure_platforms[i], current);
+            RectF current_platform = GamePressurePlatformRectAt(&room->pressure_platforms[i], next);
+            GameCarryPlayerOnPressurePlatform(state, &previous_platform, &current_platform);
         }
         state->pressure_platform_open_amount[i] = next;
     }
