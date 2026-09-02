@@ -532,9 +532,13 @@ static void UpdateStage(float dt) {
         StartAppTransition(APP_STATE_STAGE_SELECT, next_room);
     }
     const RoomDef* room = CurrentRoom();
-    AudioUpdateSpeaker(PerfNowSeconds() - g_game.room_started_at_seconds,
-                       SettingsUiSfxVolume(),
-                       room && room->speaker_count > 0);
+    if (SettingsUiIsOpen()) {
+        AudioUpdateSpeaker(0.0, 0.0f, 0);
+    } else {
+        AudioUpdateSpeaker(PerfNowSeconds() - g_game.room_started_at_seconds,
+                           SettingsUiSfxVolume(),
+                           room && room->speaker_count > 0);
+    }
 }
 
 static void PlayGameAudioEvents(int events) {

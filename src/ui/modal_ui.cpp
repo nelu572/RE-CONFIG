@@ -79,6 +79,6 @@ void DrawModalDimOverlayRect(RenderContext* render, RectI rect, float alpha_scal
 }
 
 void DrawUIPanel(RenderContext* render, RectI rect, float alpha_scale) {
-    DrawModalBlendRect(render, rect.x, rect.y, rect.w, rect.h, MODAL_UI_PANEL_FILL, 0.985f * alpha_scale);
+    DrawModalBlendRect(render, rect.x, rect.y, rect.w, rect.h, MODAL_UI_PANEL_FILL, 0.84f * alpha_scale);
     DrawRectOutline(render, rect.x, rect.y, rect.w, rect.h, ModalUiFadeColor(MODAL_UI_PANEL_BORDER, 0.72f * alpha_scale));
 }

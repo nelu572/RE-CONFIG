@@ -81,6 +81,7 @@ BRICK COLLISION이 OFF일 때도 ON 상태의 OFFSET BRICK 기본 좌표와 40x4
 - 마우스 슬라이더를 전제로 하지 않는다.
 - ON/OFF, 단계 선택, 열거형 선택을 기본 입력 모델로 삼는다.
 - 설정 변경 결과가 가능하면 UI 뒤의 월드 또는 즉시 이어지는 월드 상태에서 확인되어야 한다.
+- SETTINGS UI가 열려 있는 동안 플레이어·적·기믹의 월드 시간은 멈춘다. UI 입력과 패널 애니메이션은 계속 처리한다.
 
 ## SETTINGS UI 현재 구현 기준
 
@@ -90,7 +91,7 @@ BRICK COLLISION이 OFF일 때도 ON 상태의 OFFSET BRICK 기본 좌표와 40x4
 
 - 1920x1080 fixed framebuffer 기준 중앙 패널을 사용한다.
 - 패널 크기는 `1120x632`, 위치는 화면 중앙이다.
-- 패널 배경은 Background `#292324`를 약 `98.5%` alpha로 덮어 월드 위에 띄운다.
+- 패널 배경은 Background `#292324`를 약 `84%` alpha로 덮어, 패널 뒤의 월드가 은은하게 보이도록 한다.
 - 패널 외곽선과 구분선은 BRICK Base 계열을 낮은 alpha로 사용한다. 의미 없는 장식용 상단 진행선이나 제목 underline은 사용하지 않는다.
 - 왼쪽 CATEGORY 영역 너비는 `284px`이며, 오른쪽 SETTING 영역은 구분선 오른쪽 `48px` 여백 뒤에서 시작한다.
 - CATEGORY 행 간격은 `62px`, SETTING 행 간격은 `74px`이다.

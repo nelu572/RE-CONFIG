@@ -2416,6 +2416,9 @@ void GameUpdateStage(GameState* state, float dt, int use_static_cache) {
     state->audio_events = 0;
     SettingsUiUpdateInput(use_static_cache);
     SettingsUiUpdateFade(dt);
+    if (SettingsUiIsOpen()) {
+        return;
+    }
     if (ExitSequenceUpdateTransition(dt, &state->current_room, GameResetStageCallback, state)) {
         return;
     }
