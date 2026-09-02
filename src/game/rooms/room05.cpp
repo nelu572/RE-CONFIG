@@ -22,7 +22,7 @@ static const PressureSwitchDevice g_room05_pressure_switches[] = {
 };
 
 static const PressurePlatformDevice g_room05_pressure_platforms[] = {
-    { { T(36), T(18), T(9), T(1) }, T(9), 0.0f },
+    { { T(36), T(18), T(9), T(1) }, 0.0f, 0.0f, 1u << 0, 1 },
 };
 
 extern const RoomDef g_room05 = {

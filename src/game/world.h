@@ -74,6 +74,7 @@ struct PressurePlatformDevice {
     float open_offset_y;
     // Zero keeps the legacy behavior: every pressure switch in the room is required.
     unsigned int required_switch_mask = 0;
+    int disappears_when_open = 0;
 };
 
 struct RoomDef {
@@ -101,6 +102,7 @@ struct RoomDef {
     int exit_requires_pressure_switches;
     const WalkerEnemyDef* walker_enemies = 0;
     int walker_enemy_count = 0;
+    int pressure_barrier_count = 0;
 };
 
 const RoomDef* GetRoom(int index);

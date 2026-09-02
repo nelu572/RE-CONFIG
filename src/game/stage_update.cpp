@@ -222,7 +222,11 @@ static int GameAppendPressurePlatformSolids(const GameState* state, RectF* out_s
     const RoomDef* room = GameCurrentRoom(state);
     int platform_count = GameRoomPressurePlatformCount(room);
     for (int i = 0; i < platform_count && count < max_solids; ++i) {
-        out_solids[count++] = PressurePlatformRectAt(&room->pressure_platforms[i], state->pressure_platform_open_amount[i]);
+        const PressurePlatformDevice* platform = &room->pressure_platforms[i];
+        if (platform->disappears_when_open && GamePressureSwitchMaskPressed(state, platform->required_switch_mask)) {
+            continue;
+        }
+        out_solids[count++] = PressurePlatformRectAt(platform, state->pressure_platform_open_amount[i]);
     }
     return count;
 }

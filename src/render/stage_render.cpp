@@ -904,8 +904,12 @@ static void DrawPressurePlatformDevice(const StageRenderState* state, const Pres
 static void DrawRoomPressurePlatforms(const StageRenderState* state) {
     int platform_count = state->room->pressure_platform_count;
     for (int i = 0; i < platform_count; ++i) {
+        const PressurePlatformDevice* platform = &state->room->pressure_platforms[i];
         float open_amount = state->pressure_platform_open_amount ? state->pressure_platform_open_amount[i] : (state->room_exit_unlocked ? 1.0f : 0.0f);
-        DrawPressurePlatformDevice(state, &state->room->pressure_platforms[i], open_amount);
+        if (platform->disappears_when_open && open_amount > 0.0f) {
+            continue;
+        }
+        DrawPressurePlatformDevice(state, platform, open_amount);
     }
 }
 
