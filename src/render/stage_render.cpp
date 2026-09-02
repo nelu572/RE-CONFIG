@@ -973,8 +973,8 @@ static void DrawRoomCheckpoint(const StageRenderState* state) {
 
     float drop = state->checkpoint_active ? StageClampF(state->checkpoint_flag_drop, 0.0f, 1.0f) : 0.0f;
     drop = drop * drop * (3.0f - 2.0f * drop);
-    int flag_w = StageMaxI(16, w * 11 / 20);
-    int flag_h = StageMaxI(10, h * 3 / 10);
+    int flag_w = StageMaxI(18, w * 3 / 5);
+    int flag_h = StageMaxI(12, h * 7 / 20);
     int flag_travel = StageMaxI(0, h - flag_h - 9);
     int flag_x = pole_x + pole_w;
     int flag_y = pole_top + 2 + (int)(drop * (float)flag_travel + 0.5f);
