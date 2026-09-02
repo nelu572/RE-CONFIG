@@ -9,11 +9,18 @@ struct RectF {
     float h;
 };
 
+enum SpeakerMount {
+    SPEAKER_MOUNT_AUTO,
+    SPEAKER_MOUNT_LEFT,
+    SPEAKER_MOUNT_RIGHT,
+};
+
 struct SpeakerDevice {
     float x;
     float y;
     float width;
     float height;
+    SpeakerMount mount = SPEAKER_MOUNT_AUTO;
 };
 
 enum PistonDirection {

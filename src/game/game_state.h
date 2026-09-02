@@ -56,6 +56,7 @@ struct GameState {
     int pressure_switch_pressed[GAME_MAX_PRESSURE_SWITCHES];
     float pressure_switch_anim[GAME_MAX_PRESSURE_SWITCHES];
     float pressure_platform_open_amount[GAME_MAX_PRESSURE_PLATFORMS];
+    int pressure_platform_open_cycle_pending[GAME_MAX_PRESSURE_PLATFORMS];
     int room_exit_unlocked;
     RectF walker_enemies[GAME_MAX_WALKER_ENEMIES];
     float walker_enemy_gravity_speed[GAME_MAX_WALKER_ENEMIES];

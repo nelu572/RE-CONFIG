@@ -38,6 +38,13 @@ static void DrawPlatform(const StageRenderState* state, const RectF* r) {
     DrawRect(state->render, x, y, w, h, state->platform_color);
 }
 
+static void DrawPlatformBlend(const StageRenderState* state, const RectF* r, float alpha) {
+    int x = WorldX(state->render, r->x);
+    int y = WorldY(state->render, r->y);
+    int w = WorldW(state->render, r->w);
+    int h = WorldH(state->render, r->h);
+    DrawRectBlend(state->render, x, y, w, h, state->platform_color, alpha);
+}
 static int StageMaxI(int a, int b) {
     return a > b ? a : b;
 }
@@ -521,7 +528,8 @@ static void DrawSpeakerDevice(const StageRenderState* state, const SpeakerDevice
     int body_h_extra = StageWorldPixels(render, anim.body_h_extra);
     int room_center_x = WorldX(render, state->room->bounds.x + state->room->bounds.w * 0.5f);
     int speaker_center_x = WorldX(render, speaker->x + speaker->width * 0.5f);
-    int mounted_left = speaker_center_x < room_center_x;
+    int mounted_left = speaker->mount == SPEAKER_MOUNT_LEFT ||
+                       (speaker->mount == SPEAKER_MOUNT_AUTO && speaker_center_x < room_center_x);
     int x = mounted_left ? base_x - body_x : base_x + body_x - body_w_extra;
     int y = base_y + body_y - body_h_extra / 2;
     int w = base_w + body_w_extra;
@@ -530,9 +538,16 @@ static void DrawSpeakerDevice(const StageRenderState* state, const SpeakerDevice
     int front_w = w - side_w;
     int body_left = x;
     int body_right = x + w;
-    int wall_x = mounted_left ?
-        WorldX(render, state->room->bounds.x + 120.0f) :
-        WorldX(render, state->room->bounds.x + state->room->bounds.w - 120.0f);
+    int wall_x;
+    if (speaker->mount == SPEAKER_MOUNT_AUTO) {
+        wall_x = mounted_left ?
+            WorldX(render, state->room->bounds.x + 120.0f) :
+            WorldX(render, state->room->bounds.x + state->room->bounds.w - 120.0f);
+    } else {
+        wall_x = mounted_left ?
+            WorldX(render, speaker->x - 120.0f) :
+            WorldX(render, speaker->x + speaker->width + 120.0f);
+    }
     int plate_w = StageMaxI(14, base_w * 9 / 100);
     int plate_x = wall_x - plate_w / 2;
     int plate_y = base_y + base_h * 31 / 100;
@@ -722,6 +737,10 @@ static void DrawSettingsMenu(const StageRenderState* state) {
     SettingsUiDrawMenu(&colors, &tutorial);
 }
 
+static int PistonDetailSize(int pixels, float geometry_scale) {
+    return StageMaxI(1, (int)((float)pixels * geometry_scale + 0.5f));
+}
+
 static void DrawPistonDevice(const StageRenderState* state, const PistonDevice* piston, int piston_index) {
     RenderContext* render = state->render;
     float extension = state->piston_effective_extension ? state->piston_effective_extension[piston_index] : PistonPoseAt(piston, state->piston_time_seconds).extension;
@@ -748,11 +767,14 @@ static void DrawPistonDevice(const StageRenderState* state, const PistonDevice* 
     uint32_t plate_color = StageLerpColor(state->platform_color, state->text_color, 0.10f);
 
     int horizontal_piston = piston->direction == PISTON_LEFT || piston->direction == PISTON_RIGHT;
+    float height_scale = horizontal_piston ? PistonConnectionScale(piston) : 1.0f;
+    int transverse_inset_y = PistonDetailSize(10, height_scale);
+    int shaft_highlight_h = PistonDetailSize(4, height_scale);
 
     DrawRect(render, bx, by, bw, bh, body_color);
     if (horizontal_piston) {
         DrawRect(render, bx, by, 7, bh, dark_color);
-        DrawRect(render, bx + 8, by + 10, 5, bh - 20, light_color);
+        DrawRect(render, bx + 8, by + transverse_inset_y, 5, bh - transverse_inset_y * 2, light_color);
     } else {
         DrawRect(render, bx, by + bh - 7, bw, 7, dark_color);
         DrawRect(render, bx + 8, by + 8, bw - 16, 5, light_color);
@@ -762,7 +784,7 @@ static void DrawPistonDevice(const StageRenderState* state, const PistonDevice* 
     if (sh > 0) {
         DrawRect(render, sx, sy, sw, sh, dark_color);
         if (horizontal_piston) {
-            DrawRect(render, sx, sy + sh / 2 - 2, sw, 4, body_color);
+            DrawRect(render, sx, sy + (sh - shaft_highlight_h) / 2, sw, shaft_highlight_h, body_color);
         } else {
             DrawRect(render, sx + sw / 2 - 2, sy, 4, sh, body_color);
         }
@@ -771,10 +793,10 @@ static void DrawPistonDevice(const StageRenderState* state, const PistonDevice* 
     DrawRect(render, px, py, pw, ph, plate_color);
     if (piston->direction == PISTON_LEFT) {
         DrawRect(render, px, py, 9, ph, dark_color);
-        DrawRect(render, px + 8, py + 10, 4, ph - 20, light_color);
+        DrawRect(render, px + 8, py + transverse_inset_y, 4, ph - transverse_inset_y * 2, light_color);
     } else if (piston->direction == PISTON_RIGHT) {
         DrawRect(render, px + pw - 9, py, 9, ph, dark_color);
-        DrawRect(render, px + pw - 12, py + 10, 4, ph - 20, light_color);
+        DrawRect(render, px + pw - 12, py + transverse_inset_y, 4, ph - transverse_inset_y * 2, light_color);
     } else if (piston->direction == PISTON_UP) {
         DrawRect(render, px, py, pw, 9, dark_color);
         DrawRect(render, px + 10, py + 8, pw - 20, 4, light_color);
@@ -784,6 +806,7 @@ static void DrawPistonDevice(const StageRenderState* state, const PistonDevice* 
     }
     DrawRectOutline(render, px, py, pw, ph, dark_color);
 }
+
 static void DrawRoomPistons(const StageRenderState* state) {
     for (int i = 0; i < state->room->piston_count; ++i) {
         DrawPistonDevice(state, &state->room->pistons[i], i);
@@ -830,8 +853,8 @@ static void DrawPressureSwitchDevice(const StageRenderState* state, const Pressu
         int cap_h = StageMaxI(10, h - 16);
         int mount_w = StageMaxI(7, w / 5);
         int mount_x = mount == PRESSURE_SWITCH_MOUNT_RIGHT ?
-            x + 2 + max_travel + cap_w :
-            x + w - 2 - max_travel - cap_w - mount_w;
+            x + w - mount_w :
+            x;
         int connector_x = mount == PRESSURE_SWITCH_MOUNT_RIGHT ? cap_x + cap_w : mount_x + mount_w;
         int connector_w = mount == PRESSURE_SWITCH_MOUNT_RIGHT ? mount_x - connector_x : cap_x - connector_x;
         int connector_h = StageMaxI(5, h / 12);
@@ -857,7 +880,7 @@ static void DrawRoomPressureSwitches(const StageRenderState* state) {
     }
 }
 
-static void DrawPressurePlatformDevice(const StageRenderState* state, const PressurePlatformDevice* platform, float open_amount) {
+static void DrawPressurePlatformDevice(const StageRenderState* state, const PressurePlatformDevice* platform, float open_amount, float alpha) {
     open_amount = StageClampF(open_amount, 0.0f, 1.0f);
     RectF current = PressurePlatformRectAt(platform, open_amount);
 
@@ -897,7 +920,11 @@ static void DrawPressurePlatformDevice(const StageRenderState* state, const Pres
         piece_count = next_count;
     }
     for (int i = 0; i < piece_count; ++i) {
-        DrawPlatform(state, &pieces[i]);
+        if (alpha >= 1.0f) {
+            DrawPlatform(state, &pieces[i]);
+        } else {
+            DrawPlatformBlend(state, &pieces[i], alpha);
+        }
     }
 }
 
@@ -906,10 +933,11 @@ static void DrawRoomPressurePlatforms(const StageRenderState* state) {
     for (int i = 0; i < platform_count; ++i) {
         const PressurePlatformDevice* platform = &state->room->pressure_platforms[i];
         float open_amount = state->pressure_platform_open_amount ? state->pressure_platform_open_amount[i] : (state->room_exit_unlocked ? 1.0f : 0.0f);
-        if (platform->disappears_when_open && open_amount > 0.0f) {
+        float alpha = platform->disappears_when_open ? 1.0f - StageClampF(open_amount, 0.0f, 1.0f) : 1.0f;
+        if (alpha <= 0.0f) {
             continue;
         }
-        DrawPressurePlatformDevice(state, platform, open_amount);
+        DrawPressurePlatformDevice(state, platform, open_amount, alpha);
     }
 }
 

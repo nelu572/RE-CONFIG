@@ -8,6 +8,14 @@ static float PistonClampF(float value, float lo, float hi) {
     return value;
 }
 
+float PistonConnectionScale(const PistonDevice* piston) {
+    static constexpr float FIVE_TILE_PISTON_WIDTH = 200.0f;
+    if (!piston) {
+        return 0.0f;
+    }
+    return PistonClampF(piston->width / FIVE_TILE_PISTON_WIDTH, 0.0f, 1.0f);
+}
+
 static float PistonSmooth01(float value) {
     value = PistonClampF(value, 0.0f, 1.0f);
     return value * value * (3.0f - 2.0f * value);
@@ -112,26 +120,27 @@ RectF PistonShaftRectForExtension(const PistonDevice* piston, float extension) {
     float dir_y;
     PistonDirectionVector(piston, &dir_x, &dir_y);
     RectF body = PistonBodyRect(piston);
+    float shaft_width = PistonIsHorizontal(piston) ? piston->shaft_width * PistonConnectionScale(piston) : piston->shaft_width;
 
     if (dir_x > 0.0f) {
         rect.x = body.x + body.w;
-        rect.y = body.y + body.h * 0.5f - piston->shaft_width * 0.5f;
+        rect.y = body.y + body.h * 0.5f - shaft_width * 0.5f;
         rect.w = extension;
-        rect.h = piston->shaft_width;
+        rect.h = shaft_width;
     } else if (dir_x < 0.0f) {
         rect.x = body.x - extension;
-        rect.y = body.y + body.h * 0.5f - piston->shaft_width * 0.5f;
+        rect.y = body.y + body.h * 0.5f - shaft_width * 0.5f;
         rect.w = extension;
-        rect.h = piston->shaft_width;
+        rect.h = shaft_width;
     } else if (dir_y < 0.0f) {
-        rect.x = body.x + body.w * 0.5f - piston->shaft_width * 0.5f;
+        rect.x = body.x + body.w * 0.5f - shaft_width * 0.5f;
         rect.y = body.y - extension;
-        rect.w = piston->shaft_width;
+        rect.w = shaft_width;
         rect.h = extension;
     } else {
-        rect.x = body.x + body.w * 0.5f - piston->shaft_width * 0.5f;
+        rect.x = body.x + body.w * 0.5f - shaft_width * 0.5f;
         rect.y = body.y + body.h;
-        rect.w = piston->shaft_width;
+        rect.w = shaft_width;
         rect.h = extension;
     }
     return rect;
@@ -147,27 +156,28 @@ RectF PistonPlateRectForExtension(const PistonDevice* piston, float extension) {
     float dir_y;
     PistonDirectionVector(piston, &dir_x, &dir_y);
     RectF body = PistonBodyRect(piston);
+    float plate_height = piston->plate_height;
 
     if (dir_x > 0.0f) {
         rect.x = body.x + body.w + extension;
         rect.y = body.y;
-        rect.w = piston->plate_height;
+        rect.w = plate_height;
         rect.h = body.h;
     } else if (dir_x < 0.0f) {
-        rect.x = body.x - extension - piston->plate_height;
+        rect.x = body.x - extension - plate_height;
         rect.y = body.y;
-        rect.w = piston->plate_height;
+        rect.w = plate_height;
         rect.h = body.h;
     } else if (dir_y < 0.0f) {
         rect.x = body.x;
-        rect.y = body.y - extension - piston->plate_height;
+        rect.y = body.y - extension - plate_height;
         rect.w = body.w;
-        rect.h = piston->plate_height;
+        rect.h = plate_height;
     } else {
         rect.x = body.x;
         rect.y = body.y + body.h + extension;
         rect.w = body.w;
-        rect.h = piston->plate_height;
+        rect.h = plate_height;
     }
     return rect;
 }

@@ -208,7 +208,14 @@ static float GamePressurePlatformAmountPerSecond(const PressurePlatformDevice* p
 
 static int GamePressurePlatformTargetClear(const GameState* state, int platform_index, float open_amount) {
     const RoomDef* room = GameCurrentRoom(state);
-    RectF platform_rect = PressurePlatformRectAt(&room->pressure_platforms[platform_index], open_amount);
+    const PressurePlatformDevice* platform = &room->pressure_platforms[platform_index];
+    RectF platform_rect = PressurePlatformRectAt(platform, open_amount);
+    if (platform->disappears_when_open) {
+        RectF player_rect = GamePlayerRect(state);
+        if (RectsOverlap(&player_rect, &platform_rect)) {
+            return 0;
+        }
+    }
     int box_count = GameRoomGravityBoxCount(room);
     for (int i = 0; i < box_count; ++i) {
         if (RectsOverlap(&state->gravity_boxes[i], &platform_rect)) {
@@ -223,8 +230,11 @@ static int GameAppendPressurePlatformSolids(const GameState* state, RectF* out_s
     int platform_count = GameRoomPressurePlatformCount(room);
     for (int i = 0; i < platform_count && count < max_solids; ++i) {
         const PressurePlatformDevice* platform = &room->pressure_platforms[i];
-        if (platform->disappears_when_open && GamePressureSwitchMaskPressed(state, platform->required_switch_mask)) {
-            continue;
+        if (platform->disappears_when_open) {
+            float alpha = 1.0f - GameClampF(state->pressure_platform_open_amount[i], 0.0f, 1.0f);
+            if (alpha < 1.0f) {
+                continue;
+            }
         }
         out_solids[count++] = PressurePlatformRectAt(platform, state->pressure_platform_open_amount[i]);
     }
@@ -636,6 +646,7 @@ void GameResetStage(GameState* state) {
     }
     for (int i = 0; i < GAME_MAX_PRESSURE_PLATFORMS; ++i) {
         state->pressure_platform_open_amount[i] = 0.0f;
+        state->pressure_platform_open_cycle_pending[i] = 0;
     }
     state->room_exit_unlocked = (room->pressure_switch_count > 0 || room->exit_requires_pressure_switches) ? 0 : 1;
     state->cleared_room_this_frame = -1;
@@ -1302,7 +1313,6 @@ static void GameUpdateRoomPistons(GameState* state, float dt) {
     if (state->piston_time_seconds > 600.0f) {
         state->piston_time_seconds -= 600.0f;
     }
-
     const RoomDef* room = GameCurrentRoom(state);
     int piston_count = room->piston_count < GAME_MAX_PISTONS ? room->piston_count : GAME_MAX_PISTONS;
     for (int i = 0; i < piston_count; ++i) {
@@ -1415,6 +1425,27 @@ static int GameMoveWalkerEnemyAxis(GameState* state, int enemy_index, int axis_x
             enemy->x = delta > 0.0f ? solid->x - enemy->w : solid->x + solid->w;
         } else {
             enemy->y = delta > 0.0f ? solid->y - enemy->h : solid->y + solid->h;
+        }
+        collided = 1;
+    }
+    int pressure_platform_count = GameRoomPressurePlatformCount(room);
+    for (int platform_index = 0; platform_index < pressure_platform_count; ++platform_index) {
+        const PressurePlatformDevice* platform = &room->pressure_platforms[platform_index];
+        if (!platform->disappears_when_open) {
+            continue;
+        }
+        float alpha = 1.0f - GameClampF(state->pressure_platform_open_amount[platform_index], 0.0f, 1.0f);
+        if (alpha < 1.0f) {
+            continue;
+        }
+        RectF solid = PressurePlatformRectAt(platform, state->pressure_platform_open_amount[platform_index]);
+        if (!RectsOverlap(enemy, &solid)) {
+            continue;
+        }
+        if (axis_x) {
+            enemy->x = delta > 0.0f ? solid.x - enemy->w : solid.x + solid.w;
+        } else {
+            enemy->y = delta > 0.0f ? solid.y - enemy->h : solid.y + solid.h;
         }
         collided = 1;
     }
@@ -1645,6 +1676,16 @@ static void GameUpdateWalkerEnemies(GameState* state, float dt) {
             }
         }
 
+        GameSpeakerPushVelocity speaker_push = GameComputeSpeakerPushVelocityForRect(
+            state,
+            &state->walker_enemies[i],
+            state->walker_enemy_grounded[i]);
+        if (GameAbsF(speaker_push.vx) > 0.001f) {
+            GameMoveWalkerEnemyAxis(state, i, 1, speaker_push.vx * dt);
+        }
+        if (GameAbsF(speaker_push.vy) > 0.001f) {
+            GameMoveWalkerEnemyAxis(state, i, 0, speaker_push.vy * dt);
+        }
         float turn_squash = state->walker_enemy_turn_squash[i];
         float turn_step = WALKER_ENEMY_TURN_SQUASH_SECONDS > 0.0f ? dt / WALKER_ENEMY_TURN_SQUASH_SECONDS : 1.0f;
         state->walker_enemy_turn_squash[i] = GameClampF(turn_squash - turn_step, 0.0f, 1.0f);
@@ -1998,8 +2039,12 @@ static void GameUpdateRoomPressureSwitches(GameState* state, float dt) {
     for (int i = 0; i < platform_count; ++i) {
         float current = state->pressure_platform_open_amount[i];
         int platform_unlocked = GamePressureSwitchMaskPressed(state, room->pressure_platforms[i].required_switch_mask);
-        float target = platform_unlocked ? 1.0f : 0.0f;
-        float pixels_per_second = platform_unlocked ?
+        if (platform_unlocked) {
+            state->pressure_platform_open_cycle_pending[i] = 1;
+        }
+        int must_finish_open_cycle = state->pressure_platform_open_cycle_pending[i] && current < 1.0f;
+        float target = platform_unlocked || must_finish_open_cycle ? 1.0f : 0.0f;
+        float pixels_per_second = target > current ?
             PRESSURE_PLATFORM_OPEN_SPEED_PIXELS_PER_SECOND :
             PRESSURE_PLATFORM_CLOSE_SPEED_PIXELS_PER_SECOND;
         float amount_per_second = GamePressurePlatformAmountPerSecond(&room->pressure_platforms[i], pixels_per_second);
@@ -2011,6 +2056,9 @@ static void GameUpdateRoomPressureSwitches(GameState* state, float dt) {
             RectF previous_platform = PressurePlatformRectAt(&room->pressure_platforms[i], current);
             RectF current_platform = PressurePlatformRectAt(&room->pressure_platforms[i], next);
             GameCarryPlayerOnPressurePlatform(state, &previous_platform, &current_platform);
+        }
+        if (next >= 1.0f) {
+            state->pressure_platform_open_cycle_pending[i] = 0;
         }
         state->pressure_platform_open_amount[i] = next;
     }

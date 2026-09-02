@@ -24,6 +24,7 @@ struct TrailVertex {
 void RenderClear(RenderContext* render, uint32_t color);
 void DrawPixel(RenderContext* render, int x, int y, uint32_t color);
 void DrawRect(RenderContext* render, int x, int y, int w, int h, uint32_t color);
+void DrawRectBlend(RenderContext* render, int x, int y, int w, int h, uint32_t color, float alpha);
 void DrawRectOutline(RenderContext* render, int x, int y, int w, int h, uint32_t color);
 void DrawLine(RenderContext* render, int x0, int y0, int x1, int y1, uint32_t color);
 void DrawThickLine(RenderContext* render, int x0, int y0, int x1, int y1, int size, uint32_t color);

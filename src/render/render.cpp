@@ -77,6 +77,39 @@ void BlendPixel(RenderContext* render, int x, int y, float r, float g, float b, 
     }
 }
 
+void DrawRectBlend(RenderContext* render, int x, int y, int w, int h, uint32_t color, float alpha) {
+    alpha = Clamp01(alpha);
+    if (alpha <= 0.0f || w <= 0 || h <= 0) {
+        return;
+    }
+    if (alpha >= 1.0f) {
+        DrawRect(render, x, y, w, h, color);
+        return;
+    }
+
+    int scale = render->scale;
+    int raw_x = x * scale;
+    int raw_y = y * scale;
+    int raw_w = w * scale;
+    int raw_h = h * scale;
+    if (raw_x < 0) { raw_w += raw_x; raw_x = 0; }
+    if (raw_y < 0) { raw_h += raw_y; raw_y = 0; }
+    if (raw_x + raw_w > render->width) raw_w = render->width - raw_x;
+    if (raw_y + raw_h > render->height) raw_h = render->height - raw_y;
+    if (raw_w <= 0 || raw_h <= 0) {
+        return;
+    }
+
+    float r = (float)((color >> 16) & 255) / 255.0f;
+    float g = (float)((color >> 8) & 255) / 255.0f;
+    float b = (float)(color & 255) / 255.0f;
+    for (int yy = raw_y; yy < raw_y + raw_h; ++yy) {
+        for (int xx = raw_x; xx < raw_x + raw_w; ++xx) {
+            RawBlendPixel(render, xx, yy, r, g, b, alpha);
+        }
+    }
+}
+
 static float TriangleEdge(float ax, float ay, float bx, float by, float px, float py) {
     return (bx - ax) * (py - ay) - (by - ay) * (px - ax);
 }
