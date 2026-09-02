@@ -699,6 +699,9 @@ static StageCacheState CurrentStageCacheState() {
     state.player = &g_game.player;
     state.player_particles = g_game.player_particles;
     state.player_particle_count = PLAYER_PARTICLE_COUNT;
+    state.gravity_boxes = g_game.gravity_boxes;
+    state.gravity_box_count = CurrentRoom()->gravity_box_count;
+    if (state.gravity_box_count > GAME_MAX_GRAVITY_BOXES) state.gravity_box_count = GAME_MAX_GRAVITY_BOXES;
     state.walker_enemies = g_game.walker_enemies;
     state.walker_enemy_count = CurrentRoom()->walker_enemy_count;
     if (state.walker_enemy_count > GAME_MAX_WALKER_ENEMIES) state.walker_enemy_count = GAME_MAX_WALKER_ENEMIES;

@@ -16,6 +16,7 @@ static float g_static_cache_camera_x = -999999.0f;
 static float g_static_cache_camera_y = -999999.0f;
 static RectI g_prev_player_dirty = { 0, 0, 0, 0 };
 static RectI g_prev_player_particles_dirty = { 0, 0, 0, 0 };
+static RectI g_prev_gravity_boxes_dirty = { 0, 0, 0, 0 };
 static RectI g_prev_walker_enemies_dirty = { 0, 0, 0, 0 };
 static RectI g_prev_tutorial_hint_dirty = { 0, 0, 0, 0 };
 static int g_prev_menu_open = 0;
@@ -88,6 +89,64 @@ static RectI RectUnion(RectI a, RectI b) {
     a.w = right - a.x;
     a.h = bottom - a.y;
     return a;
+}
+
+static void AppendDirtyRect(RectI* dirty, int* count, int max_count, RectI rect) {
+    rect = FramebufferClampRect(rect);
+    if (rect.w <= 0 || rect.h <= 0) {
+        return;
+    }
+
+    for (int i = 0; i < *count; ++i) {
+        RectI combined = RectUnion(dirty[i], rect);
+        unsigned int combined_area = (unsigned int)(combined.w * combined.h);
+        unsigned int separate_area = (unsigned int)(dirty[i].w * dirty[i].h + rect.w * rect.h);
+        if (combined_area <= separate_area) {
+            rect = combined;
+            --(*count);
+            dirty[i] = dirty[*count];
+            i = -1;
+        }
+    }
+
+    if (*count < max_count) {
+        dirty[(*count)++] = rect;
+        return;
+    }
+    dirty[0] = { 0, 0, FB_W, FB_H };
+    *count = 1;
+}
+
+static RectI WorldRectDirtyRect(RenderContext* render, const RectF* world_rect, int padding) {
+    return {
+        WorldX(render, world_rect->x) - padding,
+        WorldY(render, world_rect->y) - padding,
+        WorldW(render, world_rect->w) + padding * 2,
+        WorldH(render, world_rect->h) + padding * 2
+    };
+}
+
+static RectI GravityBoxesDirtyRect(RenderContext* render, const RectF* boxes, int box_count) {
+    RectI dirty = { 0, 0, 0, 0 };
+    for (int i = 0; boxes && i < box_count; ++i) {
+        dirty = RectUnion(dirty, WorldRectDirtyRect(render, &boxes[i], 4));
+    }
+    return FramebufferClampRect(dirty);
+}
+
+static void AppendPressureDeviceDirtyRects(const StageCacheState* state, RectI* dirty, int* count, int max_count) {
+    for (int i = 0; i < state->room->pressure_switch_count; ++i) {
+        AppendDirtyRect(dirty, count, max_count,
+                        WorldRectDirtyRect(state->render, &state->room->pressure_switches[i].rect, 4));
+    }
+    for (int i = 0; i < state->room->pressure_platform_count; ++i) {
+        const PressurePlatformDevice* platform = &state->room->pressure_platforms[i];
+        RectF closed = PressurePlatformRectAt(platform, 0.0f);
+        RectF opened = PressurePlatformRectAt(platform, 1.0f);
+        RectI travel = RectUnion(WorldRectDirtyRect(state->render, &closed, 4),
+                                 WorldRectDirtyRect(state->render, &opened, 4));
+        AppendDirtyRect(dirty, count, max_count, travel);
+    }
 }
 
 static int CacheFloorF(float value) {
@@ -269,6 +328,7 @@ static RectI PistonsDirtyRect(RenderContext* render, const RoomDef* room) {
 static void CaptureCachedFrameState(const StageCacheState* state) {
     g_prev_player_dirty = PlayerDirtyRect(state->render, state->player);
     g_prev_player_particles_dirty = PlayerParticlesDirtyRect(state->render, state->player_particles, state->player_particle_count);
+    g_prev_gravity_boxes_dirty = GravityBoxesDirtyRect(state->render, state->gravity_boxes, state->gravity_box_count);
     g_prev_walker_enemies_dirty = WalkerEnemiesDirtyRect(state->render, state->walker_enemies, state->walker_enemy_count, state->walker_enemy_spike_amount, state->walker_enemy_squash_amount, state->walker_enemy_turn_squash);
     g_prev_menu_open = state->settings_overlay_visible;
     g_prev_room_solved = state->room_solved;
@@ -284,6 +344,7 @@ static void CaptureCachedFrameState(const StageCacheState* state) {
 
 void StageCacheInvalidate() {
     g_static_cache_valid = 0;
+    g_prev_gravity_boxes_dirty = { 0, 0, 0, 0 };
     g_prev_walker_enemies_dirty = { 0, 0, 0, 0 };
 }
 
@@ -318,49 +379,51 @@ void StageCacheDrawCached(const StageCacheState* state, StageCacheDrawCallback d
         FramebufferCopyStaticToLive();
     }
 
-    RectI dirty[24];
+    static constexpr int MAX_DIRTY_RECTS = 48;
+    RectI dirty[MAX_DIRTY_RECTS];
     int count = 0;
     if (!state->settings_overlay_visible) {
-        if (state->room->gravity_box_count > 0 || state->room->pressure_switch_count > 0 || state->room->pressure_platform_count > 0) {
-            dirty[count++] = { 0, 0, FB_W, FB_H };
-        }
+        AppendDirtyRect(dirty, &count, MAX_DIRTY_RECTS, g_prev_gravity_boxes_dirty);
+        AppendDirtyRect(dirty, &count, MAX_DIRTY_RECTS,
+                        GravityBoxesDirtyRect(state->render, state->gravity_boxes, state->gravity_box_count));
+        AppendPressureDeviceDirtyRects(state, dirty, &count, MAX_DIRTY_RECTS);
         RectI walker_current_dirty = WalkerEnemiesDirtyRect(state->render, state->walker_enemies, state->walker_enemy_count, state->walker_enemy_spike_amount, state->walker_enemy_squash_amount, state->walker_enemy_turn_squash);
-        dirty[count++] = RectUnion(g_prev_walker_enemies_dirty, walker_current_dirty);
-        dirty[count++] = g_prev_player_dirty;
-        dirty[count++] = PlayerDirtyRect(state->render, state->player);
-        dirty[count++] = g_prev_player_particles_dirty;
-        dirty[count++] = PlayerParticlesDirtyRect(state->render, state->player_particles, state->player_particle_count);
-        dirty[count++] = ExitSequenceDirtyRect(state->render, &state->room->exit);
-        dirty[count++] = SpeakerWavesDirtyRect(state->render, state->room);
-        dirty[count++] = PistonsDirtyRect(state->render, state->room);
+        AppendDirtyRect(dirty, &count, MAX_DIRTY_RECTS, RectUnion(g_prev_walker_enemies_dirty, walker_current_dirty));
+        AppendDirtyRect(dirty, &count, MAX_DIRTY_RECTS, g_prev_player_dirty);
+        AppendDirtyRect(dirty, &count, MAX_DIRTY_RECTS, PlayerDirtyRect(state->render, state->player));
+        AppendDirtyRect(dirty, &count, MAX_DIRTY_RECTS, g_prev_player_particles_dirty);
+        AppendDirtyRect(dirty, &count, MAX_DIRTY_RECTS, PlayerParticlesDirtyRect(state->render, state->player_particles, state->player_particle_count));
+        AppendDirtyRect(dirty, &count, MAX_DIRTY_RECTS, ExitSequenceDirtyRect(state->render, &state->room->exit));
+        AppendDirtyRect(dirty, &count, MAX_DIRTY_RECTS, SpeakerWavesDirtyRect(state->render, state->room));
+        AppendDirtyRect(dirty, &count, MAX_DIRTY_RECTS, PistonsDirtyRect(state->render, state->room));
     }
     if (state->player_dead || g_prev_player_dead) {
-        dirty[count++] = { 0, 0, FB_W, FB_H };
+        AppendDirtyRect(dirty, &count, MAX_DIRTY_RECTS, { 0, 0, FB_W, FB_H });
     }
     if (state->tutorial_hint_visible || g_prev_tutorial_hint_visible ||
         state->current_room != g_prev_context_room) {
-        dirty[count++] = g_prev_tutorial_hint_dirty;
-        dirty[count++] = TutorialUiWorldHintDirtyRect(state->render, state->room, state->player);
+        AppendDirtyRect(dirty, &count, MAX_DIRTY_RECTS, g_prev_tutorial_hint_dirty);
+        AppendDirtyRect(dirty, &count, MAX_DIRTY_RECTS, TutorialUiWorldHintDirtyRect(state->render, state->room, state->player));
     }
     if (state->type_a_bump_visible || g_prev_type_a_bump_visible ||
         state->current_room != g_prev_context_room) {
-        dirty[count++] = TypeAContextDirtyRect(state->render, state->room);
+        AppendDirtyRect(dirty, &count, MAX_DIRTY_RECTS, TypeAContextDirtyRect(state->render, state->room));
     }
     if ((state->settings_overlay_visible || g_prev_menu_open) && !settings_overlay_closed) {
-        dirty[count++] = SettingsUiMenuDirtyRect();
+        AppendDirtyRect(dirty, &count, MAX_DIRTY_RECTS, SettingsUiMenuDirtyRect());
     }
     if ((state->type_a_highlighted || state->type_a_setting_feedback_visible || g_prev_type_a_setting_feedback_visible) &&
         !settings_overlay_closed) {
-        dirty[count++] = TypeAWallsDirtyRect(state->render, state->room);
+        AppendDirtyRect(dirty, &count, MAX_DIRTY_RECTS, TypeAWallsDirtyRect(state->render, state->room));
     }
     if (state->type_a_setting_feedback_visible || g_prev_type_a_setting_feedback_visible) {
-        dirty[count++] = TypeAWallsDirtyRect(state->render, state->room);
+        AppendDirtyRect(dirty, &count, MAX_DIRTY_RECTS, TypeAWallsDirtyRect(state->render, state->room));
     }
     if (state->room_solved || g_prev_room_solved) {
-        dirty[count++] = { 690, 50, 540, 90 };
+        AppendDirtyRect(dirty, &count, MAX_DIRTY_RECTS, { 690, 50, 540, 90 });
     }
     if (state->transition_visible || g_prev_transition_visible) {
-        dirty[count++] = { 0, 0, FB_W, FB_H };
+        AppendDirtyRect(dirty, &count, MAX_DIRTY_RECTS, { 0, 0, FB_W, FB_H });
     }
 
     unsigned int dirty_area = 0;
