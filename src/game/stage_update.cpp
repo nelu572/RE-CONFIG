@@ -13,6 +13,7 @@
 #include <math.h>
 
 static constexpr float GAME_DEATH_RESPAWN_DELAY = 0.58f;
+static constexpr float CHECKPOINT_FLAG_DROP_SECONDS = 0.65f;
 static constexpr float SPEAKER_WAVE_RANGE = 1080.0f;
 static constexpr float SPEAKER_PUSH_SPEED = 2200.0f;
 static constexpr float SPEAKER_BASE_PUSH_STRENGTH = 0.10f;
@@ -597,12 +598,30 @@ RectF GamePlayerRect(const GameState* state) {
     return PlayerCollisionRect(&state->player);
 }
 
+static int GameRoomHasCheckpoint(const RoomDef* room) {
+    return room && room->checkpoint.w > 0.0f && room->checkpoint.h > 0.0f;
+}
+
+void GameClearCheckpoint(GameState* state) {
+    if (!state) {
+        return;
+    }
+    state->checkpoint_room = -1;
+    state->checkpoint_active = 0;
+    state->checkpoint_flag_drop = 0.0f;
+}
+
 void GameResetStage(GameState* state) {
     DeleteState saved_delete_state = state->delete_state;
     const RoomDef* room = GameCurrentRoom(state);
+    if (!GameRoomHasCheckpoint(room) || state->checkpoint_room != state->current_room) {
+        GameClearCheckpoint(state);
+    }
+    int checkpoint_respawn = state->checkpoint_active && state->checkpoint_room == state->current_room;
     state->room_start_state = GameBuildRoomStartState(room);
-    state->player.x = state->room_start_state.player_x;
-    state->player.y = state->room_start_state.player_y;
+    state->player.x = checkpoint_respawn ? room->checkpoint.x : state->room_start_state.player_x;
+    state->player.y = checkpoint_respawn ? room->checkpoint.y : state->room_start_state.player_y;
+    state->checkpoint_flag_drop = checkpoint_respawn ? 1.0f : 0.0f;
     state->player.collision_w = PLAYER_FLEX_NORMAL_TANGENT;
     state->player.collision_h = PLAYER_FLEX_NORMAL_GRAVITY;
     state->player.vx = 0.0f;
@@ -2064,6 +2083,24 @@ static void GameUpdateRoomPressureSwitches(GameState* state, float dt) {
     }
 }
 
+static void GameUpdateRoomCheckpoint(GameState* state, float dt) {
+    const RoomDef* room = GameCurrentRoom(state);
+    if (!GameRoomHasCheckpoint(room)) {
+        return;
+    }
+
+    RectF player = GamePlayerRect(state);
+    if (!state->checkpoint_active && RectsOverlap(&player, &room->checkpoint)) {
+        state->checkpoint_room = state->current_room;
+        state->checkpoint_active = 1;
+        state->checkpoint_flag_drop = 0.0f;
+    }
+    if (state->checkpoint_active && state->checkpoint_room == state->current_room) {
+        float step = CHECKPOINT_FLAG_DROP_SECONDS > 0.0f ? dt / CHECKPOINT_FLAG_DROP_SECONDS : 1.0f;
+        state->checkpoint_flag_drop = GameClampF(state->checkpoint_flag_drop + step, 0.0f, 1.0f);
+    }
+}
+
 static void GameStartPlayerDeath(GameState* state) {
     if (state->player_dead) {
         return;
@@ -2455,6 +2492,7 @@ void GameUpdateStage(GameState* state, float dt, int use_static_cache) {
         GameStartPlayerDeath(state);
         return;
     }
+    GameUpdateRoomCheckpoint(state, dt);
     UpdatePlayerPresentation(&state->player,
                              state->player_particles,
                              PLAYER_PARTICLE_COUNT,

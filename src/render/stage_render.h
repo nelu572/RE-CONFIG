@@ -38,6 +38,8 @@ struct StageRenderState {
     const float* pressure_switch_anim;
     const float* pressure_platform_open_amount;
     int room_exit_unlocked;
+    int checkpoint_active;
+    float checkpoint_flag_drop;
     int type_a_off_line_thickness;
     int type_a_off_visible_path_len;
     uint32_t effect_color;

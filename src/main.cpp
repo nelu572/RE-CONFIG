@@ -411,6 +411,7 @@ static void EnterStageSelectNow(int stage_index) {
 static void EnterStageNow(int room_index) {
     SettingsUiClose();
     PauseMenuClose(&g_pause_menu);
+    GameClearCheckpoint(&g_game);
     g_game.current_room = ClampRoomIndex(room_index);
     g_last_played_room = g_game.current_room;
     StageProgressSave();
@@ -618,6 +619,8 @@ static StageRenderState CurrentStageRenderState() {
     state.pressure_switch_anim = g_game.pressure_switch_anim;
     state.pressure_platform_open_amount = g_game.pressure_platform_open_amount;
     state.room_exit_unlocked = g_game.room_exit_unlocked;
+    state.checkpoint_active = g_game.checkpoint_active;
+    state.checkpoint_flag_drop = g_game.checkpoint_flag_drop;
     state.type_a_off_line_thickness = g_type_a_off_line_thickness;
     state.type_a_off_visible_path_len = g_type_a_off_visible_path_len;
     state.effect_color = COL_EFFECT;

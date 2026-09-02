@@ -941,6 +941,49 @@ static void DrawRoomPressurePlatforms(const StageRenderState* state) {
     }
 }
 
+static TrailVertex CheckpointFlagVertex(int x, int y, uint32_t color) {
+    TrailVertex vertex;
+    vertex.x = (float)x;
+    vertex.y = (float)y;
+    vertex.r = (float)((color >> 16) & 255) / 255.0f;
+    vertex.g = (float)((color >> 8) & 255) / 255.0f;
+    vertex.b = (float)(color & 255) / 255.0f;
+    vertex.a = 1.0f;
+    return vertex;
+}
+
+static void DrawRoomCheckpoint(const StageRenderState* state) {
+    const RectF* checkpoint = &state->room->checkpoint;
+    if (checkpoint->w <= 0.0f || checkpoint->h <= 0.0f) {
+        return;
+    }
+
+    int x = WorldX(state->render, checkpoint->x);
+    int y = WorldY(state->render, checkpoint->y);
+    int w = WorldW(state->render, checkpoint->w);
+    int h = WorldH(state->render, checkpoint->h);
+    int pole_w = StageMaxI(3, w / 12);
+    int pole_x = x + w / 5;
+    int pole_top = y + 2;
+    int pole_bottom = y + h - 3;
+    uint32_t pole_color = state->text_color;
+
+    DrawRect(state->render, pole_x, pole_top, pole_w, pole_bottom - pole_top, pole_color);
+    DrawRect(state->render, pole_x - 4, pole_bottom - 2, pole_w + 8, 3, pole_color);
+
+    float drop = state->checkpoint_active ? StageClampF(state->checkpoint_flag_drop, 0.0f, 1.0f) : 0.0f;
+    drop = drop * drop * (3.0f - 2.0f * drop);
+    int flag_w = StageMaxI(16, w * 11 / 20);
+    int flag_h = StageMaxI(10, h * 3 / 10);
+    int flag_travel = StageMaxI(0, h - flag_h - 9);
+    int flag_x = pole_x + pole_w;
+    int flag_y = pole_top + 2 + (int)(drop * (float)flag_travel + 0.5f);
+    TrailVertex top = CheckpointFlagVertex(flag_x, flag_y, state->platform_color);
+    TrailVertex tip = CheckpointFlagVertex(flag_x + flag_w, flag_y + flag_h / 2, state->platform_color);
+    TrailVertex bottom = CheckpointFlagVertex(flag_x, flag_y + flag_h, state->platform_color);
+    DrawAlphaTriangle(state->render, &top, &tip, &bottom);
+}
+
 static int BoxSpriteSourceCornerPixel(int sx, int sy) {
     const int corner_size = 2;
     int near_left = sx < corner_size;
@@ -1151,6 +1194,7 @@ void StageRenderDrawDynamic(const StageRenderState* state) {
     for (int i = 0; i < state->room->speaker_count; ++i) {
         DrawSpeakerDevice(state, &state->room->speakers[i]);
     }
+    DrawRoomCheckpoint(state);
     DrawRoomPistons(state);
     DrawRoomPressureSwitches(state);
     DrawRoomPressurePlatforms(state);

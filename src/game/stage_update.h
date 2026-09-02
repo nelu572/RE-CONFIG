@@ -11,6 +11,7 @@ void GameToggleFeature(GameState* state, DeleteFeature feature);
 void GameSetGravityDirection(GameState* state, GravityDirection direction);
 void GameSetPlayerFlexibility(GameState* state, int value);
 RectF GamePlayerRect(const GameState* state);
+void GameClearCheckpoint(GameState* state);
 void GameResetStage(GameState* state);
 void GameUpdateStage(GameState* state, float dt, int use_static_cache);
 int GameTypeABumpVisible(const GameState* state);

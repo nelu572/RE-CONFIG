@@ -33,6 +33,9 @@ struct GameState {
     GameRoomStartState room_start_state;
     GravityDirection gravity_direction;
     int current_room;
+    int checkpoint_room;
+    int checkpoint_active;
+    float checkpoint_flag_drop;
     int cleared_room_this_frame;
     int player_dead;
     int audio_events;

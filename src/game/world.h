@@ -110,6 +110,7 @@ struct RoomDef {
     const WalkerEnemyDef* walker_enemies = 0;
     int walker_enemy_count = 0;
     int pressure_barrier_count = 0;
+    RectF checkpoint = {};
 };
 
 const RoomDef* GetRoom(int index);

@@ -16,6 +16,7 @@
 - [중력 박스](design/gravity_box.md)
 - [피스톤](design/piston.md)
 - [스피커와 음파](design/speaker.md)
+- [체크포인트](design/checkpoint.md)
 - [확정 사항과 미확정 사항](design/decisions_open_items.md)
 - [구현 변경 규칙](IMPLEMENTATION_RULES.md)
 
