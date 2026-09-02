@@ -41,6 +41,7 @@ static constexpr float GRAVITY_BOX_SPEAKER_MIN_PUSH_SPEED = 200.0f;
 static constexpr float PRESSURE_PLATFORM_OPEN_SPEED_PIXELS_PER_SECOND = 560.0f;
 static constexpr float PRESSURE_PLATFORM_CLOSE_SPEED_PIXELS_PER_SECOND = 560.0f;
 static constexpr float WALKER_ENEMY_APPROACH_RANGE = 200.0f;
+static constexpr float WALKER_ENEMY_ALERT_PATROL_SPEED_SCALE = 0.35f;
 static constexpr float WALKER_ENEMY_SPIKE_RETRACT_SECONDS = 0.60f;
 static constexpr float WALKER_ENEMY_SPIKE_DEPLOY_DELAY_SECONDS = 0.045f;
 static constexpr float WALKER_ENEMY_LEAVE_RANGE = 240.0f;
@@ -1684,11 +1685,12 @@ static void GameUpdateWalkerEnemies(GameState* state, float dt) {
             crouch = GameClampF(crouch - recovery_step, 0.0f, 1.0f);
         }
 
-        // Resume the saved patrol direction only after both visual states have fully recovered.
-        int patrol_active = !player_near && spike <= 0.0f && crouch <= 0.0f;
-        if (patrol_active) {
+        // Keep patrolling slowly while alert; after the player leaves, wait for the visual recovery before resuming full speed.
+        float patrol_speed_scale = player_near ? WALKER_ENEMY_ALERT_PATROL_SPEED_SCALE :
+                                   (spike <= 0.0f && crouch <= 0.0f ? 1.0f : 0.0f);
+        if (patrol_speed_scale > 0.0f) {
             int direction = state->walker_enemy_direction[i] < 0 ? -1 : 1;
-            float tangent_delta = (float)direction * def->move_speed * dt;
+            float tangent_delta = (float)direction * def->move_speed * patrol_speed_scale * dt;
             if (GameMoveWalkerEnemyAxis(state, i, tangent_x, tangent_delta)) {
                 state->walker_enemy_direction[i] = -direction;
                 state->walker_enemy_turn_squash[i] = 1.0f;
