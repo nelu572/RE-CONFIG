@@ -1422,7 +1422,14 @@ static const RectF* GameWalkerEnemySolidAt(const GameState* state, const RoomDef
     return 0;
 }
 
-static int GameMoveWalkerEnemyAxis(GameState* state, int enemy_index, int axis_x, float delta) {
+static int GameMoveWalkerEnemyAxis(GameState* state,
+                                   int enemy_index,
+                                   int axis_x,
+                                   float delta,
+                                   int* collided_enemy_index) {
+    if (collided_enemy_index) {
+        *collided_enemy_index = -1;
+    }
     if (delta == 0.0f) {
         return 0;
     }
@@ -1465,6 +1472,25 @@ static int GameMoveWalkerEnemyAxis(GameState* state, int enemy_index, int axis_x
             enemy->x = delta > 0.0f ? solid.x - enemy->w : solid.x + solid.w;
         } else {
             enemy->y = delta > 0.0f ? solid.y - enemy->h : solid.y + solid.h;
+        }
+        collided = 1;
+    }
+    int enemy_count = GameRoomWalkerEnemyCount(room);
+    for (int other_index = 0; other_index < enemy_count; ++other_index) {
+        if (other_index == enemy_index) {
+            continue;
+        }
+        const RectF* other = &state->walker_enemies[other_index];
+        if (!RectsOverlap(enemy, other)) {
+            continue;
+        }
+        if (axis_x) {
+            enemy->x = delta > 0.0f ? other->x - enemy->w : other->x + other->w;
+        } else {
+            enemy->y = delta > 0.0f ? other->y - enemy->h : other->y + other->h;
+        }
+        if (collided_enemy_index) {
+            *collided_enemy_index = other_index;
         }
         collided = 1;
     }
@@ -1689,9 +1715,15 @@ static void GameUpdateWalkerEnemies(GameState* state, float dt) {
         if (patrol_active) {
             int direction = state->walker_enemy_direction[i] < 0 ? -1 : 1;
             float tangent_delta = (float)direction * def->move_speed * dt;
-            if (GameMoveWalkerEnemyAxis(state, i, tangent_x, tangent_delta)) {
+            int collided_enemy_index = -1;
+            if (GameMoveWalkerEnemyAxis(state, i, tangent_x, tangent_delta, &collided_enemy_index)) {
                 state->walker_enemy_direction[i] = -direction;
                 state->walker_enemy_turn_squash[i] = 1.0f;
+                if (collided_enemy_index >= 0) {
+                    int other_direction = state->walker_enemy_direction[collided_enemy_index] < 0 ? -1 : 1;
+                    state->walker_enemy_direction[collided_enemy_index] = -other_direction;
+                    state->walker_enemy_turn_squash[collided_enemy_index] = 1.0f;
+                }
             }
         }
 
@@ -1700,10 +1732,10 @@ static void GameUpdateWalkerEnemies(GameState* state, float dt) {
             &state->walker_enemies[i],
             state->walker_enemy_grounded[i]);
         if (GameAbsF(speaker_push.vx) > 0.001f) {
-            GameMoveWalkerEnemyAxis(state, i, 1, speaker_push.vx * dt);
+            GameMoveWalkerEnemyAxis(state, i, 1, speaker_push.vx * dt, 0);
         }
         if (GameAbsF(speaker_push.vy) > 0.001f) {
-            GameMoveWalkerEnemyAxis(state, i, 0, speaker_push.vy * dt);
+            GameMoveWalkerEnemyAxis(state, i, 0, speaker_push.vy * dt, 0);
         }
         float turn_squash = state->walker_enemy_turn_squash[i];
         float turn_step = WALKER_ENEMY_TURN_SQUASH_SECONDS > 0.0f ? dt / WALKER_ENEMY_TURN_SQUASH_SECONDS : 1.0f;
@@ -1718,7 +1750,7 @@ static void GameUpdateWalkerEnemies(GameState* state, float dt) {
                 gravity_speed = max_gravity_speed;
             }
             float gravity_delta = gravity_speed * dt * (float)(gravity_x != 0 ? gravity_x : gravity_y);
-            if (GameMoveWalkerEnemyAxis(state, i, gravity_x != 0, gravity_delta)) {
+            if (GameMoveWalkerEnemyAxis(state, i, gravity_x != 0, gravity_delta, 0)) {
                 gravity_speed = 0.0f;
                 state->walker_enemy_grounded[i] = 1;
             }

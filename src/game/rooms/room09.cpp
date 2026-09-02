@@ -30,7 +30,7 @@ static const RectF g_room09_platforms[] = {
     { T(42), T(20), T(5), T(2) },
     { T(26), T(21), T(7), T(1) },
     { T(125), T(21), T(8), T(6) },
-    { T(142), T(21), T(1), T(3) },
+    { T(141), T(21), T(2), T(4) },
     { T(26), T(22), T(4), T(1) },
     { T(86), T(22), T(18), T(5) },
     { T(106), T(22), T(7), T(5) },
@@ -46,10 +46,7 @@ static const RectF g_room09_type_a_walls[] = {
 };
 
 static const SpeakerDevice g_room09_speakers[] = {
-    DefaultSpeakerAt(T(5), T(10), SPEAKER_MOUNT_LEFT),
-    DefaultSpeakerAt(T(59), T(5), SPEAKER_MOUNT_LEFT),
-    DefaultSpeakerAt(T(113), T(8), SPEAKER_MOUNT_RIGHT),
-    DefaultSpeakerAt(T(142), T(5), SPEAKER_MOUNT_RIGHT),
+    DefaultSpeakerAt(T(146), T(18)),
 };
 static const WalkerEnemyDef g_room09_walker_enemies[] = {
     { { T(16.25f), T(22.55f), T(1.5f), T(0.9f) }, 120.0f, 1 },
