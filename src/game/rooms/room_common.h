@@ -17,4 +17,11 @@ static constexpr float kDefaultGravityBoxSize = T(1.5f);
 static constexpr RectF DefaultGravityBoxAt(float x, float y) {
     return { x, y, kDefaultGravityBoxSize, kDefaultGravityBoxSize };
 }
+static constexpr float kDefaultSpeakerWidth = T(5);
+static constexpr float kDefaultSpeakerHeight = T(9);
+
+static constexpr SpeakerDevice DefaultSpeakerAt(float x, float y, SpeakerMount mount = SPEAKER_MOUNT_AUTO) {
+    return { x, y, kDefaultSpeakerWidth, kDefaultSpeakerHeight, mount };
+}
+
 static constexpr DeleteState kDefaultDeleteState = {};

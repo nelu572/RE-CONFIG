@@ -28,7 +28,7 @@ static const RectF g_room06_platforms[] = {
 };
 
 static const SpeakerDevice g_room06_speakers[] = {
-    { T(5), T(5), T(5), T(9) },
+    DefaultSpeakerAt(T(5), T(5)),
 };
 
 static const GravityBoxDef g_room06_gravity_boxes[] = {

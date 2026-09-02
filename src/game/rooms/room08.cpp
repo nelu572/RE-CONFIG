@@ -20,7 +20,7 @@ static const RectF g_room08_platforms[] = {
 };
 
 static const SpeakerDevice g_room08_speakers[] = {
-    { T(37), T(39), T(5), T(7) },
+    DefaultSpeakerAt(T(37), T(39)),
 };
 
 static const PistonDevice g_room08_pistons[] = {

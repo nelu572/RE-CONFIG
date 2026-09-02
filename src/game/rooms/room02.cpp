@@ -9,7 +9,7 @@ static const RectF g_room02_platforms[] = {
 };
 
 static const SpeakerDevice g_room02_speakers[] = {
-    { T(50), T(5), T(5), T(9) },
+    DefaultSpeakerAt(T(50), T(5)),
 };
 
 extern const RoomDef g_room02 = {
