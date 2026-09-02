@@ -262,23 +262,29 @@ static RectI TypeAContextDirtyRect(RenderContext* render, const RoomDef* room) {
 }
 
 static RectI SpeakerWavesDirtyRect(RenderContext* render, const RoomDef* room) {
+    static constexpr float SPEAKER_WAVE_RANGE = 1080.0f;
+    static constexpr int SPEAKER_WAVE_PADDING = 32;
     if (room->speaker_count <= 0) {
         return { 0, 0, 0, 0 };
     }
 
     const SpeakerDevice* speaker = &room->speakers[0];
+    float source_x = speaker->x + speaker->width * 0.45f;
+    float source_y = speaker->y + speaker->height * 0.66f;
     RectI rect = {
-        WorldX(render, speaker->x - 1160.0f) - 32,
-        WorldY(render, speaker->y + speaker->height * 0.66f - 480.0f) - 32,
-        1500,
-        1024
+        WorldX(render, source_x - SPEAKER_WAVE_RANGE) - SPEAKER_WAVE_PADDING,
+        WorldY(render, source_y - SPEAKER_WAVE_RANGE) - SPEAKER_WAVE_PADDING,
+        WorldW(render, SPEAKER_WAVE_RANGE * 2.0f) + SPEAKER_WAVE_PADDING * 2,
+        WorldH(render, SPEAKER_WAVE_RANGE * 2.0f) + SPEAKER_WAVE_PADDING * 2
     };
     for (int i = 1; i < room->speaker_count; ++i) {
         speaker = &room->speakers[i];
-        int x = WorldX(render, speaker->x - 1160.0f) - 32;
-        int y = WorldY(render, speaker->y + speaker->height * 0.66f - 480.0f) - 32;
-        int w = 1500;
-        int h = 1024;
+        source_x = speaker->x + speaker->width * 0.45f;
+        source_y = speaker->y + speaker->height * 0.66f;
+        int x = WorldX(render, source_x - SPEAKER_WAVE_RANGE) - SPEAKER_WAVE_PADDING;
+        int y = WorldY(render, source_y - SPEAKER_WAVE_RANGE) - SPEAKER_WAVE_PADDING;
+        int w = WorldW(render, SPEAKER_WAVE_RANGE * 2.0f) + SPEAKER_WAVE_PADDING * 2;
+        int h = WorldH(render, SPEAKER_WAVE_RANGE * 2.0f) + SPEAKER_WAVE_PADDING * 2;
         int x2 = rect.x + rect.w;
         int y2 = rect.y + rect.h;
         int sx2 = x + w;
