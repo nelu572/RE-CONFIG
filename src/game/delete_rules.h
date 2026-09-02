@@ -21,7 +21,6 @@ struct DeleteState {
 enum SettingsCategory {
     SETTINGS_GAMEPLAY,
     SETTINGS_AUDIO,
-    SETTINGS_VIDEO,
     SETTINGS_SYSTEM,
     SETTINGS_CATEGORY_COUNT
 };
