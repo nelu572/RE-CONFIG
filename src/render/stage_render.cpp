@@ -515,6 +515,45 @@ static void DrawSmallSpeakerDriver(RenderContext* render,
     FillCircle(render, cx, cy, radius * 27 / 100, deep_dark);
 }
 
+static int SpeakerBracketWallX(const StageRenderState* state,
+                               const SpeakerDevice* speaker,
+                               int mounted_left,
+                               float plate_y,
+                               float plate_h) {
+    const float minimum_overlap = 40.0f;
+    float speaker_edge = mounted_left ? speaker->x : speaker->x + speaker->width;
+    float best_face = 0.0f;
+    int found = 0;
+    for (int i = 0; i < state->room->platform_count; ++i) {
+        const RectF* platform = &state->room->platforms[i];
+        float overlap_start = platform->y > plate_y ? platform->y : plate_y;
+        float platform_bottom = platform->y + platform->h;
+        float plate_bottom = plate_y + plate_h;
+        float overlap_end = platform_bottom < plate_bottom ? platform_bottom : plate_bottom;
+        if (overlap_end - overlap_start < minimum_overlap) {
+            continue;
+        }
+        float face = mounted_left ? platform->x + platform->w : platform->x;
+        if ((mounted_left && face > speaker_edge) || (!mounted_left && face < speaker_edge)) {
+            continue;
+        }
+        if (!found || (mounted_left ? face > best_face : face < best_face)) {
+            best_face = face;
+            found = 1;
+        }
+    }
+
+    if (!found) {
+        if (speaker->mount == SPEAKER_MOUNT_AUTO) {
+            best_face = mounted_left ? state->room->bounds.x + 120.0f
+                                     : state->room->bounds.x + state->room->bounds.w - 120.0f;
+        } else {
+            best_face = mounted_left ? speaker->x - 120.0f
+                                     : speaker->x + speaker->width + 120.0f;
+        }
+    }
+    return WorldX(state->render, best_face);
+}
 static void DrawSpeakerDevice(const StageRenderState* state, const SpeakerDevice* speaker) {
     RenderContext* render = state->render;
     SpeakerAnimation anim = SpeakerAnimationForTime(state->speaker_time_seconds, state->speaker_volume);
@@ -538,20 +577,15 @@ static void DrawSpeakerDevice(const StageRenderState* state, const SpeakerDevice
     int front_w = w - side_w;
     int body_left = x;
     int body_right = x + w;
-    int wall_x;
-    if (speaker->mount == SPEAKER_MOUNT_AUTO) {
-        wall_x = mounted_left ?
-            WorldX(render, state->room->bounds.x + 120.0f) :
-            WorldX(render, state->room->bounds.x + state->room->bounds.w - 120.0f);
-    } else {
-        wall_x = mounted_left ?
-            WorldX(render, speaker->x - 120.0f) :
-            WorldX(render, speaker->x + speaker->width + 120.0f);
-    }
     int plate_w = StageMaxI(14, base_w * 9 / 100);
-    int plate_x = wall_x - plate_w / 2;
     int plate_y = base_y + base_h * 31 / 100;
     int plate_h = base_h * 58 / 100;
+    int wall_x = SpeakerBracketWallX(state,
+                                     speaker,
+                                     mounted_left,
+                                     speaker->y + speaker->height * 31.0f / 100.0f,
+                                     speaker->height * 58.0f / 100.0f);
+    int plate_x = wall_x - plate_w / 2;
     int upper_support_y = y + h * 36 / 100;
     int lower_support_y = y + h * 67 / 100;
     int support_h = StageMaxI(8, base_h * 5 / 100);
