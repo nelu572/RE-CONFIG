@@ -40,11 +40,25 @@ static inline int WalkerEnemyGeometryMinI(int a, int b) {
     return a < b ? a : b;
 }
 
+static inline float WalkerEnemyPatrolSquashAmount(const RectF* enemy,
+                                                  float spike_amount,
+                                                  float response_squash,
+                                                  int is_standard) {
+    // M1 stops its patrol pose while it is crouching or deploying/retracting spikes.
+    if (is_standard && (spike_amount > 0.01f || response_squash > 0.01f)) {
+        return 0.0f;
+    }
+    // World-space phase keeps the visual cadence tied to distance travelled without
+    // changing the enemy's position or collision shape.
+    return 0.5f + 0.5f * sinf(enemy->x * 0.13f + enemy->y * 0.07f);
+}
+
 static inline void WalkerEnemyBuildRenderGeometry(RenderContext* render,
                                                   const RectF* enemy,
                                                   float spike_amount,
                                                   float response_squash,
                                                   float turn_squash,
+                                                  float patrol_squash,
                                                   float spike_length_scale,
                                                   WalkerEnemyRenderGeometry* out) {
     int natural_x = WorldX(render, enemy->x);
@@ -52,9 +66,9 @@ static inline void WalkerEnemyBuildRenderGeometry(RenderContext* render,
     out->body_y = WorldY(render, enemy->y);
     out->body_h = WorldH(render, enemy->h);
 
-    float squash_amount = response_squash + turn_squash * 0.20f;
+    float squash_amount = response_squash + turn_squash * 0.20f + patrol_squash * 0.52f;
     if (squash_amount > 1.0f) squash_amount = 1.0f;
-    float width_scale = 1.0f - response_squash * 0.08f + turn_squash * 0.02f;
+    float width_scale = 1.0f - response_squash * 0.08f + turn_squash * 0.02f + patrol_squash * 0.03f;
     int adjusted_w = (int)((float)natural_w * width_scale + 0.5f);
     out->body_w = WalkerEnemyGeometryMaxI(4, adjusted_w);
     out->body_x = natural_x + natural_w / 2 - out->body_w / 2;

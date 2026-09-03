@@ -188,12 +188,18 @@ static RectI WalkerEnemiesDirtyRect(RenderContext* render,
         float turn_squash = turn_squash_amounts ? turn_squash_amounts[i] : 0.0f;
         float spike_length_scale = room && i < room->walker_enemy_count &&
                                    room->walker_enemies[i].spawn_code == WALKER_ENEMY_M2 ? 0.80f : 1.0f;
+        int is_standard = spike_length_scale == 1.0f;
+        float patrol_squash = WalkerEnemyPatrolSquashAmount(&enemies[i],
+                                                             spike_amount,
+                                                             squash_amount,
+                                                             is_standard);
         WalkerEnemyRenderGeometry geometry;
         WalkerEnemyBuildRenderGeometry(render,
                                        &enemies[i],
                                        spike_amount,
                                        squash_amount,
                                        turn_squash,
+                                       patrol_squash,
                                        spike_length_scale,
                                        &geometry);
         float min_x = (float)geometry.body_x;

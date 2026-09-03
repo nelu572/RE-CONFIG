@@ -1322,11 +1322,16 @@ static void DrawWalkerEnemy(const StageRenderState* state,
                             int is_standard) {
     WalkerEnemyRenderGeometry geometry;
     float spike_length_scale = is_standard ? 1.0f : 0.80f;
+    float patrol_squash = WalkerEnemyPatrolSquashAmount(enemy,
+                                                         spike_amount,
+                                                         response_squash,
+                                                         is_standard);
     WalkerEnemyBuildRenderGeometry(state->render,
                                    enemy,
                                    spike_amount,
                                    response_squash,
                                    turn_squash,
+                                   patrol_squash,
                                    spike_length_scale,
                                    &geometry);
     float m1_alert_amount = spike_amount > response_squash ? spike_amount : response_squash;

@@ -50,7 +50,7 @@ static const SpeakerDevice g_room09_speakers[] = {
     DefaultSpeakerAt(T(146), T(18)),
 };
 static const WalkerEnemyDef g_room09_walker_enemies[] = {
-    { { T(8.25f), T(23.55f), T(1.5f), T(0.9f) }, 120.0f, 1, WALKER_ENEMY_M1 },
+    { { T(8.25f), T(23.55f), T(1.5f), T(0.9f) }, 140.0f, 1, WALKER_ENEMY_M1 },
     { { T(16.25f), T(22.55f), T(1.5f), T(0.9f) }, 100.0f, 1, WALKER_ENEMY_M2 },
     { { T(110.25f), T(13.55f), T(1.5f), T(0.9f) }, 100.0f, 1, WALKER_ENEMY_M2 },
 };
