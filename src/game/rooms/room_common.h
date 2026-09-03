@@ -21,7 +21,14 @@ static constexpr float kDefaultSpeakerWidth = T(5);
 static constexpr float kDefaultSpeakerHeight = T(9);
 
 static constexpr SpeakerDevice DefaultSpeakerAt(float x, float y, SpeakerMount mount = SPEAKER_MOUNT_AUTO) {
-    return { x, y, kDefaultSpeakerWidth, kDefaultSpeakerHeight, mount };
+    return { x, y, kDefaultSpeakerWidth, kDefaultSpeakerHeight, mount, SPEAKER_STYLE_STANDARD, 1.0f, 1.0f };
+}
+
+static constexpr float kMiniSpeakerWidth = T(3);
+static constexpr float kMiniSpeakerHeight = T(5);
+
+static constexpr SpeakerDevice MiniSpeakerAt(float x, float y) {
+    return { x, y, kMiniSpeakerWidth, kMiniSpeakerHeight, SPEAKER_MOUNT_AUTO, SPEAKER_STYLE_MINI, 0.4f, 0.4f };
 }
 
 static constexpr DeleteState kDefaultDeleteState = {};

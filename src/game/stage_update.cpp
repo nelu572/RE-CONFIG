@@ -2381,8 +2381,6 @@ static GameSpeakerPushVelocity GameComputeSpeakerPushVelocityForRect(const GameS
         return result;
     }
 
-    float wave_range = SPEAKER_WAVE_RANGE * volume;
-
     float target_cx = rect->x + rect->w * 0.5f;
     float target_cy = rect->y + rect->h * 0.5f;
     float best_speed = 0.0f;
@@ -2390,6 +2388,10 @@ static GameSpeakerPushVelocity GameComputeSpeakerPushVelocityForRect(const GameS
     float best_dir_y = 0.0f;
     for (int speaker_index = 0; speaker_index < room->speaker_count; ++speaker_index) {
         const SpeakerDevice* speaker = &room->speakers[speaker_index];
+        float wave_range = SPEAKER_WAVE_RANGE * volume * speaker->wave_range_scale;
+        if (wave_range <= 0.001f) {
+            continue;
+        }
         float source_x = speaker->x + speaker->width * 0.45f;
         float source_y = speaker->y + speaker->height * 0.66f;
         float dx = target_cx - source_x;
@@ -2403,7 +2405,7 @@ static GameSpeakerPushVelocity GameComputeSpeakerPushVelocityForRect(const GameS
         float falloff = 1.0f - dist / wave_range;
         float close_strength = falloff * falloff * falloff;
         float strength = GameClampF(SPEAKER_BASE_PUSH_STRENGTH + close_strength * SPEAKER_CLOSE_PUSH_BOOST, 0.0f, 3.35f);
-        float speed = SPEAKER_PUSH_SPEED * volume * strength;
+        float speed = SPEAKER_PUSH_SPEED * volume * strength * speaker->push_strength_scale;
         if (speed > best_speed) {
             if (dist > 0.001f) {
                 best_dir_x = dx / dist;

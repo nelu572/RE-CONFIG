@@ -15,12 +15,20 @@ enum SpeakerMount {
     SPEAKER_MOUNT_RIGHT,
 };
 
+enum SpeakerStyle {
+    SPEAKER_STYLE_STANDARD,
+    SPEAKER_STYLE_MINI,
+};
+
 struct SpeakerDevice {
     float x;
     float y;
     float width;
     float height;
     SpeakerMount mount = SPEAKER_MOUNT_AUTO;
+    SpeakerStyle style = SPEAKER_STYLE_STANDARD;
+    float wave_range_scale = 1.0f;
+    float push_strength_scale = 1.0f;
 };
 
 enum PistonDirection {

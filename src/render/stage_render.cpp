@@ -515,6 +515,53 @@ static void DrawSmallSpeakerDriver(RenderContext* render,
     FillCircle(render, cx, cy, radius * 27 / 100, deep_dark);
 }
 
+static void DrawMiniSpeakerDevice(const StageRenderState* state, const SpeakerDevice* speaker) {
+    RenderContext* render = state->render;
+    SpeakerAnimation anim = SpeakerAnimationForTime(state->speaker_time_seconds, state->speaker_volume);
+    int base_x = WorldX(render, speaker->x);
+    int base_y = WorldY(render, speaker->y);
+    int base_w = WorldW(render, speaker->width);
+    int base_h = WorldH(render, speaker->height);
+    int body_x = StageWorldPixels(render, anim.body_x);
+    int body_y = StageWorldPixels(render, anim.body_y);
+    int body_w_extra = StageWorldPixels(render, anim.body_w_extra);
+    int body_h_extra = StageWorldPixels(render, anim.body_h_extra);
+    int x = base_x + body_x - body_w_extra / 2;
+    int y = base_y + body_y - body_h_extra / 2;
+    int w = base_w + body_w_extra;
+    int h = base_h + body_h_extra;
+    int slot_x = x + w * 17 / 100;
+    int slot_y = y + h * 18 / 100;
+    int slot_w = w * 66 / 100;
+    int slot_h = StageMaxI(7, h * 5 / 100);
+    int slot_gap = StageMaxI(10, h * 8 / 100);
+    int screw_r = StageMaxI(4, w * 4 / 100);
+    int screw_x_inset = StageMaxI(10, w * 14 / 100);
+    int screw_y_inset = StageMaxI(10, h * 11 / 100);
+    int radius = StageMaxI(16, w * 35 / 100 + anim.big_radius_extra);
+    radius = StageMinI(radius, w * 42 / 100);
+
+    DrawRect(render, x, y, w, h, SPEAKER_BODY);
+    DrawRect(render, x, y, w, StageMaxI(3, h * 2 / 100), SPEAKER_BODY_LIGHT);
+
+    DrawRectOutline(render, x, y, w, h, SPEAKER_DEEP_DARK);
+    for (int i = 0; i < 3; ++i) {
+        DrawSpeakerSlot(render, slot_x, slot_y + i * slot_gap, slot_w, slot_h, SPEAKER_DARK);
+    }
+    FillCircle(render, x + screw_x_inset, y + screw_y_inset, screw_r, SPEAKER_DARK);
+    FillCircle(render, x + w - screw_x_inset, y + screw_y_inset, screw_r, SPEAKER_DARK);
+    FillCircle(render, x + screw_x_inset, y + h - screw_y_inset, screw_r, SPEAKER_DARK);
+    FillCircle(render, x + w - screw_x_inset, y + h - screw_y_inset, screw_r, SPEAKER_DARK);
+    DrawSpeakerDriver(render,
+                       x + w / 2,
+                      y + h * 66 / 100,
+                       radius,
+                       SPEAKER_HIGHLIGHT,
+                       SPEAKER_DARK,
+                       SPEAKER_BRIGHT,
+                       SPEAKER_DEEP_DARK);
+}
+
 static int SpeakerBracketWallX(const StageRenderState* state,
                                const SpeakerDevice* speaker,
                                int mounted_left,
@@ -555,6 +602,10 @@ static int SpeakerBracketWallX(const StageRenderState* state,
     return WorldX(state->render, best_face);
 }
 static void DrawSpeakerDevice(const StageRenderState* state, const SpeakerDevice* speaker) {
+    if (speaker->style == SPEAKER_STYLE_MINI) {
+        DrawMiniSpeakerDevice(state, speaker);
+        return;
+    }
     RenderContext* render = state->render;
     SpeakerAnimation anim = SpeakerAnimationForTime(state->speaker_time_seconds, state->speaker_volume);
     int base_x = WorldX(render, speaker->x);
@@ -857,7 +908,7 @@ static void DrawSpeakerWaves(const StageRenderState* state, const SpeakerDevice*
         return;
     }
 
-    float wave_range = SPEAKER_WAVE_RANGE * volume;
+    float wave_range = SPEAKER_WAVE_RANGE * volume * speaker->wave_range_scale;
     float wave_spacing = wave_range < SPEAKER_WAVE_SPACING ? wave_range * 0.5f : SPEAKER_WAVE_SPACING;
     if (wave_spacing <= 0.001f) {
         return;
