@@ -1415,6 +1415,7 @@ static void DrawWalkerEnemy(const StageRenderState* state,
 }
 static void DrawWalkerEnemies(const StageRenderState* state) {
     for (int i = 0; i < state->walker_enemy_count; ++i) {
+        if (state->walker_enemies[i].w <= 0.0f || state->walker_enemies[i].h <= 0.0f) continue;
         float spike = state->walker_enemy_spike_amount ? state->walker_enemy_spike_amount[i] : 0.0f;
         float response_squash = state->walker_enemy_squash_amount ? state->walker_enemy_squash_amount[i] : 0.0f;
         float turn_squash = state->walker_enemy_turn_squash ? state->walker_enemy_turn_squash[i] : 0.0f;
@@ -1471,7 +1472,8 @@ void StageRenderDrawDynamic(const StageRenderState* state) {
     DrawPlayerParticles(state->render,
                         state->player_particles,
                         state->player_particle_count,
-                        StageLerpColor(state->platform_color, state->type_a_off_pattern_color, 0.48f));
+                        StageLerpColor(state->platform_color, state->type_a_off_pattern_color, 0.48f),
+                        StageLerpColor(state->effect_color, state->player_color, 0.32f));
     for (int i = 0; i < state->room->speaker_count; ++i) {
         DrawSpeakerWaves(state, &state->room->speakers[i]);
     }

@@ -232,7 +232,7 @@ static float PlayerRandomRange(float lo, float hi) {
     return lo + (hi - lo) * PlayerRandom01();
 }
 
-static void SpawnPlayerParticle(PlayerParticle* particles, int particle_count, float x, float y, float vx, float vy, float life, float size) {
+static void SpawnPlayerParticle(PlayerParticle* particles, int particle_count, float x, float y, float vx, float vy, float life, float size, PlayerParticleStyle style) {
     int index = -1;
     float oldest_age = -1.0f;
     for (int i = 0; i < particle_count; ++i) {
@@ -257,6 +257,7 @@ static void SpawnPlayerParticle(PlayerParticle* particles, int particle_count, f
     p->age = 0.0f;
     p->life = life;
     p->size = size * PlayerRandomRange(0.78f, 1.14f);
+    p->style = style;
 }
 
 static float PlayerParticleDirectionBias(const Player* player, GravityDirection gravity_direction) {
@@ -282,7 +283,7 @@ static void SpawnWalkParticles(Player* player, PlayerParticle* particles, int pa
     float vy;
     PlayerFootPoint(player, gravity_direction, back * (axes.half_tangent + 1.0f), -3.0f, &x, &y);
     PlayerParticleVelocity(gravity_direction, back * 138.0f, -56.0f, &vx, &vy);
-    SpawnPlayerParticle(particles, particle_count, x, y, vx, vy, 0.42f, 3.4f);
+    SpawnPlayerParticle(particles, particle_count, x, y, vx, vy, 0.42f, 3.4f, PLAYER_PARTICLE_STYLE_PLAYER);
     ++player->run_step;
 }
 
@@ -313,7 +314,7 @@ static void SpawnJumpParticles(Player* player, PlayerParticle* particles, int pa
         float vy;
         PlayerFootPoint(player, gravity_direction, side_offset * (axes.half_tangent + 2.0f), 2.0f, &x, &y);
         PlayerParticleVelocity(gravity_direction, tangent_speed, gravity_speed, &vx, &vy);
-        SpawnPlayerParticle(particles, particle_count, x, y, vx, vy, i == 0 || i == 3 ? 0.50f : 0.42f, sizes[i]);
+        SpawnPlayerParticle(particles, particle_count, x, y, vx, vy, i == 0 || i == 3 ? 0.50f : 0.42f, sizes[i], PLAYER_PARTICLE_STYLE_PLAYER);
     }
 }
 
@@ -344,7 +345,7 @@ static void SpawnLandingParticles(Player* player, PlayerParticle* particles, int
         float vy;
         PlayerFootPoint(player, gravity_direction, side_offset * (axes.half_tangent + 1.0f), -4.0f, &x, &y);
         PlayerParticleVelocity(gravity_direction, tangent_speed, gravity_speed, &vx, &vy);
-        SpawnPlayerParticle(particles, particle_count, x, y, vx, vy, i == 0 || i == 3 ? 0.46f : 0.36f, sizes[i]);
+        SpawnPlayerParticle(particles, particle_count, x, y, vx, vy, i == 0 || i == 3 ? 0.46f : 0.36f, sizes[i], PLAYER_PARTICLE_STYLE_PLAYER);
     }
 }
 
@@ -369,7 +370,32 @@ void SpawnPlayerDeathParticles(PlayerParticle* particles, int particle_count, fl
         float py = y + PlayerRandomRange(-18.0f, 18.0f);
         float life = PlayerRandomRange(0.32f, 0.72f);
         float size = PlayerRandomRange(2.0f, 5.4f);
-        SpawnPlayerParticle(particles, particle_count, px, py, vx, vy, life, size);
+        SpawnPlayerParticle(particles, particle_count, px, py, vx, vy, life, size, PLAYER_PARTICLE_STYLE_PLAYER);
+    }
+}
+
+void SpawnWalkerEnemyCrushParticles(PlayerParticle* particles,
+                                    int particle_count,
+                                    float x,
+                                    float y,
+                                    GravityDirection gravity_direction) {
+    int gravity_x;
+    int gravity_y;
+    int tangent_x;
+    int tangent_y;
+    PlayerGravityVector(gravity_direction, &gravity_x, &gravity_y);
+    PlayerTangentVector(gravity_x, gravity_y, &tangent_x, &tangent_y);
+
+    static constexpr int piece_count = 12;
+    for (int i = 0; i < piece_count; ++i) {
+        float angle = ((float)i / (float)piece_count) * 6.2831853f;
+        float tangent_speed = CosApprox(angle) * PlayerRandomRange(95.0f, 220.0f);
+        float gravity_speed = SinApprox(angle) * PlayerRandomRange(70.0f, 170.0f) - 48.0f;
+        float vx = (float)tangent_x * tangent_speed + (float)gravity_x * gravity_speed;
+        float vy = (float)tangent_y * tangent_speed + (float)gravity_y * gravity_speed;
+        float life = PlayerRandomRange(0.20f, 0.42f);
+        float size = PlayerRandomRange(1.4f, 3.0f);
+        SpawnPlayerParticle(particles, particle_count, x, y, vx, vy, life, size, PLAYER_PARTICLE_STYLE_WALKER_ENEMY_CRUSH);
     }
 }
 
@@ -390,6 +416,7 @@ void ResetPlayerPresentation(Player* player, PlayerParticle* particles, int part
         particles[i].age = 0.0f;
         particles[i].life = 0.0f;
         particles[i].size = 0.0f;
+        particles[i].style = PLAYER_PARTICLE_STYLE_PLAYER;
     }
 }
 
@@ -601,7 +628,7 @@ void UpdatePlayerPresentation(Player* player, PlayerParticle* particles, int par
     player->visual_sy = PlayerClampF(player->visual_sy, 0.60f, 1.36f);
 }
 
-void DrawPlayerParticles(RenderContext* render, const PlayerParticle* particles, int particle_count, uint32_t particle_color) {
+void DrawPlayerParticles(RenderContext* render, const PlayerParticle* particles, int particle_count, uint32_t player_color, uint32_t enemy_crush_color) {
     for (int i = 0; i < particle_count; ++i) {
         const PlayerParticle* p = &particles[i];
         if (p->age >= p->life || p->life <= 0.0f) {
@@ -614,7 +641,8 @@ void DrawPlayerParticles(RenderContext* render, const PlayerParticle* particles,
         if (radius < 1 || fade <= 0.05f) {
             continue;
         }
-        FillCircleBlend(render, WorldX(render, p->x), WorldY(render, p->y), radius, particle_color, fade);
+        uint32_t color = p->style == PLAYER_PARTICLE_STYLE_WALKER_ENEMY_CRUSH ? enemy_crush_color : player_color;
+        FillCircleBlend(render, WorldX(render, p->x), WorldY(render, p->y), radius, color, fade);
     }
 }
 
