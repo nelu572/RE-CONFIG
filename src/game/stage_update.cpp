@@ -798,6 +798,7 @@ void GameResetStage(GameState* state) {
     state->type_a_setting_feedback_until = 0.0;
     state->gravity_setting_feedback_until = 0.0;
     state->room_started_at_seconds = PerfNowSeconds();
+    state->speaker_time_seconds = 0.0;
     state->speaker_push_vx = 0.0f;
     state->speaker_push_vy = 0.0f;
     state->piston_time_seconds = 0.0f;
@@ -2849,6 +2850,7 @@ void GameUpdateStage(GameState* state, float dt, int use_static_cache) {
     if (SettingsUiIsOpen()) {
         return;
     }
+    state->speaker_time_seconds += dt;
     if (ExitSequenceUpdateTransition(dt, &state->current_room, GameResetStageCallback, state)) {
         return;
     }

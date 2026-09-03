@@ -49,6 +49,7 @@ struct GameState {
     double type_a_setting_feedback_until;
     double gravity_setting_feedback_until;
     double room_started_at_seconds;
+    double speaker_time_seconds;
     float speaker_push_vx;
     float speaker_push_vy;
     float piston_time_seconds;

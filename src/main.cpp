@@ -559,7 +559,7 @@ static void UpdateStage(float dt) {
     if (SettingsUiIsOpen()) {
         AudioUpdateSpeaker(0.0, 0.0f, 0);
     } else {
-        AudioUpdateSpeaker(PerfNowSeconds() - g_game.room_started_at_seconds,
+        AudioUpdateSpeaker(g_game.speaker_time_seconds,
                            SettingsUiSfxVolume(),
                            room && room->speaker_count > 0);
     }
@@ -631,7 +631,7 @@ static StageRenderState CurrentStageRenderState() {
     state.type_a_off_color = COL_TYPE_A_OFF;
     state.type_a_off_pattern_color = COL_TYPE_A_OFF_PATTERN;
     state.render_time_seconds = g_type_a_phase_lock_seconds >= 0.0 ? g_type_a_phase_lock_seconds : PerfNowSeconds();
-    state.speaker_time_seconds = PerfNowSeconds() - g_game.room_started_at_seconds;
+    state.speaker_time_seconds = g_game.speaker_time_seconds;
     state.piston_time_seconds = g_game.piston_time_seconds;
     state.piston_effective_extension = g_game.piston_effective_extension;
     state.gravity_boxes = g_game.gravity_boxes;
