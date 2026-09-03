@@ -209,14 +209,14 @@ static int GamePressureSwitchMaskPressed(const GameState* state, unsigned int sw
     return 1;
 }
 
-static int GameRoom10PlatformCanOpen(const GameState* state, int platform_index) {
-    if (state->current_room != ROOM10_INDEX) {
+static int GameRoom10PlatformCanOpen(const GameState* state, const PressurePlatformDevice* platform) {
+    if (state->current_room != ROOM10_INDEX || !platform->disappears_when_open) {
         return 1;
     }
-    if (platform_index == 1) {
+    if (platform->required_switch_mask == (1u << 2)) {
         return !state->room10_route3_safe;
     }
-    if (platform_index == 2) {
+    if (platform->required_switch_mask == (1u << 3)) {
         return state->room10_route3_safe;
     }
     return 1;
@@ -347,12 +347,23 @@ static int GameRectOverlapsLevelSolids(const GameState* state, const RectF* rect
     return 0;
 }
 
-// A switch can carry its rider away from a passing pressure platform. During
-// that short settling move, pressure platforms are intentionally not blockers.
+// A switch carries its rider only into free space. An adjacent closed pressure
+// platform is a blocker: otherwise entering a sunk switch from that platform
+// embeds the rider, and the next horizontal resolve ejects them from its far side.
 static int GameRectOverlapsPressureSwitchCarryBlockers(const GameState* state, const RectF* rect) {
     const RoomDef* room = GameCurrentRoom(state);
     for (int i = 0; i < room->platform_count; ++i) {
         if (RectsOverlap(rect, &room->platforms[i])) return 1;
+    }
+    int pressure_platform_count = GameRoomPressurePlatformCount(room);
+    for (int i = 0; i < pressure_platform_count; ++i) {
+        const PressurePlatformDevice* platform = &room->pressure_platforms[i];
+        if (platform->disappears_when_open &&
+            GameClampF(state->pressure_platform_open_amount[i], 0.0f, 1.0f) < 1.0f) {
+            continue;
+        }
+        RectF pressure_platform = PressurePlatformRectAt(platform, state->pressure_platform_open_amount[i]);
+        if (RectsOverlap(rect, &pressure_platform)) return 1;
     }
     if (GameFeatureActive(state, FEATURE_COLLISION_TYPE_A)) {
         for (int i = 0; i < room->type_a_count; ++i) {
@@ -1258,6 +1269,27 @@ static int GameLiftPlayerOutOfPressureSwitchDepression(const GameState* state,
             candidate->x = closed_switch->x + closed_switch->w + escape_clearance;
         }
         return 1;
+    }
+    return 0;
+}
+
+// A platform that reaches a player resting in a depressed switch must wait
+// for the switch-surface correction. Relying on the one-frame carry result
+// misses an already-depressed switch, letting the platform displace that
+// player as if they had entered the solid from its far side.
+static int GamePlayerSupportedByDepressedPressureSwitch(const GameState* state,
+                                                        const RectF* player) {
+    const RoomDef* room = GameCurrentRoom(state);
+    int gravity_x;
+    int gravity_y;
+    GamePistonGravityVector(state->gravity_direction, &gravity_x, &gravity_y);
+    int switch_count = GameRoomPressureSwitchCount(room);
+    for (int i = 0; i < switch_count; ++i) {
+        if (state->pressure_switch_anim[i] <= 0.001f) continue;
+        RectF sw = GamePressureSwitchSolidAt(state, i);
+        if (GameRectSupportedBySolidAlongGravity(player, &sw, gravity_x, gravity_y)) {
+            return 1;
+        }
     }
     return 0;
 }
@@ -2392,7 +2424,7 @@ static void GameUpdateRoomPressureSwitches(GameState* state, float dt) {
     int switch_count = GameRoomPressureSwitchCount(room);
     RectF pr = GamePlayerRect(state);
     int box_count = GameRoomGravityBoxCount(room);
-    int player_carried_by_switch = 0;
+
     for (int i = 0; i < switch_count; ++i) {
         const PressureSwitchDevice* sw = &room->pressure_switches[i];
         RectF previous_switch = GamePressureSwitchSolidAt(state, i);
@@ -2433,9 +2465,7 @@ static void GameUpdateRoomPressureSwitches(GameState* state, float dt) {
         state->pressure_switch_anim[i] = next_anim;
         if (next_anim != previous_anim) {
             RectF current_switch = GamePressureSwitchSolidAt(state, i);
-            if (GameCarryPlayerOnPressureSwitch(state, &previous_switch, &current_switch)) {
-                player_carried_by_switch = 1;
-            }
+            GameCarryPlayerOnPressureSwitch(state, &previous_switch, &current_switch);
         }
     }
 
@@ -2453,7 +2483,7 @@ static void GameUpdateRoomPressureSwitches(GameState* state, float dt) {
     for (int i = 0; i < platform_count; ++i) {
         float current = state->pressure_platform_open_amount[i];
         int platform_unlocked = GamePressureSwitchMaskPressed(state, room->pressure_platforms[i].required_switch_mask) &&
-                                GameRoom10PlatformCanOpen(state, i);
+                                GameRoom10PlatformCanOpen(state, &room->pressure_platforms[i]);
         if (platform_unlocked) {
             state->pressure_platform_open_cycle_pending[i] = 1;
         }
@@ -2475,7 +2505,7 @@ static void GameUpdateRoomPressureSwitches(GameState* state, float dt) {
             RectF player_candidate = player;
             float move_x = current_platform.x - previous_platform.x;
             float move_y = current_platform.y - previous_platform.y;
-            int platform_hits_switch_rider = player_carried_by_switch &&
+            int platform_hits_switch_rider = GamePlayerSupportedByDepressedPressureSwitch(state, &player) &&
                 GameMovingSolidPushCandidate(&previous_platform, &current_platform, &player, move_x, move_y, &player_candidate);
             if (platform_hits_switch_rider) {
                 state->pressure_platform_open_amount[i] = current;

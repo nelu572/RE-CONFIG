@@ -21,10 +21,45 @@ if ($rows.Count -eq 0 -or ($rows | Where-Object { $_.Length -ne $rows[0].Length 
 function Add-Tile([System.Collections.Generic.HashSet[string]]$set, [int]$x, [int]$y) {
     [void]$set.Add("${x},${y}")
 }
+function Add-Run([System.Collections.Generic.HashSet[string]]$set, [int]$x, [int]$y, [int]$length) {
+    [void]$set.Add("$($x),$($y),$($length)")
+}
+function Read-TileNumber([string]$value) {
+    return [double]::Parse(($value.Trim() -replace 'f$', ''), [Globalization.CultureInfo]::InvariantCulture)
+}
 function Read-WholeTile([string]$value, [string]$label) {
-    $number = [double]::Parse(($value.Trim() -replace 'f$', ''), [Globalization.CultureInfo]::InvariantCulture)
+    $number = Read-TileNumber $value
     if ($number -ne [math]::Truncate($number)) { throw "$label is not a whole tile: $value" }
     return [int]$number
+}
+function Get-HorizontalRuns($mapRows, [char]$marker) {
+    $runs = [System.Collections.Generic.HashSet[string]]::new()
+    for ($y = 0; $y -lt $mapRows.Count; $y++) {
+        $x = 0
+        while ($x -lt $mapRows[$y].Length) {
+            if ($mapRows[$y][$x] -ne $marker) { $x++; continue }
+            $start = $x
+            while ($x -lt $mapRows[$y].Length -and $mapRows[$y][$x] -eq $marker) { $x++ }
+            Add-Run $runs $start $y ($x - $start)
+        }
+    }
+    return $runs
+}
+function Get-VerticalRuns($mapRows, [char]$marker) {
+    $remaining = [System.Collections.Generic.HashSet[string]]::new()
+    for ($y = 0; $y -lt $mapRows.Count; $y++) {
+        for ($x = 0; $x -lt $mapRows[$y].Length; $x++) {
+            if ($mapRows[$y][$x] -eq $marker) { Add-Tile $remaining $x $y }
+        }
+    }
+    $runs = [System.Collections.Generic.HashSet[string]]::new()
+    while ($remaining.Count) {
+        $seed = @($remaining | ForEach-Object { $parts = $_.Split(','); @{ x = [int]$parts[0]; y = [int]$parts[1] } } | Sort-Object y, x)[0]
+        $height = 0
+        while ($remaining.Remove("$($seed.x),$($seed.y + $height)")) { $height++ }
+        Add-Run $runs $seed.x $seed.y $height
+    }
+    return $runs
 }
 
 $mapTiles = [System.Collections.Generic.HashSet[string]]::new()
@@ -33,6 +68,9 @@ for ($y = 0; $y -lt $rows.Count; $y++) {
         if ($rows[$y][$x] -eq '#') { Add-Tile $mapTiles $x $y }
     }
 }
+
+$mapTopBlocks = Get-HorizontalRuns $rows '='
+$mapLeftBlocks = Get-VerticalRuns $rows '|'
 
 $codeText = Get-Content -Raw -LiteralPath $codePath
 $arrayPattern = "(?s)static const RectF g_room${roomId}_platforms\[\]\s*=\s*\{(.*?)\n\};"
@@ -43,21 +81,40 @@ $rects = [regex]::Matches($arrayMatch.Groups[1].Value, $rectPattern)
 if ($rects.Count -eq 0) { throw '플랫폼 Rect를 찾을 수 없습니다.' }
 
 $codeTiles = [System.Collections.Generic.HashSet[string]]::new()
+$codeTopBlocks = [System.Collections.Generic.HashSet[string]]::new()
+$codeLeftBlocks = [System.Collections.Generic.HashSet[string]]::new()
 foreach ($rect in $rects) {
     $x = Read-WholeTile $rect.Groups[1].Value 'platform x'
     $y = Read-WholeTile $rect.Groups[2].Value 'platform y'
-    $w = Read-WholeTile $rect.Groups[3].Value 'platform width'
-    $h = Read-WholeTile $rect.Groups[4].Value 'platform height'
-    for ($tileY = $y; $tileY -lt ($y + $h); $tileY++) {
-        for ($tileX = $x; $tileX -lt ($x + $w); $tileX++) { Add-Tile $codeTiles $tileX $tileY }
+    $wNumber = Read-TileNumber $rect.Groups[3].Value
+    $hNumber = Read-TileNumber $rect.Groups[4].Value
+    if ($wNumber -eq [math]::Truncate($wNumber) -and $hNumber -eq [math]::Truncate($hNumber)) {
+        $w = [int]$wNumber; $h = [int]$hNumber
+        for ($tileY = $y; $tileY -lt ($y + $h); $tileY++) {
+            for ($tileX = $x; $tileX -lt ($x + $w); $tileX++) { Add-Tile $codeTiles $tileX $tileY }
+        }
+    } elseif ($wNumber -eq [math]::Truncate($wNumber) -and $hNumber -eq 0.25) {
+        Add-Run $codeTopBlocks $x $y ([int]$wNumber)
+    } elseif ($wNumber -eq 0.25 -and $hNumber -eq [math]::Truncate($hNumber)) {
+        Add-Run $codeLeftBlocks $x $y ([int]$hNumber)
+    } else {
+        throw "지원하지 않는 부분 플랫폼 Rect: $($rect.Value)"
     }
 }
 
 $missing = @($mapTiles | Where-Object { !$codeTiles.Contains($_) } | Sort-Object)
 $extra = @($codeTiles | Where-Object { !$mapTiles.Contains($_) } | Sort-Object)
-Write-Output ("ROOM {0}: ASCII #={1}, code #={2}, missing={3}, extra={4}" -f $roomId, $mapTiles.Count, $codeTiles.Count, $missing.Count, $extra.Count)
-if ($missing.Count -or $extra.Count) {
-    if ($missing.Count) { Write-Output ('missing: ' + ($missing -join ' ')) }
-    if ($extra.Count) { Write-Output ('extra: ' + ($extra -join ' ')) }
+$topMissing = @($mapTopBlocks | Where-Object { !$codeTopBlocks.Contains($_) } | Sort-Object)
+$topExtra = @($codeTopBlocks | Where-Object { !$mapTopBlocks.Contains($_) } | Sort-Object)
+$leftMissing = @($mapLeftBlocks | Where-Object { !$codeLeftBlocks.Contains($_) } | Sort-Object)
+$leftExtra = @($codeLeftBlocks | Where-Object { !$codeLeftBlocks.Contains($_) } | Sort-Object)
+Write-Output ("ROOM {0}: ASCII #={1}, code #={2}, missing={3}, extra={4}; = missing={5}, extra={6}; | missing={7}, extra={8}" -f $roomId, $mapTiles.Count, $codeTiles.Count, $missing.Count, $extra.Count, $topMissing.Count, $topExtra.Count, $leftMissing.Count, $leftExtra.Count)
+if ($missing.Count -or $extra.Count -or $topMissing.Count -or $topExtra.Count -or $leftMissing.Count -or $leftExtra.Count) {
+    if ($missing.Count) { Write-Output ('# missing: ' + ($missing -join ' ')) }
+    if ($extra.Count) { Write-Output ('# extra: ' + ($extra -join ' ')) }
+    if ($topMissing.Count) { Write-Output ('= missing: ' + ($topMissing -join ' ')) }
+    if ($topExtra.Count) { Write-Output ('= extra: ' + ($topExtra -join ' ')) }
+    if ($leftMissing.Count) { Write-Output ('| missing: ' + ($leftMissing -join ' ')) }
+    if ($leftExtra.Count) { Write-Output ('| extra: ' + ($leftExtra -join ' ')) }
     exit 1
 }
