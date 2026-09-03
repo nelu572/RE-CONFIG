@@ -1446,6 +1446,9 @@ void StageRenderDrawStatic(const StageRenderState* state) {
 
 void StageRenderDrawDynamic(const StageRenderState* state) {
     StageRenderDrawStatic(state);
+    for (int i = 0; i < state->room->speaker_count; ++i) {
+        DrawSpeakerDevice(state, &state->room->speakers[i]);
+    }
     if (state->highlight_type_a || state->type_a_bump_visible || state->type_a_setting_feedback_visible) {
         for (int i = 0; i < state->room->type_a_count; ++i) {
             DrawTypeAWall(state, &state->room->type_a_walls[i], 1);
@@ -1458,12 +1461,6 @@ void StageRenderDrawDynamic(const StageRenderState* state) {
     DrawRoomGravityBoxes(state);
     DrawWalkerEnemies(state);
     ExitSequenceDrawExit(state->render, &state->room->exit);
-    for (int i = 0; i < state->room->speaker_count; ++i) {
-        DrawSpeakerWaves(state, &state->room->speakers[i]);
-    }
-    for (int i = 0; i < state->room->speaker_count; ++i) {
-        DrawSpeakerDevice(state, &state->room->speakers[i]);
-    }
     if (state->player_visible) {
         DrawPlayer(state->render,
                    state->player,
@@ -1475,6 +1472,9 @@ void StageRenderDrawDynamic(const StageRenderState* state) {
                         state->player_particles,
                         state->player_particle_count,
                         StageLerpColor(state->platform_color, state->type_a_off_pattern_color, 0.48f));
+    for (int i = 0; i < state->room->speaker_count; ++i) {
+        DrawSpeakerWaves(state, &state->room->speakers[i]);
+    }
     DrawContextUi(state);
     if (state->settings_overlay_visible) {
         RectI full = { 0, 0, FB_W, FB_H };
