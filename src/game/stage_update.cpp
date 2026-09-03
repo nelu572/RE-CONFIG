@@ -15,7 +15,7 @@
 static constexpr float GAME_DEATH_RESPAWN_DELAY = 0.58f;
 static constexpr float CHECKPOINT_FLAG_DROP_SECONDS = 0.65f;
 static constexpr float SPEAKER_WAVE_RANGE = 1080.0f;
-static constexpr float SPEAKER_PUSH_SPEED = 2200.0f;
+static constexpr float SPEAKER_PUSH_SPEED = 1900.0f;
 static constexpr float SPEAKER_BASE_PUSH_STRENGTH = 0.10f;
 static constexpr float SPEAKER_CLOSE_PUSH_BOOST = 3.25f;
 static constexpr float SPEAKER_VERTICAL_PUSH_SCALE = 0.35f;
@@ -2214,6 +2214,8 @@ static GameSpeakerPushVelocity GameComputeSpeakerPushVelocityForRect(const GameS
         return result;
     }
 
+    float wave_range = SPEAKER_WAVE_RANGE * volume;
+
     float target_cx = rect->x + rect->w * 0.5f;
     float target_cy = rect->y + rect->h * 0.5f;
     float best_speed = 0.0f;
@@ -2226,12 +2228,12 @@ static GameSpeakerPushVelocity GameComputeSpeakerPushVelocityForRect(const GameS
         float dx = target_cx - source_x;
         float dy = target_cy - source_y;
         float dist_sq = dx * dx + dy * dy;
-        if (dist_sq > SPEAKER_WAVE_RANGE * SPEAKER_WAVE_RANGE) {
+        if (dist_sq > wave_range * wave_range) {
             continue;
         }
 
         float dist = GameApproxLength(dx, dy);
-        float falloff = 1.0f - dist / SPEAKER_WAVE_RANGE;
+        float falloff = 1.0f - dist / wave_range;
         float close_strength = falloff * falloff * falloff;
         float strength = GameClampF(SPEAKER_BASE_PUSH_STRENGTH + close_strength * SPEAKER_CLOSE_PUSH_BOOST, 0.0f, 3.35f);
         float speed = SPEAKER_PUSH_SPEED * volume * strength;

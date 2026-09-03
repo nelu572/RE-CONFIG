@@ -657,6 +657,122 @@ static void DrawSpeakerDevice(const StageRenderState* state, const SpeakerDevice
     FillCircle(render, plate_x + plate_w / 2, plate_y + plate_w / 2, plate_w / 2, SPEAKER_BRACKET);
     FillCircle(render, plate_x + plate_w / 2, plate_y + plate_h - plate_w / 2 - 1, plate_w / 2, SPEAKER_BRACKET);
 }
+static int SpeakerWaveLineHitsRect(float source_x,
+                                   float source_y,
+                                   float target_x,
+                                   float target_y,
+                                   const RectF* rect) {
+    static constexpr float epsilon = 0.001f;
+    float start[2] = { source_x, source_y };
+    float delta[2] = { target_x - source_x, target_y - source_y };
+    float minimum[2] = { rect->x, rect->y };
+    float maximum[2] = { rect->x + rect->w, rect->y + rect->h };
+    float enter = 0.0f;
+    float leave = 1.0f;
+    for (int axis = 0; axis < 2; ++axis) {
+        float abs_delta = delta[axis] < 0.0f ? -delta[axis] : delta[axis];
+        if (abs_delta <= epsilon) {
+            if (start[axis] < minimum[axis] || start[axis] > maximum[axis]) {
+                return 0;
+            }
+            continue;
+        }
+        float first = (minimum[axis] - start[axis]) / delta[axis];
+        float second = (maximum[axis] - start[axis]) / delta[axis];
+        if (first > second) {
+            float swap = first;
+            first = second;
+            second = swap;
+        }
+        if (first > enter) enter = first;
+        if (second < leave) leave = second;
+        if (enter > leave) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static RectF SpeakerWavePressureSwitchSolidAt(const StageRenderState* state, int switch_index) {
+    const PressureSwitchDevice* sw = &state->room->pressure_switches[switch_index];
+    RectF rect = sw->rect;
+    float anim = state->pressure_switch_anim ? StageClampF(state->pressure_switch_anim[switch_index], 0.0f, 1.0f) : 0.0f;
+    PressureSwitchMount mount = PressureSwitchMountFor(state->room, sw);
+    if (mount == PRESSURE_SWITCH_MOUNT_DOWN || mount == PRESSURE_SWITCH_MOUNT_UP) {
+        float travel = anim * 6.0f;
+        float next_h = StageClampF(rect.h - travel, 4.0f, rect.h);
+        if (mount == PRESSURE_SWITCH_MOUNT_DOWN) {
+            rect.y += rect.h - next_h;
+        }
+        rect.h = next_h;
+    } else {
+        float side_travel = StageClampF(rect.w * 0.20f, 4.0f, 10.0f) + 2.0f;
+        side_travel = StageClampF(side_travel, 0.0f, rect.w - 4.0f);
+        if (mount == PRESSURE_SWITCH_MOUNT_RIGHT) {
+            rect.x += side_travel;
+        }
+        rect.w = StageClampF(rect.w - side_travel, 4.0f, rect.w);
+    }
+    return rect;
+}
+
+static int SpeakerWaveSegmentTouchesSolid(const StageRenderState* state,
+                                  float source_x,
+                                  float source_y,
+                                  float target_x,
+                                  float target_y) {
+    for (int i = 0; i < state->room->platform_count; ++i) {
+        if (SpeakerWaveLineHitsRect(source_x, source_y, target_x, target_y, &state->room->platforms[i])) {
+            return 1;
+        }
+    }
+    if (state->type_a_active) {
+        for (int i = 0; i < state->room->type_a_count; ++i) {
+            if (SpeakerWaveLineHitsRect(source_x, source_y, target_x, target_y, &state->room->type_a_walls[i])) {
+                return 1;
+            }
+        }
+    }
+    for (int i = 0; i < state->room->piston_count; ++i) {
+        const PistonDevice* piston = &state->room->pistons[i];
+        float extension = state->piston_effective_extension ? state->piston_effective_extension[i] : PistonPoseAt(piston, state->piston_time_seconds).extension;
+        RectF body = PistonBodyRect(piston);
+        if (SpeakerWaveLineHitsRect(source_x, source_y, target_x, target_y, &body)) {
+            return 1;
+        }
+        RectF shaft = PistonShaftRectForExtension(piston, extension);
+        if (shaft.w > 0.001f && shaft.h > 0.001f && SpeakerWaveLineHitsRect(source_x, source_y, target_x, target_y, &shaft)) {
+            return 1;
+        }
+        RectF plate = PistonPlateRectForExtension(piston, extension);
+        if (SpeakerWaveLineHitsRect(source_x, source_y, target_x, target_y, &plate)) {
+            return 1;
+        }
+    }
+    for (int i = 0; i < state->room->pressure_platform_count; ++i) {
+        const PressurePlatformDevice* platform = &state->room->pressure_platforms[i];
+        float open_amount = state->pressure_platform_open_amount ? state->pressure_platform_open_amount[i] : 0.0f;
+        if (platform->disappears_when_open && 1.0f - StageClampF(open_amount, 0.0f, 1.0f) < 1.0f) {
+            continue;
+        }
+        RectF rect = PressurePlatformRectAt(platform, open_amount);
+        if (SpeakerWaveLineHitsRect(source_x, source_y, target_x, target_y, &rect)) {
+            return 1;
+        }
+    }
+    for (int i = 0; i < state->room->pressure_switch_count; ++i) {
+        RectF rect = SpeakerWavePressureSwitchSolidAt(state, i);
+        if (SpeakerWaveLineHitsRect(source_x, source_y, target_x, target_y, &rect)) {
+            return 1;
+        }
+    }
+    for (int i = 0; i < state->gravity_box_count; ++i) {
+        if (SpeakerWaveLineHitsRect(source_x, source_y, target_x, target_y, &state->gravity_boxes[i])) {
+            return 1;
+        }
+    }
+    return 0;
+}
 static void DrawSpeakerWaveCircle(const StageRenderState* state,
                                   float world_cx,
                                   float world_cy,
@@ -722,6 +838,7 @@ static void DrawSpeakerWaveCircle(const StageRenderState* state,
         if (!SpeakerClipLineToRoomAir(&air_rect, &ax, &ay, &bx, &by)) {
             continue;
         }
+        float solid_fade = SpeakerWaveSegmentTouchesSolid(state, ax, ay, bx, by) ? 0.24f : 1.0f;
         DrawSpeakerAlphaLine(state,
                              WorldX(render, ax),
                              WorldY(render, ay),
@@ -729,7 +846,7 @@ static void DrawSpeakerWaveCircle(const StageRenderState* state,
                              WorldY(render, by),
                              thickness,
                              color,
-                             fade * 0.72f);
+                             fade * 0.72f * solid_fade);
     }
 }
 
@@ -740,18 +857,23 @@ static void DrawSpeakerWaves(const StageRenderState* state, const SpeakerDevice*
         return;
     }
 
-    float travel = StageWrap01((float)state->speaker_time_seconds * SPEAKER_WAVE_SPEED / SPEAKER_WAVE_SPACING) * SPEAKER_WAVE_SPACING;
+    float wave_range = SPEAKER_WAVE_RANGE * volume;
+    float wave_spacing = wave_range < SPEAKER_WAVE_SPACING ? wave_range * 0.5f : SPEAKER_WAVE_SPACING;
+    if (wave_spacing <= 0.001f) {
+        return;
+    }
+    float travel = StageWrap01((float)state->speaker_time_seconds * SPEAKER_WAVE_SPEED / wave_spacing) * wave_spacing;
     float source_x = speaker->x + speaker->width * 0.45f;
     float source_y = speaker->y + speaker->height * 0.66f;
     for (int i = 0; i < 4; ++i) {
-        float radius = travel + (float)i * SPEAKER_WAVE_SPACING;
-        if (radius > SPEAKER_WAVE_RANGE) {
+        float radius = travel + (float)i * wave_spacing;
+        if (radius > wave_range) {
             continue;
         }
         if (radius < SPEAKER_WAVE_START_RADIUS) {
             continue;
         }
-        float fade = StageClampF(1.0f - radius / SPEAKER_WAVE_RANGE, 0.0f, 1.0f);
+        float fade = StageClampF(1.0f - radius / wave_range, 0.0f, 1.0f);
         int thickness = WorldW(render, (float)(1 + (int)((1.0f + fade * 2.0f) * volume + 0.5f)));
         uint32_t wave_color = (i & 1) ? SPEAKER_BRIGHT : SPEAKER_HIGHLIGHT;
         DrawSpeakerWaveCircle(state, source_x, source_y, (int)(radius + 0.5f), thickness, wave_color, fade * 0.82f * volume);
@@ -1267,18 +1389,11 @@ void StageRenderDrawStatic(const StageRenderState* state) {
 }
 
 void StageRenderDrawDynamic(const StageRenderState* state) {
-    // Waves are drawn first, then redrawn static solids naturally mask them.
-    for (int i = 0; i < state->room->speaker_count; ++i) {
-        DrawSpeakerWaves(state, &state->room->speakers[i]);
-    }
     StageRenderDrawStatic(state);
     if (state->highlight_type_a || state->type_a_bump_visible || state->type_a_setting_feedback_visible) {
         for (int i = 0; i < state->room->type_a_count; ++i) {
             DrawTypeAWall(state, &state->room->type_a_walls[i], 1);
         }
-    }
-    for (int i = 0; i < state->room->speaker_count; ++i) {
-        DrawSpeakerDevice(state, &state->room->speakers[i]);
     }
     DrawRoomCheckpoint(state);
     DrawRoomPistons(state);
@@ -1287,6 +1402,12 @@ void StageRenderDrawDynamic(const StageRenderState* state) {
     DrawRoomGravityBoxes(state);
     DrawWalkerEnemies(state);
     ExitSequenceDrawExit(state->render, &state->room->exit);
+    for (int i = 0; i < state->room->speaker_count; ++i) {
+        DrawSpeakerWaves(state, &state->room->speakers[i]);
+    }
+    for (int i = 0; i < state->room->speaker_count; ++i) {
+        DrawSpeakerDevice(state, &state->room->speakers[i]);
+    }
     if (state->player_visible) {
         DrawPlayer(state->render,
                    state->player,
