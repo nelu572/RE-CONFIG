@@ -44,7 +44,7 @@ ROOM은 공통 문서를 링크할 수 있지만, 공통 동작을 다시 서술
 
 ## 별도 관리가 필요한 기존 초안
 
-- `docs/design/room07_map_48x27.md`는 현재 `docs/rooms/ROOM_07_MAP.md`와 별개로 남아 있는 과거 ROOM 07 초안이다. 현재 ROOM 07의 기준 맵이나 공용 규칙으로 사용하지 않는다.
+- `docs/design/room08_map_48x27.md`는 현재 `docs/rooms/ROOM_08_MAP.md`와 별개로 남아 있는 과거 ROOM 08 초안이다. 현재 ROOM 08의 기준 맵이나 공용 규칙으로 사용하지 않는다.
 - 새 ROOM 맵과 현재 ROOM 수정은 `docs/rooms/ROOM_XX_MAP.md`와 [ROOM 맵 가이드](rooms/ROOM_MAP_GUIDE.md)에만 기록한다.
 - 이 기존 초안의 삭제·이관·통합은 두 문서와 현재 코드의 차이를 별도로 검토한 뒤 결정한다.
 

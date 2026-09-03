@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate a temporary 130 BPM WAV speaker kick for ROOM 03.
+"""Generate a temporary 130 BPM WAV speaker kick for ROOM 04.
 
 The game can move this to procedural playback later. For now this script keeps
 the sound design parameters in one place and writes simple 16-bit mono WAVs.

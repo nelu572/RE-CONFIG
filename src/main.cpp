@@ -55,9 +55,9 @@ static PauseMenuState g_pause_menu;
 static int g_overlay_redraw_pending = 0;
 static int g_pause_redraw_pending = 0;
 static constexpr int START_ROOM_INDEX = 0;
-static constexpr int DEBUG_ROOM_00_INDEX = 0;
-static constexpr int DEBUG_ROOM_01_INDEX = 1;
-static constexpr int STAGE_SELECT_LAST_ROOM_INDEX = 10;
+static constexpr int DEBUG_ROOM_01_INDEX = 0;
+static constexpr int DEBUG_ROOM_02_INDEX = 1;
+static constexpr int STAGE_SELECT_LAST_ROOM_INDEX = 9;
 static constexpr int STAGE_SELECT_DISPLAY_COUNT = STAGE_SELECT_LAST_ROOM_INDEX + 1;
 static int g_stage_select_index = 0;
 static float g_stage_select_world_offset = 0.0f;
@@ -77,9 +77,12 @@ static int g_stage_select_cleared[STAGE_SELECT_DISPLAY_COUNT];
 static int g_last_played_room = START_ROOM_INDEX;
 
 static constexpr unsigned int STAGE_PROGRESS_MAGIC = 0x31535652u;
-static constexpr unsigned int STAGE_PROGRESS_VERSION = 3u;
+static constexpr unsigned int STAGE_PROGRESS_VERSION = 4u;
+static constexpr unsigned int STAGE_PROGRESS_PRE_RENUMBER_VERSION = 3u;
 static constexpr unsigned int STAGE_PROGRESS_CLEARS_ONLY_VERSION = 2u;
-static constexpr int STAGE_PROGRESS_V2_DATA_SIZE = 8 + STAGE_SELECT_DISPLAY_COUNT;
+static constexpr int STAGE_PROGRESS_LEGACY_ROOM_COUNT = 11;
+static constexpr int STAGE_PROGRESS_LEGACY_V2_DATA_SIZE = 8 + STAGE_PROGRESS_LEGACY_ROOM_COUNT;
+static constexpr int STAGE_PROGRESS_LEGACY_V3_DATA_SIZE = 12 + STAGE_PROGRESS_LEGACY_ROOM_COUNT;
 static constexpr int STAGE_PROGRESS_CLEARED_OFFSET = 12;
 static constexpr int STAGE_PROGRESS_DATA_SIZE = STAGE_PROGRESS_CLEARED_OFFSET + STAGE_SELECT_DISPLAY_COUNT;
 
@@ -148,9 +151,16 @@ static void StageProgressSave() {
     CloseHandle(file);
 }
 
+static int StageProgressMapPreRenumberRoomIndex(int legacy_room_index) {
+    if (legacy_room_index <= 8) {
+        return StageProgressClampRoomIndex(legacy_room_index);
+    }
+    return STAGE_SELECT_LAST_ROOM_INDEX;
+}
+
 static void StageProgressLoad() {
-    unsigned char data[STAGE_PROGRESS_DATA_SIZE];
-    for (int i = 0; i < STAGE_PROGRESS_DATA_SIZE; ++i) {
+    unsigned char data[STAGE_PROGRESS_LEGACY_V3_DATA_SIZE];
+    for (int i = 0; i < STAGE_PROGRESS_LEGACY_V3_DATA_SIZE; ++i) {
         data[i] = 0;
     }
 
@@ -166,28 +176,41 @@ static void StageProgressLoad() {
     }
 
     unsigned int version = StageProgressReadU32(data, 4);
-    int cleared_offset = 8;
     if (version == STAGE_PROGRESS_VERSION) {
         if (read < STAGE_PROGRESS_DATA_SIZE) {
             return;
         }
         g_last_played_room = StageProgressClampRoomIndex((int)StageProgressReadU32(data, 8));
-        cleared_offset = STAGE_PROGRESS_CLEARED_OFFSET;
-    } else if (version == STAGE_PROGRESS_CLEARS_ONLY_VERSION) {
-        if (read < STAGE_PROGRESS_V2_DATA_SIZE) {
-            return;
+        for (int i = 0; i < STAGE_SELECT_DISPLAY_COUNT; ++i) {
+            g_stage_select_cleared[i] = data[STAGE_PROGRESS_CLEARED_OFFSET + i] ? 1 : 0;
         }
-    } else {
         return;
     }
 
-    for (int i = 0; i < (int)(sizeof(g_stage_select_cleared) / sizeof(g_stage_select_cleared[0])); ++i) {
-        g_stage_select_cleared[i] = data[cleared_offset + i] ? 1 : 0;
+    if (version == STAGE_PROGRESS_PRE_RENUMBER_VERSION) {
+        if (read < STAGE_PROGRESS_LEGACY_V3_DATA_SIZE) {
+            return;
+        }
+        g_last_played_room = StageProgressMapPreRenumberRoomIndex((int)StageProgressReadU32(data, 8));
+        for (int i = 0; i < STAGE_SELECT_LAST_ROOM_INDEX; ++i) {
+            g_stage_select_cleared[i] = data[12 + i] ? 1 : 0;
+        }
+        g_stage_select_cleared[STAGE_SELECT_LAST_ROOM_INDEX] = data[12 + 10] ? 1 : 0;
+        return;
     }
+
     if (version == STAGE_PROGRESS_CLEARS_ONLY_VERSION) {
+        if (read < STAGE_PROGRESS_LEGACY_V2_DATA_SIZE) {
+            return;
+        }
+        for (int i = 0; i < STAGE_SELECT_LAST_ROOM_INDEX; ++i) {
+            g_stage_select_cleared[i] = data[8 + i] ? 1 : 0;
+        }
+        g_stage_select_cleared[STAGE_SELECT_LAST_ROOM_INDEX] = data[8 + 10] ? 1 : 0;
         g_last_played_room = StageProgressRoomAfterHighestCleared();
     }
 }
+
 enum AppState {
     APP_STATE_MAIN_MENU,
     APP_STATE_STAGE_SELECT,
@@ -1014,7 +1037,7 @@ static void StageSelectDrawStageNode(int stage_index) {
     }
 
     char label[16];
-    wsprintfA(label, "STAGE %02d", stage_index);
+    wsprintfA(label, "ROOM %02d", stage_index + 1);
     int text_scale = selected_scale > 0.0f ? 4 : 3;
     int text_w = 8 * 6 * text_scale;
     uint32_t text_base_color = locked ? 0x008a7774 : COL_TEXT;
@@ -1378,10 +1401,10 @@ extern "C" void WinMainCRTStartup() {
             StartAppTransition(APP_STATE_STAGE_SELECT, START_ROOM_INDEX);
         }
         if (!AppTransitionActive() && InputWasPressed(KEY_3)) {
-            StartAppTransition(APP_STATE_GAME, DEBUG_ROOM_00_INDEX);
+            StartAppTransition(APP_STATE_GAME, DEBUG_ROOM_01_INDEX);
         }
         if (!AppTransitionActive() && InputWasPressed(KEY_4)) {
-            StartAppTransition(APP_STATE_GAME, DEBUG_ROOM_01_INDEX);
+            StartAppTransition(APP_STATE_GAME, DEBUG_ROOM_02_INDEX);
         }
 #endif
 

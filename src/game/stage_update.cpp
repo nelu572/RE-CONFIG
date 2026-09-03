@@ -47,7 +47,7 @@ static constexpr float WALKER_ENEMY_SPIKE_DEPLOY_SECONDS = 0.08f;
 static constexpr float WALKER_ENEMY_EYE_CROUCH_SECONDS = 0.18f;
 static constexpr float WALKER_ENEMY_LEAVE_RANGE = 240.0f;
 static constexpr float WALKER_ENEMY_TURN_SQUASH_SECONDS = 0.10f;
-static constexpr int ROOM10_INDEX = 10;
+static constexpr int ROOM10_INDEX = 9;
 static unsigned int g_room10_route_seed = 0x9e3779b9u;
 
 struct GameSpeakerPushVelocity {

@@ -2,7 +2,6 @@
 #include "rooms/room_defs.h"
 
 static const RoomDef* const g_rooms[] = {
-    &g_room00,
     &g_room01,
     &g_room02,
     &g_room03,
@@ -24,7 +23,7 @@ int RoomCount() {
 }
 
 int DevelopedRoomCount() {
-    return 11;
+    return RoomCount();
 }
 
 RectF PressurePlatformRectAt(const PressurePlatformDevice* platform, float open_amount) {

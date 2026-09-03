@@ -7,7 +7,7 @@
 
 enum TutorialStep {
     TUTOR_NONE,
-    TUTOR_ROOM01_SETTINGS_KEY,
+    TUTOR_ROOM02_SETTINGS_KEY,
     TUTOR_SETTINGS_CATEGORY,
     TUTOR_SETTINGS_ITEM,
     TUTOR_DONE
@@ -84,7 +84,7 @@ static RectI TutorialClampRect(RectI rect) {
 }
 
 static int TutorialWorldHintTargetVisible(int current_room) {
-    return g_tutorial_step == TUTOR_ROOM01_SETTINGS_KEY && !SettingsUiIsOpen() && current_room == 1;
+    return g_tutorial_step == TUTOR_ROOM02_SETTINGS_KEY && !SettingsUiIsOpen() && current_room == 1;
 }
 
 void TutorialUiResetStageState() {
@@ -109,10 +109,10 @@ void TutorialUiUpdate(float dt, int current_room, int type_a_active, int type_a_
         g_tutorial_step = TUTOR_DONE;
     } else if (current_room == 1 && type_a_active && !SettingsUiIsOpen()) {
         if (type_a_blocked_this_frame && g_tutorial_step == TUTOR_NONE) {
-            g_tutorial_step = TUTOR_ROOM01_SETTINGS_KEY;
+            g_tutorial_step = TUTOR_ROOM02_SETTINGS_KEY;
         }
     } else if (SettingsUiIsOpen()) {
-        if (g_tutorial_step == TUTOR_ROOM01_SETTINGS_KEY) {
+        if (g_tutorial_step == TUTOR_ROOM02_SETTINGS_KEY) {
             g_tutorial_step = TUTOR_SETTINGS_CATEGORY;
             SettingsUiMarkDirty();
         }
