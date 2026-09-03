@@ -414,6 +414,7 @@ static void EnterStageNow(int room_index) {
     GameClearCheckpoint(&g_game);
     g_game.current_room = ClampRoomIndex(room_index);
     g_last_played_room = g_game.current_room;
+    GamePrepareRoomEntry(&g_game, g_game.current_room);
     StageProgressSave();
     g_app_state = APP_STATE_GAME;
     ResetStage();

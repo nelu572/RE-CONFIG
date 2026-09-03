@@ -12,6 +12,7 @@ static const RoomDef* const g_rooms[] = {
     &g_room07,
     &g_room08,
     &g_room09,
+    &g_room10,
 };
 
 const RoomDef* GetRoom(int index) {
@@ -23,7 +24,7 @@ int RoomCount() {
 }
 
 int DevelopedRoomCount() {
-    return 10;
+    return 11;
 }
 
 RectF PressurePlatformRectAt(const PressurePlatformDevice* platform, float open_amount) {

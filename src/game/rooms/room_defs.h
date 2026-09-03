@@ -12,4 +12,5 @@ extern const RoomDef g_room06;
 extern const RoomDef g_room07;
 extern const RoomDef g_room08;
 extern const RoomDef g_room09;
+extern const RoomDef g_room10;
 

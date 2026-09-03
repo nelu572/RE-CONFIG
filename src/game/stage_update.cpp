@@ -47,6 +47,8 @@ static constexpr float WALKER_ENEMY_SPIKE_DEPLOY_SECONDS = 0.08f;
 static constexpr float WALKER_ENEMY_EYE_CROUCH_SECONDS = 0.18f;
 static constexpr float WALKER_ENEMY_LEAVE_RANGE = 240.0f;
 static constexpr float WALKER_ENEMY_TURN_SQUASH_SECONDS = 0.10f;
+static constexpr int ROOM10_INDEX = 10;
+static unsigned int g_room10_route_seed = 0x9e3779b9u;
 
 struct GameSpeakerPushVelocity {
     float vx;
@@ -63,6 +65,8 @@ static int GameAppendPressurePlatformSolids(const GameState* state, RectF* out_s
 static int GameAppendPressureSwitchSolids(const GameState* state, RectF* out_solids, int count, int max_solids);
 static GameSpeakerPushVelocity GameComputeSpeakerPushVelocityForRect(const GameState* state, const RectF* rect, int grounded);
 static int GameTryClearGravityBoxesForMovingPlayer(GameState* state, const RectF* previous_player, const RectF* current_player, float move_x, float move_y, int ignored_box_index);
+static void GamePushWalkerEnemiesByMovingPiston(GameState* state, const PistonDevice* piston, float previous_extension, float current_extension);
+static void GameCarryWalkerEnemiesOnPistonPlate(GameState* state, const PistonDevice* piston, float previous_extension, float current_extension);
 static void GameStartPlayerDeath(GameState* state);
 
 int GameFeatureActive(const GameState* state, DeleteFeature feature) {
@@ -204,6 +208,19 @@ static int GamePressureSwitchMaskPressed(const GameState* state, unsigned int sw
     }
     return 1;
 }
+
+static int GameRoom10PlatformCanOpen(const GameState* state, int platform_index) {
+    if (state->current_room != ROOM10_INDEX) {
+        return 1;
+    }
+    if (platform_index == 1) {
+        return !state->room10_route3_safe;
+    }
+    if (platform_index == 2) {
+        return state->room10_route3_safe;
+    }
+    return 1;
+}
 static float GamePressurePlatformAmountPerSecond(const PressurePlatformDevice* platform, float pixels_per_second) {
     float travel = GameAbsF(platform->open_offset_x) + GameAbsF(platform->open_offset_y);
     return travel > 0.001f ? pixels_per_second / travel : 1.0f;
@@ -217,6 +234,12 @@ static int GamePressurePlatformTargetClear(const GameState* state, int platform_
         RectF player_rect = GamePlayerRect(state);
         if (RectsOverlap(&player_rect, &platform_rect)) {
             return 0;
+        }
+        int enemy_count = GameRoomWalkerEnemyCount(room);
+        for (int i = 0; i < enemy_count; ++i) {
+            if (RectsOverlap(&state->walker_enemies[i], &platform_rect)) {
+                return 0;
+            }
         }
     }
     int box_count = GameRoomGravityBoxCount(room);
@@ -285,6 +308,16 @@ static int GameAppendGravityBoxSolids(const GameState* state, RectF* out_solids,
     }
     return count;
 }
+// Walker enemies use the same world-solid set as the player. Speakers apply
+// force but deliberately do not appear in this list, so they remain non-solid.
+static int GameBuildWalkerEnemyDynamicSolids(const GameState* state, RectF* out_solids, int max_solids) {
+    const RoomDef* room = GameCurrentRoom(state);
+    int count = GameBuildPistonSolids(state, room, state->piston_time_seconds, out_solids, max_solids);
+    count = GameAppendPressurePlatformSolids(state, out_solids, count, max_solids);
+    count = GameAppendPressureSwitchSolids(state, out_solids, count, max_solids);
+    return GameAppendGravityBoxSolids(state, out_solids, count, max_solids);
+}
+
 static int GameRectOverlapsLevelSolids(const GameState* state, const RectF* rect, int include_pistons) {
     const RoomDef* room = GameCurrentRoom(state);
     for (int i = 0; i < room->platform_count; ++i) {
@@ -613,7 +646,33 @@ void GameClearCheckpoint(GameState* state) {
     state->checkpoint_flag_drop = 0.0f;
 }
 
+static void GameRerollRoom10Route(GameState* state) {
+    unsigned int clock_bits = (unsigned int)(PerfNowSeconds() * 1000000.0);
+    g_room10_route_seed ^= clock_bits + 0x9e3779b9u + (g_room10_route_seed << 6) + (g_room10_route_seed >> 2);
+    g_room10_route_seed = g_room10_route_seed * 1664525u + 1013904223u;
+    state->room10_route3_safe = (int)((g_room10_route_seed >> 31) & 1u);
+    state->room10_route_initialized = 1;
+}
+
+void GamePrepareRoomEntry(GameState* state, int room_index) {
+    if (state && room_index == ROOM10_INDEX) {
+        state->room10_route_initialized = 0;
+    }
+}
+
+void GameRequestStageRestart(GameState* state) {
+    if (state && state->current_room == ROOM10_INDEX) {
+        state->room10_route_initialized = 0;
+    }
+    GameResetStage(state);
+}
+
 void GameResetStage(GameState* state) {
+    if (state->current_room != ROOM10_INDEX) {
+        state->room10_route_initialized = 0;
+    } else if (!state->room10_route_initialized) {
+        GameRerollRoom10Route(state);
+    }
     DeleteState saved_delete_state = state->delete_state;
     const RoomDef* room = GameCurrentRoom(state);
     if (!GameRoomHasCheckpoint(room) || state->checkpoint_room != state->current_room) {
@@ -1305,6 +1364,8 @@ static int GameApplyPistonExtensionStep(GameState* state, int piston_index, cons
         return -1;
     }
     GameCarryPlayerOnPistonPlate(state, piston, previous_extension, current_extension, frame_dt);
+    GamePushWalkerEnemiesByMovingPiston(state, piston, previous_extension, current_extension);
+    GameCarryWalkerEnemiesOnPistonPlate(state, piston, previous_extension, current_extension);
 
     RectF pr = GamePlayerRect(state);
     if (GameAbsF(current_extension - previous_extension) > 0.001f && GamePistonSolidOverlapsRectForExtension(piston, current_extension, &pr)) {
@@ -1413,19 +1474,27 @@ static void GameGravityVector(GravityDirection direction, int* x, int* y) {
 }
 
 
-static int GameWalkerEnemySolidCount(const GameState* state, const RoomDef* room) {
-    return room->platform_count + (GameFeatureActive(state, FEATURE_COLLISION_TYPE_A) ? room->type_a_count : 0);
+static int GameWalkerEnemySolidCount(const GameState* state, const RoomDef* room, int dynamic_solid_count) {
+    return room->platform_count +
+           (GameFeatureActive(state, FEATURE_COLLISION_TYPE_A) ? room->type_a_count : 0) +
+           dynamic_solid_count;
 }
 
-static const RectF* GameWalkerEnemySolidAt(const GameState* state, const RoomDef* room, int index) {
+static const RectF* GameWalkerEnemySolidAt(const GameState* state,
+                                           const RoomDef* room,
+                                           const RectF* dynamic_solids,
+                                           int dynamic_solid_count,
+                                           int index) {
     if (index < room->platform_count) {
         return &room->platforms[index];
     }
     index -= room->platform_count;
-    if (GameFeatureActive(state, FEATURE_COLLISION_TYPE_A) && index < room->type_a_count) {
+    int type_a_count = GameFeatureActive(state, FEATURE_COLLISION_TYPE_A) ? room->type_a_count : 0;
+    if (index < type_a_count) {
         return &room->type_a_walls[index];
     }
-    return 0;
+    index -= type_a_count;
+    return index < dynamic_solid_count ? &dynamic_solids[index] : 0;
 }
 
 static int GameMoveWalkerEnemyAxis(GameState* state,
@@ -1446,10 +1515,12 @@ static int GameMoveWalkerEnemyAxis(GameState* state,
         enemy->y += delta;
     }
     const RoomDef* room = GameCurrentRoom(state);
+    RectF dynamic_solids[GAME_MAX_DYNAMIC_SOLIDS];
+    int dynamic_solid_count = GameBuildWalkerEnemyDynamicSolids(state, dynamic_solids, GAME_MAX_DYNAMIC_SOLIDS);
     int collided = 0;
-    int solid_count = GameWalkerEnemySolidCount(state, room);
+    int solid_count = GameWalkerEnemySolidCount(state, room, dynamic_solid_count);
     for (int solid_index = 0; solid_index < solid_count; ++solid_index) {
-        const RectF* solid = GameWalkerEnemySolidAt(state, room, solid_index);
+        const RectF* solid = GameWalkerEnemySolidAt(state, room, dynamic_solids, dynamic_solid_count, solid_index);
         if (!solid || !RectsOverlap(enemy, solid)) {
             continue;
         }
@@ -1457,27 +1528,6 @@ static int GameMoveWalkerEnemyAxis(GameState* state,
             enemy->x = delta > 0.0f ? solid->x - enemy->w : solid->x + solid->w;
         } else {
             enemy->y = delta > 0.0f ? solid->y - enemy->h : solid->y + solid->h;
-        }
-        collided = 1;
-    }
-    int pressure_platform_count = GameRoomPressurePlatformCount(room);
-    for (int platform_index = 0; platform_index < pressure_platform_count; ++platform_index) {
-        const PressurePlatformDevice* platform = &room->pressure_platforms[platform_index];
-        if (!platform->disappears_when_open) {
-            continue;
-        }
-        float alpha = 1.0f - GameClampF(state->pressure_platform_open_amount[platform_index], 0.0f, 1.0f);
-        if (alpha < 1.0f) {
-            continue;
-        }
-        RectF solid = PressurePlatformRectAt(platform, state->pressure_platform_open_amount[platform_index]);
-        if (!RectsOverlap(enemy, &solid)) {
-            continue;
-        }
-        if (axis_x) {
-            enemy->x = delta > 0.0f ? solid.x - enemy->w : solid.x + solid.w;
-        } else {
-            enemy->y = delta > 0.0f ? solid.y - enemy->h : solid.y + solid.h;
         }
         collided = 1;
     }
@@ -1503,6 +1553,82 @@ static int GameMoveWalkerEnemyAxis(GameState* state,
     return collided;
 }
 
+static void GameMoveWalkerEnemyWithSolid(GameState* state, int enemy_index, float move_x, float move_y) {
+    if (move_x != 0.0f) {
+        GameMoveWalkerEnemyAxis(state, enemy_index, 1, move_x, 0);
+    }
+    if (move_y != 0.0f) {
+        GameMoveWalkerEnemyAxis(state, enemy_index, 0, move_y, 0);
+    }
+}
+
+static void GamePushWalkerEnemiesByMovingPiston(GameState* state,
+                                                const PistonDevice* piston,
+                                                float previous_extension,
+                                                float current_extension) {
+    int enemy_count = GameRoomWalkerEnemyCount(GameCurrentRoom(state));
+    for (int i = 0; i < enemy_count; ++i) {
+        RectF candidate = state->walker_enemies[i];
+        float move_x = 0.0f;
+        float move_y = 0.0f;
+        if (GameMovingPistonPushCandidate(piston,
+                                          previous_extension,
+                                          current_extension,
+                                          &state->walker_enemies[i],
+                                          &candidate,
+                                          &move_x,
+                                          &move_y)) {
+            GameMoveWalkerEnemyWithSolid(state, i, move_x, move_y);
+        }
+    }
+}
+
+static void GameCarryWalkerEnemiesOnPistonPlate(GameState* state,
+                                                const PistonDevice* piston,
+                                                float previous_extension,
+                                                float current_extension) {
+    RectF previous_plate = PistonPlateRectForExtension(piston, previous_extension);
+    RectF current_plate = PistonPlateRectForExtension(piston, current_extension);
+    float move_x = current_plate.x - previous_plate.x;
+    float move_y = current_plate.y - previous_plate.y;
+    if (move_x == 0.0f && move_y == 0.0f) {
+        return;
+    }
+
+    int gravity_x;
+    int gravity_y;
+    GamePistonGravityVector(state->gravity_direction, &gravity_x, &gravity_y);
+    if (move_x * (float)gravity_x + move_y * (float)gravity_y <= 0.0f) {
+        return;
+    }
+
+    int enemy_count = GameRoomWalkerEnemyCount(GameCurrentRoom(state));
+    for (int i = 0; i < enemy_count; ++i) {
+        if (GameRectSupportedBySolidAlongGravity(&state->walker_enemies[i], &previous_plate, gravity_x, gravity_y)) {
+            GameMoveWalkerEnemyWithSolid(state, i, move_x, move_y);
+        }
+    }
+}
+
+static void GameCarryWalkerEnemiesOnPressurePlatform(GameState* state,
+                                                      const RectF* previous_platform,
+                                                      const RectF* current_platform) {
+    float move_x = current_platform->x - previous_platform->x;
+    float move_y = current_platform->y - previous_platform->y;
+    if (move_x == 0.0f && move_y == 0.0f) {
+        return;
+    }
+
+    int gravity_x;
+    int gravity_y;
+    GamePistonGravityVector(state->gravity_direction, &gravity_x, &gravity_y);
+    int enemy_count = GameRoomWalkerEnemyCount(GameCurrentRoom(state));
+    for (int i = 0; i < enemy_count; ++i) {
+        if (GameRectSupportedBySolidAlongGravity(&state->walker_enemies[i], previous_platform, gravity_x, gravity_y)) {
+            GameMoveWalkerEnemyWithSolid(state, i, move_x, move_y);
+        }
+    }
+}
 static int GameWalkerEnemyPlayerWithinRange(const GameState* state,
                                             const RectF* enemy,
                                             float range) {
@@ -1595,7 +1721,7 @@ static int GameWalkerTriangleTouchesRect(const RectF* rect,
     return 0;
 }
 
-static int GameWalkerEnemySpikesTouchPlayer(const GameState* state, int enemy_index, const RectF* player) {
+static int GameWalkerEnemySpikesTouchRect(const GameState* state, int enemy_index, const RectF* player) {
     float spike_amount = state->walker_enemy_spike_amount[enemy_index];
     if (spike_amount <= 0.01f) {
         return 0;
@@ -1791,7 +1917,7 @@ static void GameUpdateWalkerEnemies(GameState* state, float dt) {
     int enemy_count = GameRoomWalkerEnemyCount(GameCurrentRoom(state));
     for (int i = 0; i < enemy_count; ++i) {
         if (RectsOverlap(&player, &state->walker_enemies[i]) ||
-            GameWalkerEnemySpikesTouchPlayer(state, i, &player)) {
+            GameWalkerEnemySpikesTouchRect(state, i, &player)) {
             return 1;
         }
     }
@@ -2031,6 +2157,30 @@ static void GamePushGravityBoxesByPlayerInput(GameState* state, float move, floa
     }
 }
 
+static RectF GamePressureSwitchContactRect(const GameState* state, const PressureSwitchDevice* sw) {
+    const RoomDef* room = GameCurrentRoom(state);
+    const float contact_margin = 3.0f;
+    RectF probe = sw->rect;
+    PressureSwitchMount mount = PressureSwitchMountFor(room, sw);
+    if (mount == PRESSURE_SWITCH_MOUNT_DOWN) {
+        probe.y = sw->rect.y - contact_margin;
+        probe.h = contact_margin * 2.0f;
+    } else if (mount == PRESSURE_SWITCH_MOUNT_UP) {
+        probe.y = sw->rect.y + sw->rect.h - contact_margin;
+        probe.h = contact_margin * 2.0f;
+    } else {
+        float side_travel = GameClampF(sw->rect.w * 0.20f, 4.0f, 10.0f) + 2.0f;
+        side_travel = GameClampF(side_travel, 0.0f, sw->rect.w - 4.0f);
+        if (mount == PRESSURE_SWITCH_MOUNT_RIGHT) {
+            probe.x = sw->rect.x + side_travel - contact_margin;
+        } else {
+            probe.x = sw->rect.x + sw->rect.w - side_travel - contact_margin;
+        }
+        probe.w = contact_margin * 2.0f;
+    }
+    return probe;
+}
+
 static int GamePressureSwitchTouchedByRect(const GameState* state, const PressureSwitchDevice* sw, const RectF* rect) {
     const RoomDef* room = GameCurrentRoom(state);
     const float contact_margin = 3.0f;
@@ -2056,6 +2206,16 @@ static int GamePressureSwitchTouchedByRect(const GameState* state, const Pressur
         return 0;
     }
     return RectsOverlap(rect, &probe);
+}
+
+static int GamePressureSwitchTouchedByWalkerEnemy(const GameState* state, const PressureSwitchDevice* sw, int enemy_index) {
+    const RectF* enemy = &state->walker_enemies[enemy_index];
+    if (GamePressureSwitchTouchedByRect(state, sw, enemy)) {
+        return 1;
+    }
+    RectF probe = GamePressureSwitchContactRect(state, sw);
+    return probe.w > 0.0f && probe.h > 0.0f &&
+           GameWalkerEnemySpikesTouchRect(state, enemy_index, &probe);
 }
 
 static void GameUpdateRoomPressureSwitches(GameState* state, float dt) {
@@ -2087,7 +2247,7 @@ static void GameUpdateRoomPressureSwitches(GameState* state, float dt) {
         if (!pressed) {
             int enemy_count = GameRoomWalkerEnemyCount(room);
             for (int enemy_index = 0; enemy_index < enemy_count; ++enemy_index) {
-                if (GamePressureSwitchTouchedByRect(state, sw, &state->walker_enemies[enemy_index])) {
+                if (GamePressureSwitchTouchedByWalkerEnemy(state, sw, enemy_index)) {
                     pressed = 1;
                     break;
                 }
@@ -2101,6 +2261,9 @@ static void GameUpdateRoomPressureSwitches(GameState* state, float dt) {
     }
 
     int unlocked = switch_count > 0 && GamePressureSwitchMaskPressed(state, 0);
+    if (state->current_room == ROOM10_INDEX && switch_count > 1) {
+        unlocked = GamePressureSwitchMaskPressed(state, 1u << 1);
+    }
     if (switch_count <= 0) {
         unlocked = !room->exit_requires_pressure_switches;
     }
@@ -2110,7 +2273,8 @@ static void GameUpdateRoomPressureSwitches(GameState* state, float dt) {
     float sim_dt = dt * SettingsUiGameSpeedScale();
     for (int i = 0; i < platform_count; ++i) {
         float current = state->pressure_platform_open_amount[i];
-        int platform_unlocked = GamePressureSwitchMaskPressed(state, room->pressure_platforms[i].required_switch_mask);
+        int platform_unlocked = GamePressureSwitchMaskPressed(state, room->pressure_platforms[i].required_switch_mask) &&
+                                GameRoom10PlatformCanOpen(state, i);
         if (platform_unlocked) {
             state->pressure_platform_open_cycle_pending[i] = 1;
         }
@@ -2127,12 +2291,15 @@ static void GameUpdateRoomPressureSwitches(GameState* state, float dt) {
         if (next != current) {
             RectF previous_platform = PressurePlatformRectAt(&room->pressure_platforms[i], current);
             RectF current_platform = PressurePlatformRectAt(&room->pressure_platforms[i], next);
+            state->pressure_platform_open_amount[i] = next;
             GameCarryPlayerOnPressurePlatform(state, &previous_platform, &current_platform);
+            GameCarryWalkerEnemiesOnPressurePlatform(state, &previous_platform, &current_platform);
+        } else {
+            state->pressure_platform_open_amount[i] = next;
         }
         if (next >= 1.0f) {
             state->pressure_platform_open_cycle_pending[i] = 0;
         }
-        state->pressure_platform_open_amount[i] = next;
     }
 }
 
@@ -2447,7 +2614,7 @@ void GameUpdateStage(GameState* state, float dt, int use_static_cache) {
     }
     if (state->player_dead) {
         if (InputWasPressed(KEY_R)) {
-            GameResetStage(state);
+            GameRequestStageRestart(state);
             return;
         }
         if (SettingsUiIsOpen()) {
@@ -2465,7 +2632,7 @@ void GameUpdateStage(GameState* state, float dt, int use_static_cache) {
         return;
     }
     if (InputWasPressed(KEY_R)) {
-        GameResetStage(state);
+        GameRequestStageRestart(state);
         return;
     }
 
