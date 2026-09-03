@@ -45,6 +45,7 @@ static constexpr float GRAVITY_BOX_PUSH_SPEED = 120.0f;
 static constexpr float GRAVITY_BOX_SPEAKER_MIN_PUSH_SPEED = 200.0f;
 static constexpr float PRESSURE_PLATFORM_OPEN_SPEED_PIXELS_PER_SECOND = 560.0f;
 static constexpr float PRESSURE_PLATFORM_CLOSE_SPEED_PIXELS_PER_SECOND = 560.0f;
+static constexpr float PRESSURE_BARRIER_FADE_SECONDS = 0.25f;
 static constexpr float WALKER_ENEMY_APPROACH_RANGE = 200.0f;
 static constexpr float WALKER_ENEMY_SPIKE_RETRACT_SECONDS = 0.60f;
 static constexpr float WALKER_ENEMY_CROUCH_SECONDS = 0.10f;
@@ -220,6 +221,9 @@ static int GameRoom10PlatformCanOpen(const GameState* state, const PressurePlatf
     return 1;
 }
 static float GamePressurePlatformAmountPerSecond(const PressurePlatformDevice* platform, float pixels_per_second) {
+    if (platform->disappears_when_open) {
+        return 1.0f / PRESSURE_BARRIER_FADE_SECONDS;
+    }
     float travel = GameAbsF(platform->open_offset_x) + GameAbsF(platform->open_offset_y);
     return travel > 0.001f ? pixels_per_second / travel : 1.0f;
 }
