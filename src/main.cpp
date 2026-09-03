@@ -618,7 +618,10 @@ static StageRenderState CurrentStageRenderState() {
     if (state.walker_enemy_count > GAME_MAX_WALKER_ENEMIES) state.walker_enemy_count = GAME_MAX_WALKER_ENEMIES;
     state.walker_enemy_spike_amount = g_game.walker_enemy_spike_amount;
     state.walker_enemy_squash_amount = g_game.walker_enemy_squash_amount;
+    state.walker_enemy_eye_crouch_amount = g_game.walker_enemy_eye_crouch_amount;
     state.walker_enemy_turn_squash = g_game.walker_enemy_turn_squash;
+    state.walker_enemy_direction = g_game.walker_enemy_direction;
+    state.walker_enemy_player_near = g_game.walker_enemy_player_near;
     state.pressure_switch_pressed = g_game.pressure_switch_pressed;
     state.pressure_switch_anim = g_game.pressure_switch_anim;
     state.pressure_platform_open_amount = g_game.pressure_platform_open_amount;

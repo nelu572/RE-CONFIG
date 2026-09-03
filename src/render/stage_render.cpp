@@ -1123,20 +1123,62 @@ static void DrawWalkerRoundedTop(const StageRenderState* state,
     }
 }
 
+static void DrawWalkerEyes(const StageRenderState* state,
+                           const WalkerEnemyRenderGeometry* geometry,
+                           int direction,
+                           float crouch_amount) {
+    int eye_w = 5;
+    int eye_h = (int)(9.0f - crouch_amount * 3.0f + 0.5f);
+    int eye_gap = 8;
+    int eye_separation = (eye_w + eye_gap) / 2;
+    int patrol_offset = geometry->body_w / 10;
+    if (patrol_offset < 3) patrol_offset = 3;
+    if (patrol_offset > 6) patrol_offset = 6;
+    int look_offset = (int)((float)patrol_offset * (1.0f - crouch_amount) + 0.5f);
+    if (direction < 0) look_offset = -look_offset;
+    int look_x = look_offset;
+    int look_y = 0;
+    if (state->gravity_direction == GRAVITY_LEFT || state->gravity_direction == GRAVITY_RIGHT) {
+        look_y = look_offset;
+        look_x = 0;
+    }
+    int eye_center_y = geometry->top_y + geometry->radius_y * 3 / 4 + look_y;
+    uint32_t eye_color = 0x00332f3a;
+    for (int i = 0; i < 2; ++i) {
+        int side = i == 0 ? -1 : 1;
+        int eye_center_x = geometry->center_x + look_x + side * eye_separation;
+        DrawRect(state->render,
+                 eye_center_x - eye_w / 2,
+                 eye_center_y - eye_h / 2,
+                 eye_w,
+                 eye_h,
+                 eye_color);
+    }
+}
+
 static void DrawWalkerEnemy(const StageRenderState* state,
                             const RectF* enemy,
                             float spike_amount,
                             float response_squash,
-                            float turn_squash) {
+                            float turn_squash,
+                            int direction,
+                            float eye_crouch_amount,
+                            int is_standard) {
     WalkerEnemyRenderGeometry geometry;
+    float spike_length_scale = is_standard ? 1.0f : 0.80f;
     WalkerEnemyBuildRenderGeometry(state->render,
                                    enemy,
                                    spike_amount,
                                    response_squash,
                                    turn_squash,
+                                   spike_length_scale,
                                    &geometry);
-    uint32_t body = 0x00f22632;
-    uint32_t spike_color = 0x00ed2b3a;
+    float m1_alert_amount = spike_amount > response_squash ? spike_amount : response_squash;
+    float m1_color_amount = m1_alert_amount * m1_alert_amount;
+    uint32_t body = is_standard ?
+                    StageLerpColor(0x00958fa5, 0x00f22632, m1_color_amount) :
+                    0x00f22632;
+    uint32_t spike_color = is_standard ? body : 0x00ed2b3a;
 
     // Spikes first: their roots are then buried by the single rounded body, with no extra crest.
     for (int i = 0; i < geometry.spike_count; ++i) {
@@ -1155,6 +1197,8 @@ static void DrawWalkerEnemy(const StageRenderState* state,
              geometry.body_w,
              geometry.body_y + geometry.body_h - base_y,
              body);
+    float eye_crouch = is_standard ? eye_crouch_amount : 0.0f;
+    DrawWalkerEyes(state, &geometry, direction, eye_crouch);
 
 }
 static void DrawWalkerEnemies(const StageRenderState* state) {
@@ -1162,7 +1206,15 @@ static void DrawWalkerEnemies(const StageRenderState* state) {
         float spike = state->walker_enemy_spike_amount ? state->walker_enemy_spike_amount[i] : 0.0f;
         float response_squash = state->walker_enemy_squash_amount ? state->walker_enemy_squash_amount[i] : 0.0f;
         float turn_squash = state->walker_enemy_turn_squash ? state->walker_enemy_turn_squash[i] : 0.0f;
-        DrawWalkerEnemy(state, &state->walker_enemies[i], spike, response_squash, turn_squash);
+        int direction = state->walker_enemy_direction ? state->walker_enemy_direction[i] : 1;
+        float eye_crouch = state->walker_enemy_eye_crouch_amount ? state->walker_enemy_eye_crouch_amount[i] : 0.0f;
+        int is_standard = 1;
+        if (state->room && i < state->room->walker_enemy_count &&
+            state->room->walker_enemies[i].spawn_code == WALKER_ENEMY_M2) {
+            is_standard = 0;
+        }
+        DrawWalkerEnemy(state, &state->walker_enemies[i], spike, response_squash, turn_squash,
+                        direction, eye_crouch, is_standard);
     }
 }
 static void DrawContextUi(const StageRenderState* state) {

@@ -48,17 +48,16 @@ struct GravityBoxDef {
     RectF start;
 };
 
+enum WalkerEnemySpawnCode {
+    WALKER_ENEMY_M1,
+    WALKER_ENEMY_M2,
+};
+
 struct WalkerEnemyDef {
     RectF start;
     float move_speed;
     int initial_direction;
-};
-
-enum PressureSwitchActivator {
-    PRESSURE_SWITCH_PLAYER,
-    PRESSURE_SWITCH_BOX,
-    PRESSURE_SWITCH_ANY,
-    PRESSURE_SWITCH_WALKER_ENEMY,
+    WalkerEnemySpawnCode spawn_code = WALKER_ENEMY_M1;
 };
 
 enum PressureSwitchMount {
@@ -71,7 +70,6 @@ enum PressureSwitchMount {
 
 struct PressureSwitchDevice {
     RectF rect;
-    PressureSwitchActivator activator;
     PressureSwitchMount mount = PRESSURE_SWITCH_MOUNT_AUTO;
 };
 

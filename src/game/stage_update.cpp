@@ -42,7 +42,9 @@ static constexpr float PRESSURE_PLATFORM_OPEN_SPEED_PIXELS_PER_SECOND = 560.0f;
 static constexpr float PRESSURE_PLATFORM_CLOSE_SPEED_PIXELS_PER_SECOND = 560.0f;
 static constexpr float WALKER_ENEMY_APPROACH_RANGE = 200.0f;
 static constexpr float WALKER_ENEMY_SPIKE_RETRACT_SECONDS = 0.60f;
-static constexpr float WALKER_ENEMY_SPIKE_DEPLOY_DELAY_SECONDS = 0.045f;
+static constexpr float WALKER_ENEMY_CROUCH_SECONDS = 0.10f;
+static constexpr float WALKER_ENEMY_SPIKE_DEPLOY_SECONDS = 0.08f;
+static constexpr float WALKER_ENEMY_EYE_CROUCH_SECONDS = 0.18f;
 static constexpr float WALKER_ENEMY_LEAVE_RANGE = 240.0f;
 static constexpr float WALKER_ENEMY_TURN_SQUASH_SECONDS = 0.10f;
 
@@ -651,12 +653,16 @@ void GameResetStage(GameState* state) {
         state->walker_enemy_spike_amount[i] = 0.0f;
         state->walker_enemy_spike_delay[i] = 0.0f;
         state->walker_enemy_squash_amount[i] = 0.0f;
+        state->walker_enemy_eye_crouch_amount[i] = 0.0f;
         state->walker_enemy_turn_squash[i] = 0.0f;
         state->walker_enemy_player_near[i] = 0;
     }
     int walker_enemy_count = GameRoomWalkerEnemyCount(room);
     for (int i = 0; i < walker_enemy_count; ++i) {
         state->walker_enemies[i] = room->walker_enemies[i].start;
+        if (room->walker_enemies[i].spawn_code == WALKER_ENEMY_M2) {
+            state->walker_enemy_spike_amount[i] = 1.0f;
+        }
         state->walker_enemy_direction[i] = room->walker_enemies[i].initial_direction < 0 ? -1 : 1;
     }
     for (int i = 0; i < GAME_MAX_PRESSURE_SWITCHES; ++i) {
@@ -1597,9 +1603,9 @@ static int GameWalkerEnemySpikesTouchPlayer(const GameState* state, int enemy_in
 
     const RectF* enemy = &state->walker_enemies[enemy_index];
     float crouch = state->walker_enemy_squash_amount[enemy_index];
-    float body_w = enemy->w * (1.0f + crouch * 0.08f);
+    float body_w = enemy->w * (1.0f - crouch * 0.08f);
     float body_x = enemy->x + enemy->w * 0.5f - body_w * 0.5f;
-    float squash_px = enemy->h * 0.18f * crouch;
+    float squash_px = enemy->h * 0.12f * crouch;
     float radius_x = body_w * 0.5f;
     if (radius_x < 4.0f) radius_x = 4.0f;
     float dome_height = enemy->h - 4.0f;
@@ -1614,6 +1620,9 @@ static int GameWalkerEnemySpikesTouchPlayer(const GameState* state, int enemy_in
     static const float direction_x[7] = { -1.0f, -0.8660254f, -0.5f, 0.0f, 0.5f, 0.8660254f, 1.0f };
     static const float direction_y[7] = { 0.0f, -0.5f, -0.8660254f, -1.0f, -0.8660254f, -0.5f, 0.0f };
     static constexpr float visible_spike_length = 20.0f;
+    const RoomDef* room = GameCurrentRoom(state);
+    float spike_length_scale = room && enemy_index < GameRoomWalkerEnemyCount(room) &&
+                               room->walker_enemies[enemy_index].spawn_code == WALKER_ENEMY_M2 ? 0.80f : 1.0f;
     static constexpr float root_embed_depth = 2.0f;
     float floor_y = enemy->y + enemy->h;
 
@@ -1626,12 +1635,12 @@ static int GameWalkerEnemySpikesTouchPlayer(const GameState* state, int enemy_in
         float outline_y = ellipse_center_y + outward_y / ellipse_scale;
         float base_x = outline_x - outward_x * root_embed_depth;
         float base_y = outline_y - outward_y * root_embed_depth;
-        float tip_x = outline_x + outward_x * visible_spike_length * spike_amount;
-        float tip_y = outline_y + outward_y * visible_spike_length * spike_amount;
+        float tip_x = outline_x + outward_x * visible_spike_length * spike_length_scale * spike_amount;
+        float tip_y = outline_y + outward_y * visible_spike_length * spike_length_scale * spike_amount;
 
         if (i == 0 || i == 6) {
             float wedge_height = half_width * spike_amount;
-            float cut_x = outline_x + outward_x * visible_spike_length * 0.65f * spike_amount;
+            float cut_x = outline_x + outward_x * visible_spike_length * spike_length_scale * 0.65f * spike_amount;
             float wedge_tip_y = floor_y - wedge_height * 0.60f;
             if (GameWalkerTriangleTouchesRect(player,
                                               base_x, floor_y - wedge_height,
@@ -1674,44 +1683,58 @@ static void GameUpdateWalkerEnemies(GameState* state, float dt) {
     const float max_gravity_speed = 1100.0f;
     for (int i = 0; i < enemy_count; ++i) {
         const WalkerEnemyDef* def = &room->walker_enemies[i];
-        int was_near = state->walker_enemy_player_near[i];
+        int always_spiked = def->spawn_code == WALKER_ENEMY_M2;
+        int reacts_to_player = def->spawn_code == WALKER_ENEMY_M1;
+        int was_near = reacts_to_player ? state->walker_enemy_player_near[i] : 0;
         float detection_range = was_near ? WALKER_ENEMY_LEAVE_RANGE : WALKER_ENEMY_APPROACH_RANGE;
-        int player_near = GameWalkerEnemyPlayerWithinRange(state,
-                                                            &state->walker_enemies[i],
-                                                            detection_range);
+        int player_near = reacts_to_player &&
+                          GameWalkerEnemyPlayerWithinRange(state,
+                                                             &state->walker_enemies[i],
+                                                             detection_range);
         float spike = state->walker_enemy_spike_amount[i];
         float delay = state->walker_enemy_spike_delay[i];
         float crouch = state->walker_enemy_squash_amount[i];
+        float eye_crouch = state->walker_enemy_eye_crouch_amount[i];
 
         if (player_near) {
             // Alert is a locked stop state: crouch persists while the player remains inside leave range.
-            crouch = 1.0f;
+            float crouch_step = WALKER_ENEMY_CROUCH_SECONDS > 0.0f ?
+                                dt / WALKER_ENEMY_CROUCH_SECONDS : 1.0f;
+            crouch = GameClampF(crouch + crouch_step, 0.0f, 1.0f);
             if (!was_near) {
-                if (spike > 0.001f) {
-                    spike = 1.0f;
-                    delay = 0.0f;
-                } else {
-                    delay = WALKER_ENEMY_SPIKE_DEPLOY_DELAY_SECONDS;
-                }
+                delay = spike <= 0.001f ? WALKER_ENEMY_CROUCH_SECONDS : 0.0f;
             }
             if (delay > 0.0f) {
                 delay -= dt;
                 if (delay <= 0.0f) {
                     delay = 0.0f;
-                    spike = 1.0f;
                 }
             } else {
-                spike = 1.0f;
+                float deploy_step = WALKER_ENEMY_SPIKE_DEPLOY_SECONDS > 0.0f ?
+                                    dt / WALKER_ENEMY_SPIKE_DEPLOY_SECONDS : 1.0f;
+                spike = GameClampF(spike + deploy_step, 0.0f, 1.0f);
             }
         } else {
             delay = 0.0f;
             float recovery_step = WALKER_ENEMY_SPIKE_RETRACT_SECONDS > 0.0f ? dt / WALKER_ENEMY_SPIKE_RETRACT_SECONDS : 1.0f;
-            spike = GameClampF(spike - recovery_step, 0.0f, 1.0f);
+            if (always_spiked) {
+                spike = 1.0f;
+            } else {
+                spike = GameClampF(spike - recovery_step, 0.0f, 1.0f);
+            }
             crouch = GameClampF(crouch - recovery_step, 0.0f, 1.0f);
         }
 
-        // Resume the saved patrol direction only after both visual states have fully recovered.
-        int patrol_active = !player_near && spike <= 0.0f && crouch <= 0.0f;
+        float eye_step = WALKER_ENEMY_EYE_CROUCH_SECONDS > 0.0f ?
+                         dt / WALKER_ENEMY_EYE_CROUCH_SECONDS : 1.0f;
+        if (player_near) {
+            eye_crouch = GameClampF(eye_crouch + eye_step, 0.0f, 1.0f);
+        } else {
+            eye_crouch = GameClampF(eye_crouch - eye_step, 0.0f, 1.0f);
+        }
+
+        // M2 enemies retain their fully deployed spikes while patrolling.
+        int patrol_active = player_near == 0 && (always_spiked || spike <= 0.0f) && crouch <= 0.0f;
         if (patrol_active) {
             int direction = state->walker_enemy_direction[i] < 0 ? -1 : 1;
             float tangent_delta = (float)direction * def->move_speed * dt;
@@ -1761,6 +1784,7 @@ static void GameUpdateWalkerEnemies(GameState* state, float dt) {
         state->walker_enemy_spike_amount[i] = spike;
         state->walker_enemy_spike_delay[i] = delay;
         state->walker_enemy_squash_amount[i] = crouch;
+        state->walker_enemy_eye_crouch_amount[i] = eye_crouch;
     }
 }static int GamePlayerTouchesWalkerEnemy(const GameState* state) {
     RectF player = GamePlayerRect(state);
@@ -2041,11 +2065,8 @@ static void GameUpdateRoomPressureSwitches(GameState* state, float dt) {
     int box_count = GameRoomGravityBoxCount(room);
     for (int i = 0; i < switch_count; ++i) {
         const PressureSwitchDevice* sw = &room->pressure_switches[i];
-        int pressed = 0;
-        if (sw->activator == PRESSURE_SWITCH_PLAYER || sw->activator == PRESSURE_SWITCH_ANY) {
-            pressed = GamePressureSwitchTouchedByRect(state, sw, &pr);
-        }
-        if (!pressed && (sw->activator == PRESSURE_SWITCH_BOX || sw->activator == PRESSURE_SWITCH_ANY)) {
+        int pressed = GamePressureSwitchTouchedByRect(state, sw, &pr);
+        if (!pressed) {
             for (int box_index = 0; box_index < box_count; ++box_index) {
                 if (GamePressureSwitchTouchedByRect(state, sw, &state->gravity_boxes[box_index])) {
                     pressed = 1;
@@ -2053,7 +2074,7 @@ static void GameUpdateRoomPressureSwitches(GameState* state, float dt) {
                 }
             }
         }
-        if (!pressed && sw->activator == PRESSURE_SWITCH_ANY) {
+        if (!pressed) {
             int piston_count = room->piston_count < GAME_MAX_PISTONS ? room->piston_count : GAME_MAX_PISTONS;
             for (int piston_index = 0; piston_index < piston_count; ++piston_index) {
                 RectF plate = PistonPlateRectForExtension(&room->pistons[piston_index], state->piston_effective_extension[piston_index]);

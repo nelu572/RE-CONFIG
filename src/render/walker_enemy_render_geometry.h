@@ -45,6 +45,7 @@ static inline void WalkerEnemyBuildRenderGeometry(RenderContext* render,
                                                   float spike_amount,
                                                   float response_squash,
                                                   float turn_squash,
+                                                  float spike_length_scale,
                                                   WalkerEnemyRenderGeometry* out) {
     int natural_x = WorldX(render, enemy->x);
     int natural_w = WorldW(render, enemy->w);
@@ -53,11 +54,11 @@ static inline void WalkerEnemyBuildRenderGeometry(RenderContext* render,
 
     float squash_amount = response_squash + turn_squash * 0.20f;
     if (squash_amount > 1.0f) squash_amount = 1.0f;
-    float widen_amount = response_squash * 0.08f + turn_squash * 0.02f;
-    int widened_w = (int)((float)natural_w * (1.0f + widen_amount) + 0.5f);
-    out->body_w = WalkerEnemyGeometryMaxI(natural_w, widened_w);
+    float width_scale = 1.0f - response_squash * 0.08f + turn_squash * 0.02f;
+    int adjusted_w = (int)((float)natural_w * width_scale + 0.5f);
+    out->body_w = WalkerEnemyGeometryMaxI(4, adjusted_w);
     out->body_x = natural_x + natural_w / 2 - out->body_w / 2;
-    int squash_px = (int)((float)out->body_h * 0.18f * squash_amount + 0.5f);
+    int squash_px = (int)((float)out->body_h * 0.12f * squash_amount + 0.5f);
     out->radius_x = WalkerEnemyGeometryMaxI(4, out->body_w / 2);
     int dome_height = WalkerEnemyGeometryMinI(out->body_h - 4, out->radius_x);
     out->radius_y = WalkerEnemyGeometryMaxI(4, dome_height - squash_px);
@@ -104,9 +105,9 @@ static inline void WalkerEnemyBuildRenderGeometry(RenderContext* render,
             spike->left_y = floor_y - wedge_height;
             spike->right_x = base_x;
             spike->right_y = floor_y;
-            spike->cut_x = outline_x + outward_x * VISIBLE_SPIKE_LENGTH * 0.65f * spike_amount;
+            spike->cut_x = outline_x + outward_x * VISIBLE_SPIKE_LENGTH * spike_length_scale * 0.65f * spike_amount;
             spike->cut_y = floor_y;
-            spike->tip_x = outline_x + outward_x * VISIBLE_SPIKE_LENGTH * spike_amount;
+            spike->tip_x = outline_x + outward_x * VISIBLE_SPIKE_LENGTH * spike_length_scale * spike_amount;
             spike->tip_y = floor_y - wedge_height * 0.60f;
         } else {
             float tangent_x = -outward_y;
@@ -118,8 +119,8 @@ static inline void WalkerEnemyBuildRenderGeometry(RenderContext* render,
             spike->right_y = base_y + tangent_y * half_width;
             spike->cut_x = 0.0f;
             spike->cut_y = 0.0f;
-            spike->tip_x = outline_x + outward_x * VISIBLE_SPIKE_LENGTH * spike_amount;
-            spike->tip_y = outline_y + outward_y * VISIBLE_SPIKE_LENGTH * spike_amount;
+            spike->tip_x = outline_x + outward_x * VISIBLE_SPIKE_LENGTH * spike_length_scale * spike_amount;
+            spike->tip_y = outline_y + outward_y * VISIBLE_SPIKE_LENGTH * spike_length_scale * spike_amount;
         }
     }
 }

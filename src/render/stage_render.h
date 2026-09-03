@@ -33,7 +33,10 @@ struct StageRenderState {
     int walker_enemy_count;
     const float* walker_enemy_spike_amount;
     const float* walker_enemy_squash_amount;
+    const float* walker_enemy_eye_crouch_amount;
     const float* walker_enemy_turn_squash;
+    const int* walker_enemy_direction;
+    const int* walker_enemy_player_near;
     const int* pressure_switch_pressed;
     const float* pressure_switch_anim;
     const float* pressure_platform_open_amount;

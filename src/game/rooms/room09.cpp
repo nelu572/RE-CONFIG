@@ -35,7 +35,8 @@ static const RectF g_room09_platforms[] = {
     { T(86), T(22), T(18), T(5) },
     { T(106), T(22), T(7), T(5) },
     { T(19), T(23), T(2), T(1) },
-    { T(0), T(24), T(13), T(1) },
+    { T(0), T(24), T(7), T(1) },
+    { T(10), T(24), T(3), T(1) },
     { T(19), T(24), T(5), T(1) },
     { T(45), T(24), T(8), T(3) },
     { T(0), T(25), T(24), T(2) },
@@ -49,8 +50,9 @@ static const SpeakerDevice g_room09_speakers[] = {
     DefaultSpeakerAt(T(146), T(18)),
 };
 static const WalkerEnemyDef g_room09_walker_enemies[] = {
-    { { T(16.25f), T(22.55f), T(1.5f), T(0.9f) }, 120.0f, 1 },
-    { { T(110.25f), T(13.55f), T(1.5f), T(0.9f) }, 120.0f, 1 },
+    { { T(8.25f), T(23.55f), T(1.5f), T(0.9f) }, 120.0f, 1, WALKER_ENEMY_M1 },
+    { { T(16.25f), T(22.55f), T(1.5f), T(0.9f) }, 100.0f, 1, WALKER_ENEMY_M2 },
+    { { T(110.25f), T(13.55f), T(1.5f), T(0.9f) }, 100.0f, 1, WALKER_ENEMY_M2 },
 };
 
 static const PistonDevice g_room09_pistons[] = {
@@ -62,9 +64,9 @@ static const GravityBoxDef g_room09_gravity_boxes[] = {
     { DefaultGravityBoxAt(T(113.25f), T(8.25f)) },
 };
 static const PressureSwitchDevice g_room09_pressure_switches[] = {
-    { { T(58), T(13), T(2), T(1) }, PRESSURE_SWITCH_ANY, PRESSURE_SWITCH_MOUNT_AUTO },
-    { { T(116), T(10), T(2), T(1) }, PRESSURE_SWITCH_ANY, PRESSURE_SWITCH_MOUNT_AUTO },
-    { { T(120), T(19), T(1), T(2) }, PRESSURE_SWITCH_ANY, PRESSURE_SWITCH_MOUNT_AUTO },
+    { { T(58), T(13), T(2), T(1) } },
+    { { T(116), T(10), T(2), T(1) } },
+    { { T(120), T(19), T(1), T(2) } },
 };
 
 static const PressurePlatformDevice g_room09_pressure_platforms[] = {
@@ -81,8 +83,8 @@ extern const RoomDef g_room09 = {
     g_room09_speakers,
     (int)(sizeof(g_room09_speakers) / sizeof(g_room09_speakers[0])),
     { -T(4), -T(4), T(1), T(1) },
-    T(72),
-    T(9),
+    T(4),
+    T(23),
     { T(0), T(0), T(168), T(27) },
     T(4),
     GRAVITY_DOWN,

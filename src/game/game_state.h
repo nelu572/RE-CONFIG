@@ -68,6 +68,7 @@ struct GameState {
     float walker_enemy_spike_amount[GAME_MAX_WALKER_ENEMIES];
     float walker_enemy_spike_delay[GAME_MAX_WALKER_ENEMIES];
     float walker_enemy_squash_amount[GAME_MAX_WALKER_ENEMIES];
+    float walker_enemy_eye_crouch_amount[GAME_MAX_WALKER_ENEMIES];
     float walker_enemy_turn_squash[GAME_MAX_WALKER_ENEMIES];
     int walker_enemy_player_near[GAME_MAX_WALKER_ENEMIES];
 };

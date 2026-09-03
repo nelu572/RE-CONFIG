@@ -172,6 +172,7 @@ static void ExpandWalkerRenderBounds(float x,
 }
 
 static RectI WalkerEnemiesDirtyRect(RenderContext* render,
+                                    const RoomDef* room,
                                     const RectF* enemies,
                                     int enemy_count,
                                     const float* spike_amounts,
@@ -185,12 +186,15 @@ static RectI WalkerEnemiesDirtyRect(RenderContext* render,
         float spike_amount = spike_amounts ? spike_amounts[i] : 0.0f;
         float squash_amount = squash_amounts ? squash_amounts[i] : 0.0f;
         float turn_squash = turn_squash_amounts ? turn_squash_amounts[i] : 0.0f;
+        float spike_length_scale = room && i < room->walker_enemy_count &&
+                                   room->walker_enemies[i].spawn_code == WALKER_ENEMY_M2 ? 0.80f : 1.0f;
         WalkerEnemyRenderGeometry geometry;
         WalkerEnemyBuildRenderGeometry(render,
                                        &enemies[i],
                                        spike_amount,
                                        squash_amount,
                                        turn_squash,
+                                       spike_length_scale,
                                        &geometry);
         float min_x = (float)geometry.body_x;
         float min_y = (float)geometry.body_y;
@@ -335,7 +339,7 @@ static void CaptureCachedFrameState(const StageCacheState* state) {
     g_prev_player_dirty = PlayerDirtyRect(state->render, state->player);
     g_prev_player_particles_dirty = PlayerParticlesDirtyRect(state->render, state->player_particles, state->player_particle_count);
     g_prev_gravity_boxes_dirty = GravityBoxesDirtyRect(state->render, state->gravity_boxes, state->gravity_box_count);
-    g_prev_walker_enemies_dirty = WalkerEnemiesDirtyRect(state->render, state->walker_enemies, state->walker_enemy_count, state->walker_enemy_spike_amount, state->walker_enemy_squash_amount, state->walker_enemy_turn_squash);
+    g_prev_walker_enemies_dirty = WalkerEnemiesDirtyRect(state->render, state->room, state->walker_enemies, state->walker_enemy_count, state->walker_enemy_spike_amount, state->walker_enemy_squash_amount, state->walker_enemy_turn_squash);
     g_prev_menu_open = state->settings_overlay_visible;
     g_prev_room_solved = state->room_solved;
     g_prev_context_room = state->current_room;
@@ -393,7 +397,7 @@ void StageCacheDrawCached(const StageCacheState* state, StageCacheDrawCallback d
         AppendDirtyRect(dirty, &count, MAX_DIRTY_RECTS,
                         GravityBoxesDirtyRect(state->render, state->gravity_boxes, state->gravity_box_count));
         AppendPressureDeviceDirtyRects(state, dirty, &count, MAX_DIRTY_RECTS);
-        RectI walker_current_dirty = WalkerEnemiesDirtyRect(state->render, state->walker_enemies, state->walker_enemy_count, state->walker_enemy_spike_amount, state->walker_enemy_squash_amount, state->walker_enemy_turn_squash);
+        RectI walker_current_dirty = WalkerEnemiesDirtyRect(state->render, state->room, state->walker_enemies, state->walker_enemy_count, state->walker_enemy_spike_amount, state->walker_enemy_squash_amount, state->walker_enemy_turn_squash);
         AppendDirtyRect(dirty, &count, MAX_DIRTY_RECTS, RectUnion(g_prev_walker_enemies_dirty, walker_current_dirty));
         AppendDirtyRect(dirty, &count, MAX_DIRTY_RECTS, g_prev_player_dirty);
         AppendDirtyRect(dirty, &count, MAX_DIRTY_RECTS, PlayerDirtyRect(state->render, state->player));
