@@ -651,6 +651,7 @@ static StageRenderState CurrentStageRenderState() {
     state.pressure_platform_open_amount = g_game.pressure_platform_open_amount;
     state.room_exit_unlocked = g_game.room_exit_unlocked;
     state.checkpoint_active = g_game.checkpoint_active;
+    state.checkpoint_index = g_game.checkpoint_index;
     state.checkpoint_flag_drop = g_game.checkpoint_flag_drop;
     state.type_a_off_line_thickness = g_type_a_off_line_thickness;
     state.type_a_off_visible_path_len = g_type_a_off_visible_path_len;

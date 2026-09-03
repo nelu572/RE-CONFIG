@@ -117,6 +117,8 @@ struct RoomDef {
     int walker_enemy_count = 0;
     int pressure_barrier_count = 0;
     RectF checkpoint = {};
+    const RectF* checkpoints = 0;
+    int checkpoint_count = 0;
 };
 
 const RoomDef* GetRoom(int index);
@@ -124,3 +126,5 @@ int RoomCount();
 int DevelopedRoomCount();
 RectF PressurePlatformRectAt(const PressurePlatformDevice* platform, float open_amount);
 PressureSwitchMount PressureSwitchMountFor(const RoomDef* room, const PressureSwitchDevice* sw);
+int RoomCheckpointCount(const RoomDef* room);
+const RectF* RoomCheckpointAt(const RoomDef* room, int index);

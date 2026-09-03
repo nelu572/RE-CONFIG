@@ -7,7 +7,7 @@
 static constexpr int GAME_MAX_GRAVITY_BOXES = 4;
 static constexpr int GAME_MAX_PISTONS = 16;
 static constexpr int GAME_MAX_PRESSURE_SWITCHES = 8;
-static constexpr int GAME_MAX_PRESSURE_PLATFORMS = 8;
+static constexpr int GAME_MAX_PRESSURE_PLATFORMS = 16;
 static constexpr int GAME_MAX_WALKER_ENEMIES = 8;
 
 enum GameAudioEvent {
@@ -34,6 +34,7 @@ struct GameState {
     GravityDirection gravity_direction;
     int current_room;
     int checkpoint_room;
+    int checkpoint_index;
     int checkpoint_active;
     float checkpoint_flag_drop;
     int room10_route_initialized;

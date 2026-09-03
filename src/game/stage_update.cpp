@@ -31,7 +31,12 @@ static constexpr float PLAYER_FLEX_SOFT_AIR_TANGENT = 39.2f;
 static constexpr float PLAYER_FLEX_SOFT_AIR_GRAVITY = 41.6f;
 static constexpr float PLAYER_FLEX_SOFT_APPROACH_SPEED = 95.0f;
 static constexpr float PLAYER_FLEX_FIRM_GROW_SPEED = 220.0f;
-static constexpr int GAME_MAX_DYNAMIC_SOLIDS = 32;
+// Every piston can contribute a body, shaft, and plate; the remaining
+// dynamic devices each contribute one solid.
+static constexpr int GAME_MAX_DYNAMIC_SOLIDS = GAME_MAX_PISTONS * 3 +
+                                               GAME_MAX_PRESSURE_PLATFORMS +
+                                               GAME_MAX_PRESSURE_SWITCHES +
+                                               GAME_MAX_GRAVITY_BOXES;
 static constexpr float GRAVITY_BOX_ACCEL = 1850.0f;
 static constexpr float GRAVITY_BOX_TANGENT_DAMPING = 24.0f;
 static constexpr float GRAVITY_BOX_MAX_GRAVITY_SPEED = 1250.0f;
@@ -210,15 +215,8 @@ static int GamePressureSwitchMaskPressed(const GameState* state, unsigned int sw
 }
 
 static int GameRoom10PlatformCanOpen(const GameState* state, const PressurePlatformDevice* platform) {
-    if (state->current_room != ROOM10_INDEX || !platform->disappears_when_open) {
-        return 1;
-    }
-    if (platform->required_switch_mask == (1u << 2)) {
-        return !state->room10_route3_safe;
-    }
-    if (platform->required_switch_mask == (1u << 3)) {
-        return state->room10_route3_safe;
-    }
+    (void)state;
+    (void)platform;
     return 1;
 }
 static float GamePressurePlatformAmountPerSecond(const PressurePlatformDevice* platform, float pixels_per_second) {
@@ -358,8 +356,10 @@ static int GameRectOverlapsPressureSwitchCarryBlockers(const GameState* state, c
     int pressure_platform_count = GameRoomPressurePlatformCount(room);
     for (int i = 0; i < pressure_platform_count; ++i) {
         const PressurePlatformDevice* platform = &room->pressure_platforms[i];
+        // X is stationary. It blocks like a fixed platform only while fully
+        // closed; any fade-out amount is already non-solid everywhere else.
         if (platform->disappears_when_open &&
-            GameClampF(state->pressure_platform_open_amount[i], 0.0f, 1.0f) < 1.0f) {
+            GameClampF(state->pressure_platform_open_amount[i], 0.0f, 1.0f) > 0.0f) {
             continue;
         }
         RectF pressure_platform = PressurePlatformRectAt(platform, state->pressure_platform_open_amount[i]);
@@ -669,8 +669,12 @@ RectF GamePlayerRect(const GameState* state) {
     return PlayerCollisionRect(&state->player);
 }
 
+static int GameRoomCheckpointCount(const RoomDef* room) {
+    return RoomCheckpointCount(room);
+}
+
 static int GameRoomHasCheckpoint(const RoomDef* room) {
-    return room && room->checkpoint.w > 0.0f && room->checkpoint.h > 0.0f;
+    return GameRoomCheckpointCount(room) > 0;
 }
 
 void GameClearCheckpoint(GameState* state) {
@@ -678,6 +682,7 @@ void GameClearCheckpoint(GameState* state) {
         return;
     }
     state->checkpoint_room = -1;
+    state->checkpoint_index = -1;
     state->checkpoint_active = 0;
     state->checkpoint_flag_drop = 0.0f;
 }
@@ -711,13 +716,16 @@ void GameResetStage(GameState* state) {
     }
     DeleteState saved_delete_state = state->delete_state;
     const RoomDef* room = GameCurrentRoom(state);
-    if (!GameRoomHasCheckpoint(room) || state->checkpoint_room != state->current_room) {
+    if (!GameRoomHasCheckpoint(room) || state->checkpoint_room != state->current_room ||
+        state->checkpoint_index < 0 || state->checkpoint_index >= GameRoomCheckpointCount(room)) {
         GameClearCheckpoint(state);
     }
-    int checkpoint_respawn = state->checkpoint_active && state->checkpoint_room == state->current_room;
+    const RectF* checkpoint = state->checkpoint_active && state->checkpoint_room == state->current_room ?
+        RoomCheckpointAt(room, state->checkpoint_index) : 0;
+    int checkpoint_respawn = checkpoint != 0;
     state->room_start_state = GameBuildRoomStartState(room);
-    state->player.x = checkpoint_respawn ? room->checkpoint.x : state->room_start_state.player_x;
-    state->player.y = checkpoint_respawn ? room->checkpoint.y : state->room_start_state.player_y;
+    state->player.x = checkpoint_respawn ? checkpoint->x : state->room_start_state.player_x;
+    state->player.y = checkpoint_respawn ? checkpoint->y : state->room_start_state.player_y;
     state->checkpoint_flag_drop = checkpoint_respawn ? 1.0f : 0.0f;
     state->player.collision_w = PLAYER_FLEX_NORMAL_TANGENT;
     state->player.collision_h = PLAYER_FLEX_NORMAL_GRAVITY;
@@ -2470,9 +2478,6 @@ static void GameUpdateRoomPressureSwitches(GameState* state, float dt) {
     }
 
     int unlocked = switch_count > 0 && GamePressureSwitchMaskPressed(state, 0);
-    if (state->current_room == ROOM10_INDEX && switch_count > 1) {
-        unlocked = GamePressureSwitchMaskPressed(state, 1u << 1);
-    }
     if (switch_count <= 0) {
         unlocked = !room->exit_requires_pressure_switches;
     }
@@ -2531,15 +2536,22 @@ static void GameUpdateRoomPressureSwitches(GameState* state, float dt) {
 
 static void GameUpdateRoomCheckpoint(GameState* state, float dt) {
     const RoomDef* room = GameCurrentRoom(state);
-    if (!GameRoomHasCheckpoint(room)) {
+    int checkpoint_count = GameRoomCheckpointCount(room);
+    if (checkpoint_count <= 0) {
         return;
     }
 
     RectF player = GamePlayerRect(state);
-    if (!state->checkpoint_active && RectsOverlap(&player, &room->checkpoint)) {
-        state->checkpoint_room = state->current_room;
-        state->checkpoint_active = 1;
-        state->checkpoint_flag_drop = 0.0f;
+    for (int index = 0; index < checkpoint_count; ++index) {
+        const RectF* checkpoint = RoomCheckpointAt(room, index);
+        if (checkpoint && RectsOverlap(&player, checkpoint) &&
+            (!state->checkpoint_active || state->checkpoint_room != state->current_room || state->checkpoint_index != index)) {
+            state->checkpoint_room = state->current_room;
+            state->checkpoint_index = index;
+            state->checkpoint_active = 1;
+            state->checkpoint_flag_drop = 0.0f;
+            break;
+        }
     }
     if (state->checkpoint_active && state->checkpoint_room == state->current_room) {
         float step = CHECKPOINT_FLAG_DROP_SECONDS > 0.0f ? dt / CHECKPOINT_FLAG_DROP_SECONDS : 1.0f;

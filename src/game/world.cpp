@@ -26,6 +26,17 @@ int DevelopedRoomCount() {
     return RoomCount();
 }
 
+int RoomCheckpointCount(const RoomDef* room) {
+    if (!room) return 0;
+    if (room->checkpoints && room->checkpoint_count > 0) return room->checkpoint_count;
+    return room->checkpoint.w > 0.0f && room->checkpoint.h > 0.0f ? 1 : 0;
+}
+
+const RectF* RoomCheckpointAt(const RoomDef* room, int index) {
+    if (!room || index < 0 || index >= RoomCheckpointCount(room)) return 0;
+    return room->checkpoints && room->checkpoint_count > 0 ? &room->checkpoints[index] : &room->checkpoint;
+}
+
 RectF PressurePlatformRectAt(const PressurePlatformDevice* platform, float open_amount) {
     RectF rect = platform->rect;
     if (open_amount < 0.0f) open_amount = 0.0f;

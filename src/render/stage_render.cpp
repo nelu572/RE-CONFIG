@@ -1160,35 +1160,37 @@ static TrailVertex CheckpointFlagVertex(int x, int y, uint32_t color) {
 }
 
 static void DrawRoomCheckpoint(const StageRenderState* state) {
-    const RectF* checkpoint = &state->room->checkpoint;
-    if (checkpoint->w <= 0.0f || checkpoint->h <= 0.0f) {
-        return;
+    int checkpoint_count = RoomCheckpointCount(state->room);
+    for (int index = 0; index < checkpoint_count; ++index) {
+        const RectF* checkpoint = RoomCheckpointAt(state->room, index);
+        if (!checkpoint) continue;
+
+        int x = WorldX(state->render, checkpoint->x);
+        int y = WorldY(state->render, checkpoint->y);
+        int w = WorldW(state->render, checkpoint->w);
+        int h = WorldH(state->render, checkpoint->h);
+        int pole_w = StageMaxI(3, w / 12);
+        int pole_x = x + w / 5;
+        int pole_top = y + 2;
+        int pole_bottom = y + h - 3;
+        uint32_t pole_color = state->text_color;
+
+        DrawRect(state->render, pole_x, pole_top, pole_w, pole_bottom - pole_top, pole_color);
+        DrawRect(state->render, pole_x - 4, pole_bottom - 2, pole_w + 8, 3, pole_color);
+
+        float drop = state->checkpoint_active && state->checkpoint_index == index ?
+            StageClampF(state->checkpoint_flag_drop, 0.0f, 1.0f) : 0.0f;
+        drop = drop * drop * (3.0f - 2.0f * drop);
+        int flag_w = StageMaxI(18, w * 3 / 5);
+        int flag_h = StageMaxI(12, h * 7 / 20);
+        int flag_travel = StageMaxI(0, h - flag_h - 9);
+        int flag_x = pole_x + pole_w;
+        int flag_y = pole_top + 2 + (int)(drop * (float)flag_travel + 0.5f);
+        TrailVertex top = CheckpointFlagVertex(flag_x, flag_y, state->platform_color);
+        TrailVertex tip = CheckpointFlagVertex(flag_x + flag_w, flag_y + flag_h / 2, state->platform_color);
+        TrailVertex bottom = CheckpointFlagVertex(flag_x, flag_y + flag_h, state->platform_color);
+        DrawAlphaTriangle(state->render, &top, &tip, &bottom);
     }
-
-    int x = WorldX(state->render, checkpoint->x);
-    int y = WorldY(state->render, checkpoint->y);
-    int w = WorldW(state->render, checkpoint->w);
-    int h = WorldH(state->render, checkpoint->h);
-    int pole_w = StageMaxI(3, w / 12);
-    int pole_x = x + w / 5;
-    int pole_top = y + 2;
-    int pole_bottom = y + h - 3;
-    uint32_t pole_color = state->text_color;
-
-    DrawRect(state->render, pole_x, pole_top, pole_w, pole_bottom - pole_top, pole_color);
-    DrawRect(state->render, pole_x - 4, pole_bottom - 2, pole_w + 8, 3, pole_color);
-
-    float drop = state->checkpoint_active ? StageClampF(state->checkpoint_flag_drop, 0.0f, 1.0f) : 0.0f;
-    drop = drop * drop * (3.0f - 2.0f * drop);
-    int flag_w = StageMaxI(18, w * 3 / 5);
-    int flag_h = StageMaxI(12, h * 7 / 20);
-    int flag_travel = StageMaxI(0, h - flag_h - 9);
-    int flag_x = pole_x + pole_w;
-    int flag_y = pole_top + 2 + (int)(drop * (float)flag_travel + 0.5f);
-    TrailVertex top = CheckpointFlagVertex(flag_x, flag_y, state->platform_color);
-    TrailVertex tip = CheckpointFlagVertex(flag_x + flag_w, flag_y + flag_h / 2, state->platform_color);
-    TrailVertex bottom = CheckpointFlagVertex(flag_x, flag_y + flag_h, state->platform_color);
-    DrawAlphaTriangle(state->render, &top, &tip, &bottom);
 }
 
 static int BoxSpriteSourceCornerPixel(int sx, int sy) {

@@ -411,8 +411,11 @@ void StageCacheDrawCached(const StageCacheState* state, StageCacheDrawCallback d
         AppendDirtyRect(dirty, &count, MAX_DIRTY_RECTS, PlayerParticlesDirtyRect(state->render, state->player_particles, state->player_particle_count));
         AppendDirtyRect(dirty, &count, MAX_DIRTY_RECTS, ExitSequenceDirtyRect(state->render, &state->room->exit));
         AppendDirtyRect(dirty, &count, MAX_DIRTY_RECTS, SpeakerWavesDirtyRect(state->render, state->room));
-        AppendDirtyRect(dirty, &count, MAX_DIRTY_RECTS,
-                        WorldRectDirtyRect(state->render, &state->room->checkpoint, 6));
+        for (int checkpoint_index = 0; checkpoint_index < RoomCheckpointCount(state->room); ++checkpoint_index) {
+            const RectF* checkpoint = RoomCheckpointAt(state->room, checkpoint_index);
+            if (checkpoint) AppendDirtyRect(dirty, &count, MAX_DIRTY_RECTS,
+                                             WorldRectDirtyRect(state->render, checkpoint, 6));
+        }
         AppendDirtyRect(dirty, &count, MAX_DIRTY_RECTS, PistonsDirtyRect(state->render, state->room));
     }
     if (state->player_dead || g_prev_player_dead) {

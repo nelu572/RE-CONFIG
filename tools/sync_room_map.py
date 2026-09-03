@@ -124,6 +124,15 @@ def marker_rects(rows: list[str], marker: str, require_id: bool) -> list[dict]:
     return sorted(result, key=lambda item: (item["rect"][1], item["rect"][0]))
 
 
+def pressure_switch_mount(rows: list[str], device: dict) -> str:
+    x, y, w, h = device["rect"]
+    if w >= h:
+        return "PRESSURE_SWITCH_MOUNT_DOWN"
+    left_contacts = sum(rows[tile_y][x - 1] == "#" for tile_y in range(y, y + h) if x > 0)
+    right_contacts = sum(rows[tile_y][x + w] == "#" for tile_y in range(y, y + h) if x + w < len(rows[tile_y]))
+    return "PRESSURE_SWITCH_MOUNT_LEFT" if left_contacts > right_contacts else "PRESSURE_SWITCH_MOUNT_RIGHT"
+
+
 def fmt_num(value: float | int) -> str:
     if float(value).is_integer():
         return f"T({int(value)})"
@@ -169,6 +178,7 @@ def source_pistons(source: str) -> list[dict]:
             "y": float(y.rstrip("f")),
             "shaft_width": shaft_width,
             "plate_height": plate_height,
+            "plate_height_value": float(re.search(r"T\(([^)]+)\)", plate_height).group(1).rstrip("f")),
             "phase": phase,
         })
     return result
@@ -236,6 +246,8 @@ def compile_map(rows: list[str], source: str, room_id: str) -> str:
     remaining_starts = set(range(len(starts)))
     tuning_by_start = {}
     for piston in old_pistons:
+        if not remaining_starts:
+            break
         index = min(
             remaining_starts,
             key=lambda candidate: abs(starts[candidate]["rect"][0] - piston["x"]) + abs(starts[candidate]["rect"][1] - piston["y"]),
@@ -254,8 +266,19 @@ def compile_map(rows: list[str], source: str, room_id: str) -> str:
             raise ValueError("I/i 피스톤은 수평 또는 수직으로만 이동해야 합니다.")
         direction = "PISTON_UP" if dy < 0 else "PISTON_DOWN" if dy > 0 else "PISTON_LEFT" if dx < 0 else "PISTON_RIGHT"
         device_width, device_body_height = (h, w) if dx else (w, h)
-        tuning = tuning_by_start.get(index, {"shaft_width": "T(0.90f)", "plate_height": "T(1)", "phase": "0.00f"})
-        piston_lines.append(f"{{ {fmt_num(x)}, {fmt_num(y)}, {fmt_num(device_width)}, {fmt_num(device_body_height)}, {tuning['shaft_width']}, {tuning['plate_height']}, {fmt_num(abs(dx + dy))}, {tuning['phase']}, {direction} }}")
+        tuning = tuning_by_start.get(index, {"shaft_width": "T(0.90f)", "plate_height": "T(1)", "plate_height_value": 1.0, "phase": "0.00f"})
+        shaft_width = tuning["shaft_width"]
+        plate_height = tuning["plate_height"]
+        body_x, body_y = x, y
+        if dx > 0:
+            body_x -= device_body_height
+        elif dx < 0:
+            body_x += tuning["plate_height_value"]
+        elif dy < 0:
+            body_y += tuning["plate_height_value"]
+        else:
+            body_y -= device_body_height
+        piston_lines.append(f"{{ {fmt_num(body_x)}, {fmt_num(body_y)}, {fmt_num(device_width)}, {fmt_num(device_body_height)}, {shaft_width}, {plate_height}, {fmt_num(abs(dx + dy))}, {tuning["phase"]}, {direction} }}")
     source = replace_array(source, f"g_room{room_id}_pistons", piston_lines)
 
     markers = []
@@ -277,9 +300,18 @@ def compile_map(rows: list[str], source: str, room_id: str) -> str:
         )
     source = replace_array(source, f"g_room{room_id}_walker_enemies", enemy_lines)
 
+    switches = sorted(marker_rects(rows, "T", True), key=lambda device: device["id"])
+    switch_masks = {
+        identifier: " | ".join(
+            f"1u << {index}"
+            for index, device in enumerate(switches)
+            if device["id"] == identifier
+        )
+        for identifier in {device["id"] for device in switches}
+    }
     switch_lines = [
-        f"{{ {fmt_rect(device['rect'])}, {'PRESSURE_SWITCH_MOUNT_RIGHT' if device['rect'][2] < device['rect'][3] else 'PRESSURE_SWITCH_MOUNT_DOWN'} }}"
-        for device in sorted(marker_rects(rows, "T", True), key=lambda device: device["id"])
+        f"{{ {fmt_rect(device['rect'])}, {pressure_switch_mount(rows, device)} }}"
+        for device in switches
     ]
     source = replace_array(source, f"g_room{room_id}_pressure_switches", switch_lines)
 
@@ -287,39 +319,58 @@ def compile_map(rows: list[str], source: str, room_id: str) -> str:
     for upper, lower, horizontal in (("H", "h", True), ("V", "v", False)):
         targets = marker_rects(rows, lower, True)
         for closed in marker_rects(rows, upper, True):
-            target = find_open(closed, targets)
             x, y, w, h = closed["rect"]
-            dx, dy = target["rect"][0] - x, target["rect"][1] - y
-            if (horizontal and dy) or (not horizontal and dx):
-                raise ValueError(f"{upper}/{lower} 이동 방향이 맞지 않습니다.")
+            if any(target["id"] == closed["id"] for target in targets):
+                target = find_open(closed, targets)
+                dx, dy = target["rect"][0] - x, target["rect"][1] - y
+                if (horizontal and dy) or (not horizontal and dx):
+                    raise ValueError(f"{upper}/{lower} movement direction is invalid.")
+            else:
+                dx, dy = (w, 0) if horizontal else (0, h)
             pressure.append((closed["rect"], dx, dy, closed["id"], False))
     for closed in marker_rects(rows, "X", True):
         pressure.append((closed["rect"], 0, 0, closed["id"], True))
     pressure.sort(key=lambda item: (item[0][1], item[0][0]))
     pressure_lines = [
-        f"{{ {fmt_rect(rect)}, {fmt_num(dx)}, {fmt_num(dy)}, 1u << {identifier - 1}{', 1' if disappears else ''} }}"
+        f"{{ {fmt_rect(rect)}, {fmt_num(dx)}, {fmt_num(dy)}, {switch_masks[identifier]}{', 1' if disappears else ''} }}"
         for rect, dx, dy, identifier, disappears in pressure
     ]
     source = replace_array(source, f"g_room{room_id}_pressure_platforms", pressure_lines)
 
-    start, exit_, checkpoint = one_marker(rows, "P"), one_marker(rows, "E"), one_marker(rows, "C")
+    start = one_marker(rows, "P")
+    exit_components = components(cells(rows, "E"))
+    if len(exit_components) != 1:
+        raise ValueError("E marker must be one connected rectangle.")
+    exit_rects = pack_rects(exit_components[0])
+    if len(exit_rects) != 1:
+        raise ValueError("E marker must be rectangular.")
+    exit_rect = exit_rects[0]
+    checkpoints = sorted(cells(rows, "C"), key=lambda cell: (cell[1], cell[0]))
+    checkpoint_name = f"g_room{room_id}_checkpoints"
+    checkpoint_lines = [fmt_rect((x, y, 1, 1)) for x, y in checkpoints] or [fmt_rect((0, 0, 0, 0))]
+    checkpoint_decl = f"static const RectF {checkpoint_name}[] = {{" + fmt_array(checkpoint_lines) + "};" + "\n"
+    checkpoint_pattern = rf"static const RectF {re.escape(checkpoint_name)}\[\]\s*=\s*\{{.*?\s*\}};"
+    if re.search(checkpoint_pattern, source, re.S):
+        source = replace_array(source, checkpoint_name, checkpoint_lines)
+    else:
+        source = source.replace("\nextern const RoomDef", "\n" + checkpoint_decl + "\nextern const RoomDef", 1)
     room_def = (
-        r"\{\s*T\([^)]+\),\s*T\([^)]+\),\s*T\(1\),\s*T\(1\)\s*\},\s*"
+        r"\{\s*T\([^)]+\),\s*T\([^)]+\),\s*T\([^)]+\),\s*T\([^)]+\)\s*\},\s*"
         r"T\([^)]+\),\s*T\([^)]+\),\s*\{\s*T\(0\)"
     )
     room_def_value = (
-        f"{{ {fmt_num(exit_[0])}, {fmt_num(exit_[1])}, T(1), T(1) }}, "
+        f"{fmt_rect(exit_rect)}, "
         f"{fmt_num(start[0])}, {fmt_num(start[1])}, {{ T(0)"
     )
     source, count = re.subn(room_def, room_def_value, source, count=1, flags=re.S)
     if count != 1:
-        raise ValueError("RoomDef 시작 좌표를 찾을 수 없습니다.")
-    checkpoint_def = rf"(g_room{room_id}_walker_enemies,\s*\(int\)\(sizeof\(g_room{room_id}_walker_enemies\) / sizeof\(g_room{room_id}_walker_enemies\[0\]\)\),\s*\d+,\s*)(\{{\s*T\([^)]+\),\s*T\([^)]+\),\s*T\(1\),\s*T\(1\)\s*\}})(,\s*\}};)"
-    source, count = re.subn(
-        checkpoint_def, rf"\g<1>{fmt_rect((checkpoint[0], checkpoint[1], 1, 1))}\g<3>", source, count=1, flags=re.S
-    )
+        raise ValueError("RoomDef start position was not found.")
+    legacy_checkpoint = fmt_rect((checkpoints[0][0], checkpoints[0][1], 1, 1)) if checkpoints else fmt_rect((0, 0, 0, 0))
+    checkpoint_def = rf"(g_room{room_id}_walker_enemies,\s*\(int\)\(sizeof\(g_room{room_id}_walker_enemies\) / sizeof\(g_room{room_id}_walker_enemies\[0\]\)\),\s*\d+,\s*)(\{{\s*T\([^)]+\),\s*T\([^)]+\),\s*T\(1\),\s*T\(1\)\s*\}})(?:,\s*{checkpoint_name},\s*\(int\)\(sizeof\({checkpoint_name}\) / sizeof\({checkpoint_name}\[0\]\)\))?(,\s*\}};)"
+    replacement = rf"\g<1>{legacy_checkpoint}, {checkpoint_name}, (int)(sizeof({checkpoint_name}) / sizeof({checkpoint_name}[0]))\g<3>"
+    source, count = re.subn(checkpoint_def, replacement, source, count=1, flags=re.S)
     if count != 1:
-        raise ValueError("RoomDef 체크포인트 좌표를 찾을 수 없습니다.")
+        raise ValueError("RoomDef checkpoints were not found.")
     return source
 
 

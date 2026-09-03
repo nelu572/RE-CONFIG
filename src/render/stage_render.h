@@ -42,6 +42,7 @@ struct StageRenderState {
     const float* pressure_platform_open_amount;
     int room_exit_unlocked;
     int checkpoint_active;
+    int checkpoint_index;
     float checkpoint_flag_drop;
     int type_a_off_line_thickness;
     int type_a_off_visible_path_len;
