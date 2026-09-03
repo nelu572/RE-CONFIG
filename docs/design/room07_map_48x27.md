@@ -22,7 +22,7 @@ ROOM 07은 스피커, 박스, 스위치를 조합하는 첫 방이다. 박스를
 
 - K 영역은 5T x 9T 스피커 본체를 뜻한다.
 - 음파는 별도 타일로 표시하지 않는다.
-- T는 `PRESSURE_SWITCH_ANY`로 설정되어 있다.
+- T는 플레이어, 박스, 피스톤 플레이트, M1/M2가 모두 누를 수 있다.
 - H는 `open_offset_x`, V는 `open_offset_y`를 사용한다.
 
 ## 57 x 27 타일맵
@@ -67,6 +67,6 @@ ROOM 07은 스피커, 박스, 스위치를 조합하는 첫 방이다. 박스를
 
 - K는 `SpeakerDevice`로 만든다.
 - B는 `GravityBoxDef`로 만든다.
-- T는 `PressureSwitchDevice`로 만들고 `PRESSURE_SWITCH_ANY`를 사용한다.
+- T는 `PressureSwitchDevice`로 만든다.
 - H와 V는 모두 `PressurePlatformDevice`로 만들고, H는 `open_offset_x`, V는 `open_offset_y`를 사용한다.
 - H와 V의 열림 거리는 이동 방향의 마커 길이와 같게 둔다.

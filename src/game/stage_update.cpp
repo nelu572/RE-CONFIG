@@ -2084,7 +2084,7 @@ static void GameUpdateRoomPressureSwitches(GameState* state, float dt) {
                 }
             }
         }
-        if (!pressed && sw->activator == PRESSURE_SWITCH_WALKER_ENEMY) {
+        if (!pressed) {
             int enemy_count = GameRoomWalkerEnemyCount(room);
             for (int enemy_index = 0; enemy_index < enemy_count; ++enemy_index) {
                 if (GamePressureSwitchTouchedByRect(state, sw, &state->walker_enemies[enemy_index])) {

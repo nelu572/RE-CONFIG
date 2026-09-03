@@ -1,33 +1,30 @@
 # RE:CONFIG
 
-`RE:CONFIG` is a minimal platform puzzle prototype where keyboard-operated settings change world rules and state. The core premise is solving puzzles by changing configuration-like rules such as gravity, collision, and other system settings, not by simply deleting a single feature.
+`RE:CONFIG`는 키보드로 SETTINGS 값을 바꿔 월드 규칙과 상태를 조작하는 미니멀 플랫폼 퍼즐 프로토타입이다. 충돌, 음량, 유연성, 기믹 속도처럼 평범한 설정값을 바꿔 경로를 해결한다.
 
-This build is intentionally limited to Room 00 and Room 01. It is for checking whether a first-time player can learn movement, EXIT, BRICK objects, and world-rule settings without a full tutorial layer.
+현재 빌드에는 ROOM 00~10이 등록돼 있으며, 메인 메뉴와 스테이지 선택 화면에서 진입할 수 있다. ROOM 09는 구조 검증 중인 초안으로 EXIT가 비활성화돼 있다.
 
 ## Current Scope
 
-- Two 16:9 fixed-screen onboarding rooms
-- No camera movement
-- Rounded abstract player
-- Red geometric solid platforms
-- Room 00: player, flat floor, EXIT only
-- Room 01: player, BRICK wall, EXIT only
-- Red arched EXIT frame
-- Two-pane Korean settings menu appears over the room instead of replacing the screen
-- Room 01 system settings: planned `중력 방향`, implemented `BRICK 충돌`
-- Reset restores player position, settings, and room state
+- ROOM 00~10, 스테이지 선택, ROOM 경계 기반 카메라 추적
+- 둥근 플레이어, Red 계열 고정 플랫폼, 아치형 EXIT
+- 게임/오디오/시스템의 키보드 SETTINGS UI
+- BRICK 충돌, 캐릭터 유연성, 기믹 속도, BGM·효과음 음량
+- 스피커, 중력 박스, 피스톤, 압력 스위치·문·장벽, 체크포인트, M1/M2
+- R 또는 사망 시 현재 ROOM을 초기화하며, 활성화된 체크포인트가 있으면 그 지점에서 재시작
+
+현재 SETTINGS UI에는 중력 방향 항목을 노출하지 않는다. 자세한 기믹 규칙은 [기획 문서 인덱스](docs/reconfig_design.md)를 따른다.
 
 ## Controls
 
-- Move: Left / Right
-- Jump: Up
-- Down: Unused
-- Settings open / close: X
-- Move between category/settings panes: Left / Right
-- Select category/setting: Up / Down
-- Toggle setting: Z
-- Restart: R
-- Fullscreen: F11
+| 화면 | 조작 |
+| --- | --- |
+| 메인 메뉴 | `↑`/`↓` 선택, `Z` 확인 |
+| 스테이지 선택 | `←`/`→` 이동, `Z` ROOM 진입, `X` 또는 `Esc` 메인 메뉴 |
+| 게임 | `←`/`→` 이동, `↑` 점프, `R` 재시작 |
+| SETTINGS | `X` 열기/상위로/닫기, `↑`/`↓` 항목 이동, `←`/`→` 항목값 변경, `Z` 카테고리에서 항목으로 이동 |
+| 일시정지 | `Esc` 열기, `↑`/`↓` 선택, `Z` 확인, `X` 또는 `Esc` 재개 |
+| 전체 화면 | `F11` |
 
 ## Build
 
