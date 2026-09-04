@@ -19,10 +19,14 @@ DEFAULT_ENEMY_TUNING = {"M1": ("140.0f", "1"), "M2": ("100.0f", "1")}
 
 
 def rows_from_map(path: Path) -> list[str]:
-    match = re.search(r"~~~text\s*\r?\n(.*?)\r?\n~~~", path.read_text(encoding="utf-8"), re.S)
+    match = re.search(
+        r"(?P<fence>~~~|```)text\s*\r?\n(.*?)\r?\n(?P=fence)",
+        path.read_text(encoding="utf-8"),
+        re.S,
+    )
     if not match:
-        raise ValueError("~~~text ASCII 블록을 찾을 수 없습니다.")
-    rows = match.group(1).splitlines()
+        raise ValueError("text ASCII 코드 블록을 찾을 수 없습니다.")
+    rows = match.group(2).splitlines()
     if not rows or any(len(row) != len(rows[0]) for row in rows):
         raise ValueError("ASCII 맵의 행 길이가 일치하지 않습니다.")
     return rows
@@ -103,6 +107,37 @@ def one_marker(rows: list[str], char: str) -> tuple[int, int]:
 
 
 def marker_rects(rows: list[str], marker: str, require_id: bool) -> list[dict]:
+    if require_id:
+        marker_cells = cells(rows, marker)
+        if not marker_cells:
+            return []
+        anchors = []
+        for y, row in enumerate(rows):
+            for x, value in enumerate(row):
+                if not value.isdigit():
+                    continue
+                if x > 0 and row[x - 1] == "M":
+                    continue
+                if (x + 1, y) in marker_cells or (x, y + 1) in marker_cells:
+                    anchors.append((x, y, int(value)))
+        if not anchors:
+            raise ValueError(f"{marker} 장치는 좌측 또는 상단의 ID 숫자 하나가 필요합니다.")
+        used = set()
+        result = []
+        for x, y, identifier in anchors:
+            width = 1
+            while (x + width, y) in marker_cells and (x + width, y) not in used:
+                width += 1
+            height = 1
+            while all((tile_x, y + height) in marker_cells and (tile_x, y + height) not in used for tile_x in range(x, x + width)):
+                height += 1
+            for tile_y in range(y, y + height):
+                for tile_x in range(x, x + width):
+                    if (tile_x, tile_y) in marker_cells:
+                        used.add((tile_x, tile_y))
+            result.append({"rect": (x, y, width, height), "id": identifier})
+        return sorted(result, key=lambda item: (item["rect"][1], item["rect"][0]))
+
     result = []
     for component in components(cells(rows, marker)):
         extended = set(component)
@@ -151,8 +186,24 @@ def replace_array(source: str, name: str, lines: list[str]) -> str:
     pattern = rf"(static const.*?{re.escape(name)}\[\]\s*=\s*\{{).*?(\s*\}};)"
     match = re.search(pattern, source, re.S)
     if not match:
+        if not lines:
+            return source
         raise ValueError(f"{name} 배열을 찾을 수 없습니다.")
     return source[:match.end(1)] + fmt_array(lines) + "};" + source[match.end(2):]
+
+
+def upsert_room_array(source: str, ctype: str, name: str, lines: list[str]) -> str:
+    if lines:
+        return replace_array(source, name, lines)
+    array_pattern = rf"static const {re.escape(ctype)} {re.escape(name)}\[\]\s*=\s*\{{.*?\s*\}};\n?"
+    source, removed = re.subn(array_pattern, "", source, count=1, flags=re.S)
+    if not removed:
+        return source
+    reference_pattern = rf"{re.escape(name)},\s*\(int\)\(sizeof\({re.escape(name)}\) / sizeof\({re.escape(name)}\[0\]\)\)"
+    source, replaced = re.subn(reference_pattern, "0, 0", source, count=1)
+    if not replaced:
+        raise ValueError(f"{name} 배열의 RoomDef 참조를 찾을 수 없습니다.")
+    return source
 
 
 def find_open(closed: dict, targets: list[dict]) -> dict:
@@ -169,7 +220,7 @@ def find_open(closed: dict, targets: list[dict]) -> dict:
 def source_pistons(source: str) -> list[dict]:
     pattern = (
         r"\{\s*T\(([^)]+)\),\s*T\(([^)]+)\),\s*T\([^)]+\),\s*T\([^)]+\),\s*"
-        r"(T\([^)]+\)),\s*(T\([^)]+\)),\s*T\([^)]+\),\s*([^,]+),\s*PISTON_[A-Z]+\s*\}"
+        r"(T\([^)]+\)),\s*(T\([^)]+\)),\s*T\([^)]+\),\s*([^,}]+)(?:,\s*PISTON_[A-Z]+)?\s*\}"
     )
     result = []
     for x, y, shaft_width, plate_height, phase in re.findall(pattern, source):
@@ -182,6 +233,26 @@ def source_pistons(source: str) -> list[dict]:
             "phase": phase,
         })
     return result
+
+
+def upsert_pistons(source: str, room_id: str, lines: list[str]) -> str:
+    name = f"g_room{room_id}_pistons"
+    array_pattern = rf"static const PistonDevice {re.escape(name)}\[\]\s*=\s*\{{.*?\s*\}};\n?"
+    room_declaration = f"extern const RoomDef g_room{room_id}"
+    if re.search(array_pattern, source, re.S):
+        return replace_array(source, name, lines)
+    if not lines:
+        return source
+    if room_declaration not in source:
+        raise ValueError("RoomDef 앞에 피스톤 배열을 추가할 위치를 찾을 수 없습니다.")
+    declaration = f"static const PistonDevice {name}[] = {{" + fmt_array(lines) + "};\n"
+    source = source.replace(room_declaration, declaration + "\n" + room_declaration, 1)
+    legacy_pair = r"(kDefaultDeleteState\s*,\s*)0\s*,\s*0\s*,"
+    replacement = rf"\g<1>{name},\n    (int)(sizeof({name}) / sizeof({name}[0])),"
+    source, count = re.subn(legacy_pair, replacement, source, count=1)
+    if count != 1:
+        raise ValueError("RoomDef의 피스톤 필드를 갱신할 수 없습니다.")
+    return source
 
 
 def source_enemies(source: str) -> list[dict]:
@@ -218,7 +289,7 @@ def static_spike_markers(rows: list[str]) -> list[tuple[int, int, str]]:
 def upsert_static_spikes(source: str, room_id: str, lines: list[str]) -> str:
     name = f"g_room{room_id}_static_spikes"
     array_pattern = rf"static const StaticSpikeDef {re.escape(name)}\[\]\s*=\s*\{{.*?\s*\}};\n?"
-    tail_pattern = rf"\n\s*{re.escape(name)},\s*\(int\)\(sizeof\({re.escape(name)}\) / sizeof\({re.escape(name)}\[0\]\)\),?"
+    tail_pattern = rf"(?P<separator>,\s*){re.escape(name)},\s*\(int\)\(sizeof\({re.escape(name)}\) / sizeof\({re.escape(name)}\[0\]\)\),?"
     if not lines:
         source = re.sub(array_pattern, "", source, flags=re.S)
         return re.sub(tail_pattern, "", source)
@@ -230,13 +301,22 @@ def upsert_static_spikes(source: str, room_id: str, lines: list[str]) -> str:
         if room_declaration not in source:
             raise ValueError("RoomDef 앞에 정적 가시 배열을 추가할 위치를 찾을 수 없습니다.")
         source = source.replace(room_declaration, declaration + "\n" + room_declaration, 1)
-    tail = f"{name},\n    (int)(sizeof({name}) / sizeof({name}[0]))"
-    if re.search(tail_pattern, source):
-        return re.sub(tail_pattern, "\n    " + tail + ",", source)
     room_start = source.find(f"extern const RoomDef g_room{room_id}")
     room_end = source.find("\n};", room_start)
     if room_start < 0 or room_end < 0:
         raise ValueError("RoomDef 끝을 찾아 정적 가시 배열을 연결할 수 없습니다.")
+    tail = f"{name},\n    (int)(sizeof({name}) / sizeof({name}[0]))"
+    if re.search(tail_pattern, source):
+        return re.sub(tail_pattern, rf"\g<separator>{tail},", source, count=1)
+    room_def = source[room_start:room_end + 3]
+    short_tail = (
+        rf"(g_room{room_id}_pressure_platforms,\s*\(int\)\(sizeof\(g_room{room_id}_pressure_platforms\) / "
+        rf"sizeof\(g_room{room_id}_pressure_platforms\[0\]\)\),\s*)0,\s*\}};"
+    )
+    if re.search(short_tail, room_def):
+        expanded = rf"\g<1>0, 0, 0, 0, {{}}, 0, 0, {tail},\n}};"
+        room_def = re.sub(short_tail, expanded, room_def, count=1)
+        return source[:room_start] + room_def + source[room_end + 3:]
     separator = "" if source[:room_end].rstrip().endswith(",") else ","
     return source[:room_end] + separator + "\n    " + tail + "," + source[room_end:]
 
@@ -325,7 +405,7 @@ def compile_map(rows: list[str], source: str, room_id: str) -> str:
         else:
             body_y -= device_body_height
         piston_lines.append(f"{{ {fmt_num(body_x)}, {fmt_num(body_y)}, {fmt_num(device_width)}, {fmt_num(device_body_height)}, {shaft_width}, {plate_height}, {fmt_num(abs(dx + dy))}, {tuning["phase"]}, {direction} }}")
-    source = replace_array(source, f"g_room{room_id}_pistons", piston_lines)
+    source = upsert_pistons(source, room_id, piston_lines)
 
     markers = []
     for y, row in enumerate(rows):
@@ -345,12 +425,12 @@ def compile_map(rows: list[str], source: str, room_id: str) -> str:
             f"{{ {{ {fmt_num(x + .25)}, {fmt_num(y + .10)}, T(1.5f), T(0.9f) }}, {speed}, {direction}, WALKER_ENEMY_{kind} }}"
         )
     source = replace_array(source, f"g_room{room_id}_walker_enemies", enemy_lines)
+
     static_markers = static_spike_markers(rows)
     static_spike_lines = [
         f"StaticSpikeAt({fmt_num(x)}, {fmt_num(y)}, {STATIC_SPIKE_MARKERS[marker]})"
         for x, y, marker in static_markers
     ]
-    source = upsert_static_spikes(source, room_id, static_spike_lines)
 
     switches = sorted(marker_rects(rows, "T", True), key=lambda device: device["id"])
     switch_masks = {
@@ -365,14 +445,15 @@ def compile_map(rows: list[str], source: str, room_id: str) -> str:
         f"{{ {fmt_rect(device['rect'])}, {pressure_switch_mount(rows, device)} }}"
         for device in switches
     ]
-    source = replace_array(source, f"g_room{room_id}_pressure_switches", switch_lines)
+    source = upsert_room_array(source, "PressureSwitchDevice", f"g_room{room_id}_pressure_switches", switch_lines)
 
     pressure = []
     for upper, lower, horizontal in (("H", "h", True), ("V", "v", False)):
         targets = marker_rects(rows, lower, True)
         for closed in marker_rects(rows, upper, True):
             x, y, w, h = closed["rect"]
-            if any(target["id"] == closed["id"] for target in targets):
+            matching_targets = [target for target in targets if target["id"] == closed["id"] and target["rect"][2:] == (w, h)]
+            if matching_targets:
                 target = find_open(closed, targets)
                 dx, dy = target["rect"][0] - x, target["rect"][1] - y
                 if (horizontal and dy) or (not horizontal and dx):
@@ -387,7 +468,7 @@ def compile_map(rows: list[str], source: str, room_id: str) -> str:
         f"{{ {fmt_rect(rect)}, {fmt_num(dx)}, {fmt_num(dy)}, {switch_masks[identifier]}{', 1' if disappears else ''} }}"
         for rect, dx, dy, identifier, disappears in pressure
     ]
-    source = replace_array(source, f"g_room{room_id}_pressure_platforms", pressure_lines)
+    source = upsert_room_array(source, "PressurePlatformDevice", f"g_room{room_id}_pressure_platforms", pressure_lines)
 
     start = one_marker(rows, "P")
     exit_components = components(cells(rows, "E"))
@@ -402,27 +483,31 @@ def compile_map(rows: list[str], source: str, room_id: str) -> str:
     checkpoint_lines = [fmt_rect((x, y, 1, 1)) for x, y in checkpoints] or [fmt_rect((0, 0, 0, 0))]
     checkpoint_decl = f"static const RectF {checkpoint_name}[] = {{" + fmt_array(checkpoint_lines) + "};" + "\n"
     checkpoint_pattern = rf"static const RectF {re.escape(checkpoint_name)}\[\]\s*=\s*\{{.*?\s*\}};"
-    if re.search(checkpoint_pattern, source, re.S):
+    if checkpoints and re.search(checkpoint_pattern, source, re.S):
         source = replace_array(source, checkpoint_name, checkpoint_lines)
-    else:
+    elif checkpoints:
         source = source.replace("\nextern const RoomDef", "\n" + checkpoint_decl + "\nextern const RoomDef", 1)
     room_def = (
         r"\{\s*T\([^)]+\),\s*T\([^)]+\),\s*T\([^)]+\),\s*T\([^)]+\)\s*\},\s*"
-        r"T\([^)]+\),\s*T\([^)]+\),\s*\{\s*T\(0\)"
+        r"T\([^)]+\),\s*T\([^)]+\)(?:\s*[+-]\s*[^,]+)?,\s*"
+        r"\{\s*T\(0\),\s*T\(0\),\s*T\([^)]+\),\s*T\([^)]+\)\s*\}"
     )
     room_def_value = (
         f"{fmt_rect(exit_rect)}, "
-        f"{fmt_num(start[0])}, {fmt_num(start[1])}, {{ T(0)"
+        f"{fmt_num(start[0])}, {fmt_num(start[1])}, "
+        f"{{ T(0), T(0), {fmt_num(len(rows[0]))}, {fmt_num(len(rows))} }}"
     )
     source, count = re.subn(room_def, room_def_value, source, count=1, flags=re.S)
     if count != 1:
         raise ValueError("RoomDef start position was not found.")
-    legacy_checkpoint = fmt_rect((checkpoints[0][0], checkpoints[0][1], 1, 1)) if checkpoints else fmt_rect((0, 0, 0, 0))
-    checkpoint_def = rf"(g_room{room_id}_walker_enemies,\s*\(int\)\(sizeof\(g_room{room_id}_walker_enemies\) / sizeof\(g_room{room_id}_walker_enemies\[0\]\)\),\s*\d+,\s*)(\{{\s*T\([^)]+\),\s*T\([^)]+\),\s*T\(1\),\s*T\(1\)\s*\}})(?:,\s*{checkpoint_name},\s*\(int\)\(sizeof\({checkpoint_name}\) / sizeof\({checkpoint_name}\[0\]\)\))?(,\s*\}};)"
-    replacement = rf"\g<1>{legacy_checkpoint}, {checkpoint_name}, (int)(sizeof({checkpoint_name}) / sizeof({checkpoint_name}[0]))\g<3>"
-    source, count = re.subn(checkpoint_def, replacement, source, count=1, flags=re.S)
-    if count != 1:
-        raise ValueError("RoomDef checkpoints were not found.")
+    if checkpoints:
+        legacy_checkpoint = fmt_rect((checkpoints[0][0], checkpoints[0][1], 1, 1))
+        checkpoint_def = rf"(g_room{room_id}_walker_enemies,\s*\(int\)\(sizeof\(g_room{room_id}_walker_enemies\) / sizeof\(g_room{room_id}_walker_enemies\[0\]\)\),\s*\d+,\s*)(\{{\s*T\([^)]+\),\s*T\([^)]+\),\s*T\(1\),\s*T\(1\)\s*\}})(?:,\s*{checkpoint_name},\s*\(int\)\(sizeof\({checkpoint_name}\) / sizeof\({checkpoint_name}\[0\]\)\))?(?=,\s*(?:g_room{room_id}_static_spikes|\}};))"
+        replacement = rf"\g<1>{legacy_checkpoint}, {checkpoint_name}, (int)(sizeof({checkpoint_name}) / sizeof({checkpoint_name}[0]))"
+        source, count = re.subn(checkpoint_def, replacement, source, count=1, flags=re.S)
+        if count != 1:
+            raise ValueError("RoomDef checkpoints were not found.")
+    source = upsert_static_spikes(source, room_id, static_spike_lines)
     return source
 
 

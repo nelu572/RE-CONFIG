@@ -11,8 +11,8 @@ if (!(Test-Path -LiteralPath $mapPath)) { throw "맵 문서를 찾을 수 없습
 if (!(Test-Path -LiteralPath $codePath)) { throw "ROOM 코드를 찾을 수 없습니다: $codePath" }
 
 $mapText = Get-Content -Raw -LiteralPath $mapPath
-$mapBlock = [regex]::Match($mapText, '(?s)~~~text\s*\r?\n(.*?)\r?\n~~~')
-if (!$mapBlock.Success) { throw 'ROOM 맵의 ~~~text 블록을 찾을 수 없습니다.' }
+$mapBlock = [regex]::Match($mapText, '(?s)(?<fence>~~~|```)text\s*\r?\n(.*?)\r?\n\k<fence>')
+if (!$mapBlock.Success) { throw 'ROOM 맵의 text 코드 블록을 찾을 수 없습니다.' }
 $rows = @($mapBlock.Groups[1].Value -split "`r?`n")
 if ($rows.Count -eq 0 -or ($rows | Where-Object { $_.Length -ne $rows[0].Length })) {
     throw 'ASCII 맵의 행 길이가 일치하지 않습니다.'
