@@ -8,6 +8,8 @@ struct PistonPose {
 };
 
 float PistonConnectionScale(const PistonDevice* piston);
+float PistonExtensionSpeed(const PistonDevice* piston);
+float PistonRetractionSpeed(const PistonDevice* piston);
 PistonPose PistonPoseAt(const PistonDevice* piston, float piston_time_seconds);
 RectF PistonBodyRect(const PistonDevice* piston);
 RectF PistonShaftRectForExtension(const PistonDevice* piston, float extension);

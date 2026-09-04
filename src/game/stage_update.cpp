@@ -1513,7 +1513,7 @@ static float GamePistonTargetAtAllowedSpeed(const PistonDevice* piston,
                                             float frame_time_seconds) {
     float pose_target = PistonPoseAt(piston, piston_time_seconds).extension;
     float remaining_distance = pose_target - start_extension;
-    float movement_speed = remaining_distance > 0.0f ? PISTON_EXTENSION_SPEED : PISTON_RETRACTION_SPEED;
+    float movement_speed = remaining_distance > 0.0f ? PistonExtensionSpeed(piston) : PistonRetractionSpeed(piston);
     float allowed_distance = movement_speed * frame_time_seconds;
     if (GameAbsF(remaining_distance) <= allowed_distance) {
         return pose_target;

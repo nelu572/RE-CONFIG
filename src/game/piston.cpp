@@ -16,12 +16,35 @@ float PistonConnectionScale(const PistonDevice* piston) {
     return PistonClampF(piston->width / FIVE_TILE_PISTON_WIDTH, 0.0f, 1.0f);
 }
 
+static float PistonMaxF(float value, float minimum) {
+    return value > minimum ? value : minimum;
+}
+
+static float PistonTravel(const PistonDevice* piston) {
+    return piston && piston->travel > 0.0f ? piston->travel : 0.0f;
+}
+
+static float PistonExtensionSeconds(const PistonDevice* piston) {
+    return PistonMaxF(PistonTravel(piston) / PISTON_MAX_EXTENSION_SPEED, PISTON_MIN_EXTENSION_SECONDS);
+}
+
+static float PistonRetractionSeconds(const PistonDevice* piston) {
+    return PistonMaxF(PistonTravel(piston) / PISTON_MAX_RETRACTION_SPEED, PISTON_MIN_RETRACTION_SECONDS);
+}
+
+float PistonExtensionSpeed(const PistonDevice* piston) {
+    return PistonTravel(piston) / PistonExtensionSeconds(piston);
+}
+
+float PistonRetractionSpeed(const PistonDevice* piston) {
+    return PistonTravel(piston) / PistonRetractionSeconds(piston);
+}
+
 static float PistonCycleSeconds(const PistonDevice* piston) {
-    float travel = piston->travel > 0.0f ? piston->travel : 0.0f;
     return PISTON_PRE_EXTENSION_HOLD_SECONDS
-        + travel / PISTON_EXTENSION_SPEED
+        + PistonExtensionSeconds(piston)
         + PISTON_EXTENDED_HOLD_SECONDS
-        + travel / PISTON_RETRACTION_SPEED
+        + PistonRetractionSeconds(piston)
         + PISTON_POST_RETRACTION_HOLD_SECONDS;
 }
 
@@ -81,9 +104,9 @@ PistonPose PistonPoseAt(const PistonDevice* piston, float piston_time_seconds) {
     }
 
     cycle_time -= PISTON_PRE_EXTENSION_HOLD_SECONDS;
-    float extension_time = piston->travel / PISTON_EXTENSION_SPEED;
+    float extension_time = PistonExtensionSeconds(piston);
     if (cycle_time < extension_time) {
-        pose.extension = cycle_time * PISTON_EXTENSION_SPEED;
+        pose.extension = piston->travel * cycle_time / extension_time;
         pose.descending = 1;
         return pose;
     }
@@ -96,9 +119,9 @@ PistonPose PistonPoseAt(const PistonDevice* piston, float piston_time_seconds) {
     }
 
     cycle_time -= PISTON_EXTENDED_HOLD_SECONDS;
-    float retraction_time = piston->travel / PISTON_RETRACTION_SPEED;
+    float retraction_time = PistonRetractionSeconds(piston);
     if (cycle_time < retraction_time) {
-        pose.extension = piston->travel - cycle_time * PISTON_RETRACTION_SPEED;
+        pose.extension = piston->travel * (1.0f - cycle_time / retraction_time);
         pose.descending = 0;
         return pose;
     }
