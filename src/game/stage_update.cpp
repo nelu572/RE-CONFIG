@@ -65,6 +65,7 @@ struct GameWalkerTriangle {
     float by;
     float cx;
     float cy;
+    float outward_x;
 };
 
 static float GameClampF(float value, float lo, float hi);
@@ -81,7 +82,9 @@ static void GamePushWalkerEnemiesByMovingPiston(GameState* state, const PistonDe
 static void GameCarryWalkerEnemiesOnPistonPlate(GameState* state, const PistonDevice* piston, float previous_extension, float current_extension);
 static void GameStartPlayerDeath(GameState* state);
 static int GameWalkerEnemySpikesTouchRect(const GameState* state, int enemy_index, const RectF* rect);
+static int GameWalkerEnemyForwardSpikesTouchRect(const GameState* state, int enemy_index, const RectF* rect, int direction_x);
 static int GameWalkerEnemySpikesTouchAnotherEnemy(const GameState* state, int enemy_index, int other_index);
+static int GameWalkerEnemyForwardSpikesTouchAnotherEnemy(const GameState* state, int enemy_index, int other_index, int direction_x);
 
 int GameFeatureActive(const GameState* state, DeleteFeature feature) {
     return state->delete_state.deleted[feature] == 0;
@@ -1596,11 +1599,11 @@ static const RectF* GameWalkerEnemySolidAt(const GameState* state,
 static int GameWalkerEnemyTouchesSolid(const GameState* state,
                                        int enemy_index,
                                        const RectF* solid,
-                                       int include_spikes) {
+                                       int spike_direction_x) {
     if (!solid || RectsOverlap(&state->walker_enemies[enemy_index], solid)) {
         return solid != 0;
     }
-    if (!include_spikes) {
+    if (spike_direction_x == 0) {
         return 0;
     }
 
@@ -1613,17 +1616,18 @@ static int GameWalkerEnemyTouchesSolid(const GameState* state,
         horizontal_probe.y += horizontal_contact_inset;
         horizontal_probe.h -= horizontal_contact_inset;
     }
-    return GameWalkerEnemySpikesTouchRect(state, enemy_index, &horizontal_probe);
+    return GameWalkerEnemyForwardSpikesTouchRect(state, enemy_index, &horizontal_probe, spike_direction_x);
 }
 
 static int GameWalkerEnemyTouchesAnotherEnemy(const GameState* state,
                                               int enemy_index,
                                               int other_index,
-                                              int include_spikes) {
+                                              int spike_direction_x) {
     const RectF* enemy = &state->walker_enemies[enemy_index];
     const RectF* other = &state->walker_enemies[other_index];
     return RectsOverlap(enemy, other) ||
-           (include_spikes && GameWalkerEnemySpikesTouchAnotherEnemy(state, enemy_index, other_index));
+           (spike_direction_x != 0 &&
+            GameWalkerEnemyForwardSpikesTouchAnotherEnemy(state, enemy_index, other_index, spike_direction_x));
 }
 
 static void GameSetWalkerEnemyAxisPosition(RectF* enemy, const RectF* before, int axis_x, float delta, float amount) {
@@ -1641,14 +1645,14 @@ static void GameResolveWalkerEnemySolidOverlap(GameState* state,
                                                 int axis_x,
                                                 float delta,
                                                 const RectF* solid,
-                                                int include_spikes) {
+                                                int spike_direction_x) {
     RectF* enemy = &state->walker_enemies[enemy_index];
     float clear_amount = 0.0f;
     float blocked_amount = 1.0f;
     for (int step = 0; step < 16; ++step) {
         float amount = (clear_amount + blocked_amount) * 0.5f;
         GameSetWalkerEnemyAxisPosition(enemy, before, axis_x, delta, amount);
-        if (GameWalkerEnemyTouchesSolid(state, enemy_index, solid, include_spikes)) {
+        if (GameWalkerEnemyTouchesSolid(state, enemy_index, solid, spike_direction_x)) {
             blocked_amount = amount;
         } else {
             clear_amount = amount;
@@ -1663,14 +1667,14 @@ static void GameResolveWalkerEnemyOverlap(GameState* state,
                                            int axis_x,
                                            float delta,
                                            int other_index,
-                                           int include_spikes) {
+                                           int spike_direction_x) {
     RectF* enemy = &state->walker_enemies[enemy_index];
     float clear_amount = 0.0f;
     float blocked_amount = 1.0f;
     for (int step = 0; step < 16; ++step) {
         float amount = (clear_amount + blocked_amount) * 0.5f;
         GameSetWalkerEnemyAxisPosition(enemy, before, axis_x, delta, amount);
-        if (GameWalkerEnemyTouchesAnotherEnemy(state, enemy_index, other_index, include_spikes)) {
+        if (GameWalkerEnemyTouchesAnotherEnemy(state, enemy_index, other_index, spike_direction_x)) {
             blocked_amount = amount;
         } else {
             clear_amount = amount;
@@ -1701,13 +1705,14 @@ static int GameMoveWalkerEnemyAxis(GameState* state,
     RectF dynamic_solids[GAME_MAX_DYNAMIC_SOLIDS];
     int dynamic_solid_count = GameBuildWalkerEnemyDynamicSolids(state, dynamic_solids, GAME_MAX_DYNAMIC_SOLIDS);
     int collided = 0;
+    int spike_direction_x = axis_x ? (delta < 0.0f ? -1 : 1) : 0;
     int solid_count = GameWalkerEnemySolidCount(state, room, dynamic_solid_count);
     for (int solid_index = 0; solid_index < solid_count; ++solid_index) {
         const RectF* solid = GameWalkerEnemySolidAt(state, room, dynamic_solids, dynamic_solid_count, solid_index);
-        if (!GameWalkerEnemyTouchesSolid(state, enemy_index, solid, axis_x)) {
+        if (!GameWalkerEnemyTouchesSolid(state, enemy_index, solid, spike_direction_x)) {
             continue;
         }
-        GameResolveWalkerEnemySolidOverlap(state, enemy_index, &before, axis_x, delta, solid, axis_x);
+        GameResolveWalkerEnemySolidOverlap(state, enemy_index, &before, axis_x, delta, solid, spike_direction_x);
         collided = 1;
     }
     // Static spikes are hazards for the player, but act as horizontal walls
@@ -1716,10 +1721,10 @@ static int GameMoveWalkerEnemyAxis(GameState* state,
         int static_spike_count = GameRoomStaticSpikeCount(room);
         for (int spike_index = 0; spike_index < static_spike_count; ++spike_index) {
             const RectF* solid = &room->static_spikes[spike_index].bounds;
-            if (!GameWalkerEnemyTouchesSolid(state, enemy_index, solid, 1)) {
+            if (!GameWalkerEnemyTouchesSolid(state, enemy_index, solid, spike_direction_x)) {
                 continue;
             }
-            GameResolveWalkerEnemySolidOverlap(state, enemy_index, &before, axis_x, delta, solid, 1);
+            GameResolveWalkerEnemySolidOverlap(state, enemy_index, &before, axis_x, delta, solid, spike_direction_x);
             collided = 1;
         }
     }
@@ -1728,10 +1733,10 @@ static int GameMoveWalkerEnemyAxis(GameState* state,
         if (other_index == enemy_index) {
             continue;
         }
-        if (!GameWalkerEnemyTouchesAnotherEnemy(state, enemy_index, other_index, axis_x)) {
+        if (!GameWalkerEnemyTouchesAnotherEnemy(state, enemy_index, other_index, spike_direction_x)) {
             continue;
         }
-        GameResolveWalkerEnemyOverlap(state, enemy_index, &before, axis_x, delta, other_index, axis_x);
+        GameResolveWalkerEnemyOverlap(state, enemy_index, &before, axis_x, delta, other_index, spike_direction_x);
         if (collided_enemy_index) {
             *collided_enemy_index = other_index;
         }
@@ -1986,89 +1991,51 @@ static int GameBuildWalkerEnemySpikeTriangles(const GameState* state,
             float wedge_height = half_width * spike_amount;
             float cut_x = outline_x + outward_x * visible_spike_length * spike_length_scale * 0.65f * spike_amount;
             float wedge_tip_y = floor_y - wedge_height * 0.60f;
-            out_triangles[count++] = { base_x, floor_y - wedge_height, base_x, floor_y, tip_x, wedge_tip_y };
-            out_triangles[count++] = { base_x, floor_y, cut_x, floor_y, tip_x, wedge_tip_y };
+            out_triangles[count++] = { base_x, floor_y - wedge_height, base_x, floor_y, tip_x, wedge_tip_y, outward_x };
+            out_triangles[count++] = { base_x, floor_y, cut_x, floor_y, tip_x, wedge_tip_y, outward_x };
         } else {
             if (count >= max_triangles) break;
             float tangent_x = -outward_y;
             float tangent_y = outward_x;
             out_triangles[count++] = { base_x - tangent_x * half_width, base_y - tangent_y * half_width,
                                        base_x + tangent_x * half_width, base_y + tangent_y * half_width,
-                                       tip_x, tip_y };
+                                       tip_x, tip_y, outward_x };
         }
     }
     return count;
 }
 
-static int GameWalkerEnemySpikesTouchRect(const GameState* state, int enemy_index, const RectF* player) {
-    float spike_amount = state->walker_enemy_spike_amount[enemy_index];
-    if (spike_amount <= 0.01f) {
-        return 0;
+static int GameWalkerEnemySpikesTouchRect(const GameState* state, int enemy_index, const RectF* rect) {
+    GameWalkerTriangle triangles[9];
+    int count = GameBuildWalkerEnemySpikeTriangles(state, enemy_index, triangles, 9);
+    for (int i = 0; i < count; ++i) {
+        if (GameWalkerTriangleTouchesRect(rect,
+                                          triangles[i].ax, triangles[i].ay,
+                                          triangles[i].bx, triangles[i].by,
+                                          triangles[i].cx, triangles[i].cy)) {
+            return 1;
+        }
     }
+    return 0;
+}
 
-    const RectF* enemy = &state->walker_enemies[enemy_index];
-    float crouch = state->walker_enemy_squash_amount[enemy_index];
-    float body_w = enemy->w * (1.0f - crouch * 0.08f);
-    float body_x = enemy->x + enemy->w * 0.5f - body_w * 0.5f;
-    float squash_px = enemy->h * 0.12f * crouch;
-    float radius_x = body_w * 0.5f;
-    if (radius_x < 4.0f) radius_x = 4.0f;
-    float dome_height = enemy->h - 4.0f;
-    if (dome_height > radius_x) dome_height = radius_x;
-    float radius_y = dome_height - squash_px;
-    if (radius_y < 4.0f) radius_y = 4.0f;
-    float center_x = body_x + body_w * 0.5f;
-    float ellipse_center_y = enemy->y + squash_px + radius_y;
-    float half_width = body_w / 6.0f;
-    if (half_width < 10.0f) half_width = 10.0f;
-
-    static const float direction_x[7] = { -1.0f, -0.8660254f, -0.5f, 0.0f, 0.5f, 0.8660254f, 1.0f };
-    static const float direction_y[7] = { 0.0f, -0.5f, -0.8660254f, -1.0f, -0.8660254f, -0.5f, 0.0f };
-    static constexpr float visible_spike_length = 20.0f;
-    const RoomDef* room = GameCurrentRoom(state);
-    float spike_length_scale = room && enemy_index < GameRoomWalkerEnemyCount(room) &&
-                               room->walker_enemies[enemy_index].spawn_code == WALKER_ENEMY_M2 ? 0.80f : 1.0f;
-    static constexpr float root_embed_depth = 2.0f;
-    float floor_y = enemy->y + enemy->h;
-
-    for (int i = 0; i < 7; ++i) {
-        float outward_x = direction_x[i];
-        float outward_y = direction_y[i];
-        float ellipse_scale = sqrtf((outward_x * outward_x) / (radius_x * radius_x) +
-                                    (outward_y * outward_y) / (radius_y * radius_y));
-        float outline_x = center_x + outward_x / ellipse_scale;
-        float outline_y = ellipse_center_y + outward_y / ellipse_scale;
-        float base_x = outline_x - outward_x * root_embed_depth;
-        float base_y = outline_y - outward_y * root_embed_depth;
-        float tip_x = outline_x + outward_x * visible_spike_length * spike_length_scale * spike_amount;
-        float tip_y = outline_y + outward_y * visible_spike_length * spike_length_scale * spike_amount;
-
-        if (i == 0 || i == 6) {
-            float wedge_height = half_width * spike_amount;
-            float cut_x = outline_x + outward_x * visible_spike_length * spike_length_scale * 0.65f * spike_amount;
-            float wedge_tip_y = floor_y - wedge_height * 0.60f;
-            if (GameWalkerTriangleTouchesRect(player,
-                                              base_x, floor_y - wedge_height,
-                                              base_x, floor_y,
-                                              tip_x, wedge_tip_y) ||
-                GameWalkerTriangleTouchesRect(player,
-                                              base_x, floor_y,
-                                              cut_x, floor_y,
-                                              tip_x, wedge_tip_y)) {
-                return 1;
-            }
-        } else {
-            float tangent_x = -outward_y;
-            float tangent_y = outward_x;
-            if (GameWalkerTriangleTouchesRect(player,
-                                              base_x - tangent_x * half_width,
-                                              base_y - tangent_y * half_width,
-                                              base_x + tangent_x * half_width,
-                                              base_y + tangent_y * half_width,
-                                              tip_x,
-                                              tip_y)) {
-                return 1;
-            }
+// Patrol direction changes only when a spike on the advancing side reaches a
+// wall. Rear spikes can start near a wall without cancelling forward motion.
+static int GameWalkerEnemyForwardSpikesTouchRect(const GameState* state,
+                                                 int enemy_index,
+                                                 const RectF* rect,
+                                                 int direction_x) {
+    GameWalkerTriangle triangles[9];
+    int count = GameBuildWalkerEnemySpikeTriangles(state, enemy_index, triangles, 9);
+    for (int i = 0; i < count; ++i) {
+        if (triangles[i].outward_x * (float)direction_x <= 0.0f) {
+            continue;
+        }
+        if (GameWalkerTriangleTouchesRect(rect,
+                                          triangles[i].ax, triangles[i].ay,
+                                          triangles[i].bx, triangles[i].by,
+                                          triangles[i].cx, triangles[i].cy)) {
+            return 1;
         }
     }
     return 0;
@@ -2098,6 +2065,34 @@ static int GameWalkerEnemySpikesTouchAnotherEnemy(const GameState* state, int en
         }
     }
     for (int i = 0; i < count; ++i) {
+        for (int other_triangle = 0; other_triangle < other_count; ++other_triangle) {
+            if (GameWalkerTrianglesTouch(&triangles[i], &other_triangles[other_triangle])) {
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+static int GameWalkerEnemyForwardSpikesTouchAnotherEnemy(const GameState* state,
+                                                         int enemy_index,
+                                                         int other_index,
+                                                         int direction_x) {
+    const RectF* other = &state->walker_enemies[other_index];
+    GameWalkerTriangle triangles[9];
+    GameWalkerTriangle other_triangles[9];
+    int count = GameBuildWalkerEnemySpikeTriangles(state, enemy_index, triangles, 9);
+    int other_count = GameBuildWalkerEnemySpikeTriangles(state, other_index, other_triangles, 9);
+    for (int i = 0; i < count; ++i) {
+        if (triangles[i].outward_x * (float)direction_x <= 0.0f) {
+            continue;
+        }
+        if (GameWalkerTriangleTouchesRect(other,
+                                          triangles[i].ax, triangles[i].ay,
+                                          triangles[i].bx, triangles[i].by,
+                                          triangles[i].cx, triangles[i].cy)) {
+            return 1;
+        }
         for (int other_triangle = 0; other_triangle < other_count; ++other_triangle) {
             if (GameWalkerTrianglesTouch(&triangles[i], &other_triangles[other_triangle])) {
                 return 1;
