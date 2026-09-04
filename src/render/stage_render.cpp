@@ -1471,6 +1471,7 @@ static void DrawContextUi(const StageRenderState* state) {
 }
 
 void StageRenderDrawStatic(const StageRenderState* state) {
+    // Static pass: terrain only. It is cached separately from moving objects.
     for (int i = 0; i < state->room->platform_count; ++i) {
         DrawPlatform(state, &state->room->platforms[i]);
     }
@@ -1481,7 +1482,7 @@ void StageRenderDrawStatic(const StageRenderState* state) {
 }
 
 void StageRenderDrawDynamic(const StageRenderState* state) {
-    StageRenderDrawStatic(state);
+    // Dynamic pass: the caller has already restored or drawn the static pass.
     for (int i = 0; i < state->room->speaker_count; ++i) {
         DrawSpeakerDevice(state, &state->room->speakers[i]);
     }
@@ -1522,6 +1523,7 @@ void StageRenderDrawDynamic(const StageRenderState* state) {
 
 void StageRenderDrawFrame(const StageRenderState* state) {
     RenderClear(state->render, state->bg_color);
+    // Full-frame rendering owns both passes; cached rendering restores static pixels instead.
     StageRenderDrawStatic(state);
     StageRenderDrawDynamic(state);
 }

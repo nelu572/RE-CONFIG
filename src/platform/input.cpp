@@ -8,6 +8,8 @@ struct InputState {
 };
 
 static InputState g_input;
+static int g_input_active = 1;
+static int g_sync_on_activate = 0;
 
 static int KeyDown(int vk) {
     return (GetAsyncKeyState(vk) & 0x8000) != 0;
@@ -19,7 +21,34 @@ void InputBeginFrame() {
     }
 }
 
+void InputReset() {
+    for (int i = 0; i < KEY_COUNT; ++i) {
+        g_input.down[i] = 0;
+        g_input.prev[i] = 0;
+    }
+}
+
+void InputSetActive(int active) {
+    active = active != 0;
+    if (!active) {
+        g_input_active = 0;
+        g_sync_on_activate = 0;
+        InputReset();
+        return;
+    }
+
+    if (!g_input_active) {
+        g_input_active = 1;
+        g_sync_on_activate = 1;
+    }
+}
+
 void InputUpdate() {
+    if (!g_input_active) {
+        InputReset();
+        return;
+    }
+
     g_input.down[KEY_UP] = KeyDown(VK_UP);
     g_input.down[KEY_DOWN] = KeyDown(VK_DOWN);
     g_input.down[KEY_LEFT] = KeyDown(VK_LEFT);
@@ -34,6 +63,13 @@ void InputUpdate() {
     g_input.down[KEY_2] = KeyDown('2');
     g_input.down[KEY_3] = KeyDown('3');
     g_input.down[KEY_4] = KeyDown('4');
+
+    if (g_sync_on_activate) {
+        for (int i = 0; i < KEY_COUNT; ++i) {
+            g_input.prev[i] = g_input.down[i];
+        }
+        g_sync_on_activate = 0;
+    }
 }
 
 int InputIsDown(KeyCode key) {

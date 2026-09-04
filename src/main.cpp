@@ -1299,6 +1299,15 @@ static void PaceFrame(HANDLE frame_timer, double* next_frame_time, double frame_
 
 static LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
     switch (message) {
+        case WM_ACTIVATEAPP:
+            InputSetActive(wparam != FALSE);
+            return 0;
+        case WM_SETFOCUS:
+            InputSetActive(1);
+            return 0;
+        case WM_KILLFOCUS:
+            InputSetActive(0);
+            return 0;
         case WM_SETCURSOR:
             if (LOWORD(lparam) == HTCLIENT) {
                 SetCursor(0);

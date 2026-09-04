@@ -19,6 +19,8 @@ enum KeyCode {
 };
 
 void InputBeginFrame();
+void InputReset();
+void InputSetActive(int active);
 void InputUpdate();
 int InputIsDown(KeyCode key);
 int InputWasPressed(KeyCode key);
