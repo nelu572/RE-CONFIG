@@ -43,6 +43,7 @@ static constexpr float PISTON_MAX_EXTENSION_SPEED = 3200.0f;
 static constexpr float PISTON_MAX_RETRACTION_SPEED = 1280.0f;
 static constexpr float PISTON_MIN_EXTENSION_SECONDS = 0.198f;
 static constexpr float PISTON_MIN_RETRACTION_SECONDS = 0.506f;
+static constexpr float PISTON_EXTENSION_PEAK_SPEED_MULTIPLIER = 3.0f;
 static constexpr float PISTON_PRE_EXTENSION_HOLD_SECONDS = 0.154f;
 static constexpr float PISTON_EXTENDED_HOLD_SECONDS = 0.110f;
 static constexpr float PISTON_POST_RETRACTION_HOLD_SECONDS = 0.132f;

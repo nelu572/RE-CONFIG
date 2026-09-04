@@ -20,6 +20,11 @@ static float PistonMaxF(float value, float minimum) {
     return value > minimum ? value : minimum;
 }
 
+static float PistonAccelerate01(float value) {
+    value = PistonClampF(value, 0.0f, 1.0f);
+    return value * value * value;
+}
+
 static float PistonTravel(const PistonDevice* piston) {
     return piston && piston->travel > 0.0f ? piston->travel : 0.0f;
 }
@@ -106,7 +111,7 @@ PistonPose PistonPoseAt(const PistonDevice* piston, float piston_time_seconds) {
     cycle_time -= PISTON_PRE_EXTENSION_HOLD_SECONDS;
     float extension_time = PistonExtensionSeconds(piston);
     if (cycle_time < extension_time) {
-        pose.extension = piston->travel * cycle_time / extension_time;
+        pose.extension = piston->travel * PistonAccelerate01(cycle_time / extension_time);
         pose.descending = 1;
         return pose;
     }
