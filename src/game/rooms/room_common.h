@@ -14,6 +14,20 @@ static constexpr float T(float tiles) {
 
 static constexpr float kDefaultGravityBoxSize = T(1.5f);
 
+static constexpr StaticSpikeDef StaticSpikeAt(float x, float y,
+                                               StaticSpikeRotation rotation = STATIC_SPIKE_ROTATION_0_DEGREES) {
+    if (rotation == STATIC_SPIKE_ROTATION_90_DEGREES) {
+        return { { x, y, T(0.5f), T(1) }, rotation };
+    }
+    if (rotation == STATIC_SPIKE_ROTATION_180_DEGREES) {
+        return { { x, y, T(1), T(0.5f) }, rotation };
+    }
+    if (rotation == STATIC_SPIKE_ROTATION_270_DEGREES) {
+        return { { x + T(0.5f), y, T(0.5f), T(1) }, rotation };
+    }
+    return { { x, y + T(0.5f), T(1), T(0.5f) }, STATIC_SPIKE_ROTATION_0_DEGREES };
+}
+
 static constexpr RectF DefaultGravityBoxAt(float x, float y) {
     return { x, y, kDefaultGravityBoxSize, kDefaultGravityBoxSize };
 }

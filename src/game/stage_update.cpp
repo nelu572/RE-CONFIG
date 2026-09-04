@@ -183,6 +183,12 @@ static int GameRoomWalkerEnemyCount(const RoomDef* room) {
     }
     return room->walker_enemy_count < GAME_MAX_WALKER_ENEMIES ? room->walker_enemy_count : GAME_MAX_WALKER_ENEMIES;
 }
+static int GameRoomStaticSpikeCount(const RoomDef* room) {
+    if (!room || !room->static_spikes || room->static_spike_count <= 0) {
+        return 0;
+    }
+    return room->static_spike_count;
+}
 static int GameRoomPressureSwitchCount(const RoomDef* room) {
     if (!room || room->pressure_switch_count <= 0) {
         return 0;
@@ -2136,6 +2142,37 @@ static void GameUpdateWalkerEnemies(GameState* state, float dt) {
     }
     return 0;
 }
+static int GameStaticSpikeTouchesRect(const StaticSpikeDef* spike, const RectF* rect) {
+    if (!spike || !rect || spike->bounds.w <= 0.0f || spike->bounds.h <= 0.0f) {
+        return 0;
+    }
+    const RectF* bounds = &spike->bounds;
+    float left = bounds->x;
+    float right = bounds->x + bounds->w;
+    float top = bounds->y;
+    float bottom = bounds->y + bounds->h;
+    if (spike->rotation == STATIC_SPIKE_ROTATION_90_DEGREES) {
+        return GameWalkerTriangleTouchesRect(rect, left, top, left, bottom, right, (top + bottom) * 0.5f);
+    }
+    if (spike->rotation == STATIC_SPIKE_ROTATION_180_DEGREES) {
+        return GameWalkerTriangleTouchesRect(rect, left, top, right, top, (left + right) * 0.5f, bottom);
+    }
+    if (spike->rotation == STATIC_SPIKE_ROTATION_270_DEGREES) {
+        return GameWalkerTriangleTouchesRect(rect, right, top, right, bottom, left, (top + bottom) * 0.5f);
+    }
+    return GameWalkerTriangleTouchesRect(rect, left, bottom, right, bottom, (left + right) * 0.5f, top);
+}
+static int GamePlayerTouchesStaticSpike(const GameState* state) {
+    const RoomDef* room = GameCurrentRoom(state);
+    RectF player = GamePlayerRect(state);
+    int count = GameRoomStaticSpikeCount(room);
+    for (int i = 0; i < count; ++i) {
+        if (GameStaticSpikeTouchesRect(&room->static_spikes[i], &player)) {
+            return 1;
+        }
+    }
+    return 0;
+}
 static int GameBoxSolidCount(const GameState* state, const RectF* dynamic_solids, int dynamic_solid_count, const RectF* player_rect) {
     const RoomDef* room = GameCurrentRoom(state);
     return room->platform_count +
@@ -2896,7 +2933,7 @@ void GameUpdateStage(GameState* state, float dt, int use_static_cache) {
     }
 
     GameUpdateWalkerEnemies(state, dt);
-    if (GamePlayerTouchesWalkerEnemy(state)) {
+    if (GamePlayerTouchesWalkerEnemy(state) || GamePlayerTouchesStaticSpike(state)) {
         GameStartPlayerDeath(state);
         return;
     }
@@ -2959,7 +2996,7 @@ void GameUpdateStage(GameState* state, float dt, int use_static_cache) {
         state->audio_events |= GAME_AUDIO_LAND;
     }
 
-    if (GamePlayerTouchesWalkerEnemy(state)) {
+    if (GamePlayerTouchesWalkerEnemy(state) || GamePlayerTouchesStaticSpike(state)) {
         GameStartPlayerDeath(state);
         return;
     }

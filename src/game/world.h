@@ -68,6 +68,21 @@ struct WalkerEnemyDef {
     WalkerEnemySpawnCode spawn_code = WALKER_ENEMY_M1;
 };
 
+// The rotation names describe the direction of the triangle's tip in screen
+// space. Static spikes do not participate in enemy simulation.
+enum StaticSpikeRotation {
+    STATIC_SPIKE_ROTATION_0_DEGREES,
+    STATIC_SPIKE_ROTATION_90_DEGREES,
+    STATIC_SPIKE_ROTATION_180_DEGREES,
+    STATIC_SPIKE_ROTATION_270_DEGREES,
+};
+
+struct StaticSpikeDef {
+    // The axis-aligned collision envelope; its triangle rotates with rotation.
+    RectF bounds;
+    StaticSpikeRotation rotation = STATIC_SPIKE_ROTATION_0_DEGREES;
+};
+
 enum PressureSwitchMount {
     PRESSURE_SWITCH_MOUNT_AUTO,
     PRESSURE_SWITCH_MOUNT_RIGHT,
@@ -119,6 +134,8 @@ struct RoomDef {
     RectF checkpoint = {};
     const RectF* checkpoints = 0;
     int checkpoint_count = 0;
+    const StaticSpikeDef* static_spikes = 0;
+    int static_spike_count = 0;
 };
 
 const RoomDef* GetRoom(int index);

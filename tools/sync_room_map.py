@@ -195,6 +195,52 @@ def source_enemies(source: str) -> list[dict]:
     ]
 
 
+STATIC_SPIKE_MARKERS = {
+    "M": "STATIC_SPIKE_ROTATION_0_DEGREES",
+    "N": "STATIC_SPIKE_ROTATION_180_DEGREES",
+    "L": "STATIC_SPIKE_ROTATION_90_DEGREES",
+    "R": "STATIC_SPIKE_ROTATION_270_DEGREES",
+}
+
+
+def static_spike_markers(rows: list[str]) -> list[tuple[int, int, str]]:
+    result = []
+    for y, row in enumerate(rows):
+        for x, marker in enumerate(row):
+            # M1/M2 remain two-character walker-enemy markers, not static spikes.
+            if marker == "M" and x + 1 < len(row) and row[x + 1] in "12":
+                continue
+            if marker in STATIC_SPIKE_MARKERS:
+                result.append((x, y, marker))
+    return result
+
+
+def upsert_static_spikes(source: str, room_id: str, lines: list[str]) -> str:
+    name = f"g_room{room_id}_static_spikes"
+    array_pattern = rf"static const StaticSpikeDef {re.escape(name)}\[\]\s*=\s*\{{.*?\s*\}};\n?"
+    tail_pattern = rf"\n\s*{re.escape(name)},\s*\(int\)\(sizeof\({re.escape(name)}\) / sizeof\({re.escape(name)}\[0\]\)\),?"
+    if not lines:
+        source = re.sub(array_pattern, "", source, flags=re.S)
+        return re.sub(tail_pattern, "", source)
+    if re.search(array_pattern, source, re.S):
+        source = replace_array(source, name, lines)
+    else:
+        declaration = f"static const StaticSpikeDef {name}[] = {{" + fmt_array(lines) + "};\n"
+        room_declaration = f"extern const RoomDef g_room{room_id}"
+        if room_declaration not in source:
+            raise ValueError("RoomDef 앞에 정적 가시 배열을 추가할 위치를 찾을 수 없습니다.")
+        source = source.replace(room_declaration, declaration + "\n" + room_declaration, 1)
+    tail = f"{name},\n    (int)(sizeof({name}) / sizeof({name}[0]))"
+    if re.search(tail_pattern, source):
+        return re.sub(tail_pattern, "\n    " + tail + ",", source)
+    room_start = source.find(f"extern const RoomDef g_room{room_id}")
+    room_end = source.find("\n};", room_start)
+    if room_start < 0 or room_end < 0:
+        raise ValueError("RoomDef 끝을 찾아 정적 가시 배열을 연결할 수 없습니다.")
+    separator = "" if source[:room_end].rstrip().endswith(",") else ","
+    return source[:room_end] + separator + "\n    " + tail + "," + source[room_end:]
+
+
 def compile_map(rows: list[str], source: str, room_id: str) -> str:
     platform_lines = [fmt_rect(rect) for rect in pack_rects(cells(rows, "#"))]
     platform_lines += [
@@ -299,6 +345,12 @@ def compile_map(rows: list[str], source: str, room_id: str) -> str:
             f"{{ {{ {fmt_num(x + .25)}, {fmt_num(y + .10)}, T(1.5f), T(0.9f) }}, {speed}, {direction}, WALKER_ENEMY_{kind} }}"
         )
     source = replace_array(source, f"g_room{room_id}_walker_enemies", enemy_lines)
+    static_markers = static_spike_markers(rows)
+    static_spike_lines = [
+        f"StaticSpikeAt({fmt_num(x)}, {fmt_num(y)}, {STATIC_SPIKE_MARKERS[marker]})"
+        for x, y, marker in static_markers
+    ]
+    source = upsert_static_spikes(source, room_id, static_spike_lines)
 
     switches = sorted(marker_rects(rows, "T", True), key=lambda device: device["id"])
     switch_masks = {

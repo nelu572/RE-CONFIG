@@ -72,7 +72,39 @@ for ($y = 0; $y -lt $rows.Count; $y++) {
 $mapTopBlocks = Get-HorizontalRuns $rows '='
 $mapLeftBlocks = Get-VerticalRuns $rows '|'
 
+$mapStaticSpikes = [System.Collections.Generic.HashSet[string]]::new()
+for ($y = 0; $y -lt $rows.Count; $y++) {
+    for ($x = 0; $x -lt $rows[$y].Length; $x++) {
+        $marker = [string]$rows[$y][$x]
+        if ($marker -eq 'M' -and $x + 1 -lt $rows[$y].Length -and $rows[$y][$x + 1] -match '[12]') { continue }
+        $rotation = $null
+        if ($marker -eq 'M') { $rotation = 'STATIC_SPIKE_ROTATION_0_DEGREES' }
+        elseif ($marker -eq 'N') { $rotation = 'STATIC_SPIKE_ROTATION_180_DEGREES' }
+        elseif ($marker -eq 'L') { $rotation = 'STATIC_SPIKE_ROTATION_90_DEGREES' }
+        elseif ($marker -eq 'R') { $rotation = 'STATIC_SPIKE_ROTATION_270_DEGREES' }
+        if ($null -ne $rotation) {
+            [void]$mapStaticSpikes.Add("$x,$y,$rotation")
+        }
+    }
+}
+
 $codeText = Get-Content -Raw -LiteralPath $codePath
+$codeStaticSpikes = [System.Collections.Generic.HashSet[string]]::new()
+$staticSpikeArrayPattern = "(?s)static const StaticSpikeDef g_room${roomId}_static_spikes\[\]\s*=\s*\{(.*?)\n\};"
+$staticSpikeArray = [regex]::Match($codeText, $staticSpikeArrayPattern)
+if ($staticSpikeArray.Success) {
+    $staticSpikePattern = 'StaticSpikeAt\(T\(([^)]+)\),\s*T\(([^)]+)\),\s*(STATIC_SPIKE_ROTATION_(?:0|90|180|270)_DEGREES)\)'
+    foreach ($spike in [regex]::Matches($staticSpikeArray.Groups[1].Value, $staticSpikePattern)) {
+        $x = Read-WholeTile $spike.Groups[1].Value 'static spike x'
+        $y = Read-WholeTile $spike.Groups[2].Value 'static spike y'
+        [void]$codeStaticSpikes.Add("$x,$y,$($spike.Groups[3].Value)")
+    }
+}
+$staticMissing = @($mapStaticSpikes | Where-Object { !$codeStaticSpikes.Contains($_) } | Sort-Object)
+$staticExtra = @($codeStaticSpikes | Where-Object { !$mapStaticSpikes.Contains($_) } | Sort-Object)
+$staticArrayMissing = $mapStaticSpikes.Count -gt 0 -and !$staticSpikeArray.Success
+$staticUnparsed = $staticSpikeArray.Success -and $mapStaticSpikes.Count -gt 0 -and $codeStaticSpikes.Count -eq 0
+$staticError = $staticArrayMissing -or $staticUnparsed -or $staticMissing.Count -or $staticExtra.Count
 $arrayPattern = "(?s)static const RectF g_room${roomId}_platforms\[\]\s*=\s*\{(.*?)\n\};"
 $arrayMatch = [regex]::Match($codeText, $arrayPattern)
 if (!$arrayMatch.Success) { throw "g_room${roomId}_platforms 배열을 찾을 수 없습니다." }
@@ -108,13 +140,17 @@ $topMissing = @($mapTopBlocks | Where-Object { !$codeTopBlocks.Contains($_) } | 
 $topExtra = @($codeTopBlocks | Where-Object { !$mapTopBlocks.Contains($_) } | Sort-Object)
 $leftMissing = @($mapLeftBlocks | Where-Object { !$codeLeftBlocks.Contains($_) } | Sort-Object)
 $leftExtra = @($codeLeftBlocks | Where-Object { !$codeLeftBlocks.Contains($_) } | Sort-Object)
-Write-Output ("ROOM {0}: ASCII #={1}, code #={2}, missing={3}, extra={4}; = missing={5}, extra={6}; | missing={7}, extra={8}" -f $roomId, $mapTiles.Count, $codeTiles.Count, $missing.Count, $extra.Count, $topMissing.Count, $topExtra.Count, $leftMissing.Count, $leftExtra.Count)
-if ($missing.Count -or $extra.Count -or $topMissing.Count -or $topExtra.Count -or $leftMissing.Count -or $leftExtra.Count) {
+Write-Output ("ROOM {0}: ASCII #={1}, code #={2}, missing={3}, extra={4}; = missing={5}, extra={6}; | missing={7}, extra={8}; static spikes ASCII={9}, code={10}, missing={11}, extra={12}" -f $roomId, $mapTiles.Count, $codeTiles.Count, $missing.Count, $extra.Count, $topMissing.Count, $topExtra.Count, $leftMissing.Count, $leftExtra.Count, $mapStaticSpikes.Count, $codeStaticSpikes.Count, $staticMissing.Count, $staticExtra.Count)
+if ($missing.Count -or $extra.Count -or $topMissing.Count -or $topExtra.Count -or $leftMissing.Count -or $leftExtra.Count -or $staticError) {
     if ($missing.Count) { Write-Output ('# missing: ' + ($missing -join ' ')) }
     if ($extra.Count) { Write-Output ('# extra: ' + ($extra -join ' ')) }
     if ($topMissing.Count) { Write-Output ('= missing: ' + ($topMissing -join ' ')) }
     if ($topExtra.Count) { Write-Output ('= extra: ' + ($topExtra -join ' ')) }
     if ($leftMissing.Count) { Write-Output ('| missing: ' + ($leftMissing -join ' ')) }
     if ($leftExtra.Count) { Write-Output ('| extra: ' + ($leftExtra -join ' ')) }
+    if ($staticArrayMissing) { Write-Output 'static spike array missing' }
+    if ($staticUnparsed) { Write-Output 'static spike array has no readable entries' }
+    if ($staticMissing.Count) { Write-Output ('static spike missing: ' + ($staticMissing -join ' ')) }
+    if ($staticExtra.Count) { Write-Output ('static spike extra: ' + ($staticExtra -join ' ')) }
     exit 1
 }

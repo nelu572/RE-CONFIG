@@ -13,6 +13,7 @@
 - [아트와 UI](design/art_ui.md)
 - [M1](design/walker_enemy.md)
 - [M2](design/mm_enemy.md)
+- [정적 가시](design/static_spike.md)
 - [압력 스위치와 이동 문](design/pressure_switch.md)
 - [중력 박스](design/gravity_box.md)
 - [피스톤](design/piston.md)

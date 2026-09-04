@@ -1315,6 +1315,38 @@ static void DrawWalkerSpike(const StageRenderState* state,
     }
 }
 
+static void DrawStaticSpike(const StageRenderState* state, const StaticSpikeDef* spike) {
+    if (!spike || spike->bounds.w <= 0.0f || spike->bounds.h <= 0.0f) {
+        return;
+    }
+    const RectF* bounds = &spike->bounds;
+    // DrawWalkerSolidTriangle receives screen-space coordinates, unlike the
+    // collision shape stored in the RoomDef.
+    float left = (float)WorldX(state->render, bounds->x);
+    float right = (float)WorldX(state->render, bounds->x + bounds->w);
+    float top = (float)WorldY(state->render, bounds->y);
+    float bottom = (float)WorldY(state->render, bounds->y + bounds->h);
+    static constexpr uint32_t STATIC_SPIKE_COLOR = 0x00ed2b3a;
+    if (spike->rotation == STATIC_SPIKE_ROTATION_90_DEGREES) {
+        DrawWalkerSolidTriangle(state->render, left, top, left, bottom, right, (top + bottom) * 0.5f, STATIC_SPIKE_COLOR);
+    } else if (spike->rotation == STATIC_SPIKE_ROTATION_180_DEGREES) {
+        DrawWalkerSolidTriangle(state->render, left, top, right, top, (left + right) * 0.5f, bottom, STATIC_SPIKE_COLOR);
+    } else if (spike->rotation == STATIC_SPIKE_ROTATION_270_DEGREES) {
+        DrawWalkerSolidTriangle(state->render, right, top, right, bottom, left, (top + bottom) * 0.5f, STATIC_SPIKE_COLOR);
+    } else {
+        DrawWalkerSolidTriangle(state->render, left, bottom, right, bottom, (left + right) * 0.5f, top, STATIC_SPIKE_COLOR);
+    }
+}
+
+static void DrawRoomStaticSpikes(const StageRenderState* state) {
+    if (!state->room || !state->room->static_spikes) {
+        return;
+    }
+    for (int i = 0; i < state->room->static_spike_count; ++i) {
+        DrawStaticSpike(state, &state->room->static_spikes[i]);
+    }
+}
+
 static void DrawWalkerRoundedTop(const StageRenderState* state,
                                  int center_x,
                                  int top_y,
@@ -1445,6 +1477,7 @@ void StageRenderDrawStatic(const StageRenderState* state) {
     for (int i = 0; i < state->room->type_a_count; ++i) {
         DrawTypeAWall(state, &state->room->type_a_walls[i], 0);
     }
+    DrawRoomStaticSpikes(state);
 }
 
 void StageRenderDrawDynamic(const StageRenderState* state) {
