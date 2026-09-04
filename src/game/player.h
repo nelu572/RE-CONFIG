@@ -10,6 +10,7 @@ static constexpr int PLAYER_PARTICLE_COUNT = 64;
 enum PlayerParticleStyle {
     PLAYER_PARTICLE_STYLE_PLAYER,
     PLAYER_PARTICLE_STYLE_WALKER_ENEMY_CRUSH,
+    PLAYER_PARTICLE_STYLE_CHECKPOINT,
 };
 struct Player {
     float x;
@@ -48,7 +49,8 @@ void PlayerSetCollisionSize(Player* player, float tangent_size, float gravity_si
 void ResetPlayerPresentation(Player* player, PlayerParticle* particles, int particle_count);
 void SpawnPlayerDeathParticles(PlayerParticle* particles, int particle_count, float x, float y, GravityDirection gravity_direction);
 void SpawnWalkerEnemyCrushParticles(PlayerParticle* particles, int particle_count, float x, float y, GravityDirection gravity_direction);
+void SpawnCheckpointParticles(PlayerParticle* particles, int particle_count, float x, float y, GravityDirection gravity_direction);
 void UpdatePlayerParticles(PlayerParticle* particles, int particle_count, const RoomDef* room, float dt, GravityDirection gravity_direction);
 void UpdatePlayerPresentation(Player* player, PlayerParticle* particles, int particle_count, const RoomDef* room, float dt, float move, int jump_started, int landed, int stretch_blocked, GravityDirection gravity_direction);
-void DrawPlayerParticles(RenderContext* render, const PlayerParticle* particles, int particle_count, uint32_t player_color, uint32_t enemy_crush_color);
+void DrawPlayerParticles(RenderContext* render, const PlayerParticle* particles, int particle_count, uint32_t player_color, uint32_t enemy_crush_color, uint32_t checkpoint_color);
 void DrawPlayer(RenderContext* render, const Player* player, uint32_t player_color, uint32_t face_color, GravityDirection gravity_direction);

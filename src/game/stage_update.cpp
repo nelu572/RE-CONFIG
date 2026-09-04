@@ -2681,6 +2681,11 @@ static void GameUpdateRoomCheckpoint(GameState* state, float dt) {
             state->checkpoint_index = index;
             state->checkpoint_active = 1;
             state->checkpoint_flag_drop = 0.0f;
+            SpawnCheckpointParticles(state->player_particles,
+                                    PLAYER_PARTICLE_COUNT,
+                                    checkpoint->x + checkpoint->w * 0.5f,
+                                    checkpoint->y + checkpoint->h * 0.5f,
+                                    state->gravity_direction);
             break;
         }
     }

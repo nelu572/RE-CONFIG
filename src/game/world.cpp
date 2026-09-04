@@ -8,8 +8,8 @@ static const RoomDef* const g_rooms[] = {
     &g_room04,
     &g_room05,
     &g_room06,
-    &g_room07,
     &g_room08,
+    &g_room07,
     &g_room09,
 };
 

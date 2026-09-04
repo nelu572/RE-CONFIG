@@ -1509,7 +1509,8 @@ void StageRenderDrawDynamic(const StageRenderState* state) {
                         state->player_particles,
                         state->player_particle_count,
                         StageLerpColor(state->platform_color, state->type_a_off_pattern_color, 0.48f),
-                        StageLerpColor(state->effect_color, state->player_color, 0.32f));
+                        StageLerpColor(state->effect_color, state->player_color, 0.32f),
+                        state->effect_color);
     for (int i = 0; i < state->room->speaker_count; ++i) {
         DrawSpeakerWaves(state, &state->room->speakers[i]);
     }

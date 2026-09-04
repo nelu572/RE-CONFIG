@@ -399,6 +399,33 @@ void SpawnWalkerEnemyCrushParticles(PlayerParticle* particles,
     }
 }
 
+void SpawnCheckpointParticles(PlayerParticle* particles,
+                              int particle_count,
+                              float x,
+                              float y,
+                              GravityDirection gravity_direction) {
+    int gravity_x;
+    int gravity_y;
+    int tangent_x;
+    int tangent_y;
+    PlayerGravityVector(gravity_direction, &gravity_x, &gravity_y);
+    PlayerTangentVector(gravity_x, gravity_y, &tangent_x, &tangent_y);
+
+    static constexpr int piece_count = 18;
+    for (int i = 0; i < piece_count; ++i) {
+        float angle = ((float)i / (float)piece_count) * 6.2831853f;
+        float tangent_speed = CosApprox(angle) * PlayerRandomRange(105.0f, 250.0f);
+        float gravity_speed = SinApprox(angle) * PlayerRandomRange(95.0f, 225.0f) - 72.0f;
+        float vx = (float)tangent_x * tangent_speed + (float)gravity_x * gravity_speed;
+        float vy = (float)tangent_y * tangent_speed + (float)gravity_y * gravity_speed;
+        float px = x + PlayerRandomRange(-5.0f, 5.0f);
+        float py = y + PlayerRandomRange(-5.0f, 5.0f);
+        float life = PlayerRandomRange(0.42f, 0.78f);
+        float size = PlayerRandomRange(1.8f, 4.2f);
+        SpawnPlayerParticle(particles, particle_count, px, py, vx, vy, life, size, PLAYER_PARTICLE_STYLE_CHECKPOINT);
+    }
+}
+
 void ResetPlayerPresentation(Player* player, PlayerParticle* particles, int particle_count) {
     player->visual_sx = 1.0f;
     player->visual_sy = 1.0f;
@@ -628,7 +655,12 @@ void UpdatePlayerPresentation(Player* player, PlayerParticle* particles, int par
     player->visual_sy = PlayerClampF(player->visual_sy, 0.60f, 1.36f);
 }
 
-void DrawPlayerParticles(RenderContext* render, const PlayerParticle* particles, int particle_count, uint32_t player_color, uint32_t enemy_crush_color) {
+void DrawPlayerParticles(RenderContext* render,
+                         const PlayerParticle* particles,
+                         int particle_count,
+                         uint32_t player_color,
+                         uint32_t enemy_crush_color,
+                         uint32_t checkpoint_color) {
     for (int i = 0; i < particle_count; ++i) {
         const PlayerParticle* p = &particles[i];
         if (p->age >= p->life || p->life <= 0.0f) {
@@ -641,7 +673,12 @@ void DrawPlayerParticles(RenderContext* render, const PlayerParticle* particles,
         if (radius < 1 || fade <= 0.05f) {
             continue;
         }
-        uint32_t color = p->style == PLAYER_PARTICLE_STYLE_WALKER_ENEMY_CRUSH ? enemy_crush_color : player_color;
+        uint32_t color = player_color;
+        if (p->style == PLAYER_PARTICLE_STYLE_WALKER_ENEMY_CRUSH) {
+            color = enemy_crush_color;
+        } else if (p->style == PLAYER_PARTICLE_STYLE_CHECKPOINT) {
+            color = checkpoint_color;
+        }
         FillCircleBlend(render, WorldX(render, p->x), WorldY(render, p->y), radius, color, fade);
     }
 }

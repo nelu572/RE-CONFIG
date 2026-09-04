@@ -58,11 +58,6 @@ void InputUpdate() {
     g_input.down[KEY_ESCAPE] = KeyDown(VK_ESCAPE);
     g_input.down[KEY_F11] = KeyDown(VK_F11);
     g_input.down[KEY_R] = KeyDown('R');
-    g_input.down[KEY_0] = KeyDown('0');
-    g_input.down[KEY_1] = KeyDown('1');
-    g_input.down[KEY_2] = KeyDown('2');
-    g_input.down[KEY_3] = KeyDown('3');
-    g_input.down[KEY_4] = KeyDown('4');
 
     if (g_sync_on_activate) {
         for (int i = 0; i < KEY_COUNT; ++i) {

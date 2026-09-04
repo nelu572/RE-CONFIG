@@ -56,8 +56,6 @@ static PauseMenuState g_pause_menu;
 static int g_overlay_redraw_pending = 0;
 static int g_pause_redraw_pending = 0;
 static constexpr int START_ROOM_INDEX = 0;
-static constexpr int DEBUG_ROOM_01_INDEX = 0;
-static constexpr int DEBUG_ROOM_02_INDEX = 1;
 static constexpr int STAGE_SELECT_LAST_ROOM_INDEX = 8;
 static constexpr int STAGE_SELECT_DISPLAY_COUNT = STAGE_SELECT_LAST_ROOM_INDEX + 1;
 static int g_stage_select_index = 0;
@@ -478,25 +476,6 @@ static void EnterEndingNow() {
     g_app_state = APP_STATE_ENDING;
 }
 
-static void DebugResetDataAndEnterMainMenu() {
-    PauseMenuClose(&g_pause_menu);
-    ClearBytes(g_stage_select_cleared, sizeof(g_stage_select_cleared));
-    g_last_played_room = START_ROOM_INDEX;
-    StageProgressSave();
-
-    g_app_transition_target_state = APP_STATE_MAIN_MENU;
-    g_app_transition_target_room = START_ROOM_INDEX;
-    g_app_transition_pending = 0;
-    g_app_transition_amount = 0.0f;
-    g_app_transition_hold_seconds = 0.0f;
-    g_app_transition_last_seconds = 0.0;
-
-    g_game.current_room = START_ROOM_INDEX;
-    g_last_played_room = g_game.current_room;
-    ResetStage();
-    EnterMainMenuNow();
-}
-
 static void ApplyAppTransitionTarget() {
     if (g_app_transition_target_state == APP_STATE_MAIN_MENU) {
         EnterMainMenuNow();
@@ -832,13 +811,10 @@ static int StageSelectPreviousStagesCleared(int stage_index) {
 }
 
 static int StageSelectStageUnlocked(int stage_index) {
-    // Developer build: keep every implemented stage open while iterating on room order.
-    return StageSelectStageImplemented(stage_index);
-
-    // if (stage_index == START_ROOM_INDEX) {
-    //     return StageSelectStageImplemented(stage_index);
-    // }
-    // return StageSelectStageImplemented(stage_index) && StageSelectPreviousStagesCleared(stage_index);
+    if (stage_index == START_ROOM_INDEX) {
+        return StageSelectStageImplemented(stage_index);
+    }
+    return StageSelectStageImplemented(stage_index) && StageSelectPreviousStagesCleared(stage_index);
 }
 
 static int StageSelectStageSelectable(int stage_index) {
@@ -1520,24 +1496,6 @@ extern "C" void WinMainCRTStartup() {
         if (InputWasPressed(KEY_F11)) {
             ToggleFullscreen();
         }
-#ifndef NDEBUG
-        if (InputWasPressed(KEY_0)) {
-            DebugResetDataAndEnterMainMenu();
-        }
-        if (!AppTransitionActive() && InputWasPressed(KEY_1)) {
-            StartAppTransition(APP_STATE_MAIN_MENU, g_game.current_room);
-        }
-        if (!AppTransitionActive() && InputWasPressed(KEY_2)) {
-            StartAppTransition(APP_STATE_STAGE_SELECT, START_ROOM_INDEX);
-        }
-        if (!AppTransitionActive() && InputWasPressed(KEY_3)) {
-            StartAppTransition(APP_STATE_GAME, DEBUG_ROOM_01_INDEX);
-        }
-        if (!AppTransitionActive() && InputWasPressed(KEY_4)) {
-            StartAppTransition(APP_STATE_GAME, DEBUG_ROOM_02_INDEX);
-        }
-#endif
-
         if (g_type_a_art_test) {
             t0 = g_perf_config.enabled ? PerfNowSeconds() : 0.0;
             DrawTypeAArtTest();

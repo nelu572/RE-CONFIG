@@ -43,7 +43,7 @@ static constexpr float SPEAKER_AUDIO_BASE_RANGE = 1080.0f;
 // before it becomes difficult to approach.
 static constexpr float SPEAKER_AUDIO_RANGE_SCALE = 1.65f;
 // Speaker pulses must remain legible over the default BGM mix.
-static constexpr float SPEAKER_KICK_OUTPUT_GAIN = 2.00f;
+static constexpr float SPEAKER_KICK_OUTPUT_GAIN = 3.00f;
 static constexpr int AUDIO_VOICE_COUNT = 4;
 static constexpr int AUDIO_MIXER_SAMPLE_RATE = 44100;
 static constexpr int AUDIO_MIXER_CHANNELS = 2;
@@ -462,7 +462,7 @@ static float AudioMixerEffectGain(float gain) {
     if (gain < 0.0f) return 0.0f;
     // A speaker kick is deliberately allowed to exceed unity.  The final mix
     // clamps to int16, giving it priority over the backing track.
-    if (gain > 2.0f) return 2.0f;
+    if (gain > 3.0f) return 3.0f;
     return gain;
 }
 
