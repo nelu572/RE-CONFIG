@@ -162,6 +162,10 @@ def marker_rects(rows: list[str], marker: str, require_id: bool) -> list[dict]:
 def pressure_switch_mount(rows: list[str], device: dict) -> str:
     x, y, w, h = device["rect"]
     if w >= h:
+        upper_contacts = sum(rows[y - 1][tile_x] == "#" for tile_x in range(x, x + w) if y > 0)
+        lower_contacts = sum(rows[y + h][tile_x] == "#" for tile_x in range(x, x + w) if y + h < len(rows))
+        if upper_contacts > lower_contacts:
+            return "PRESSURE_SWITCH_MOUNT_UP"
         return "PRESSURE_SWITCH_MOUNT_DOWN"
     left_contacts = sum(rows[tile_y][x - 1] == "#" for tile_y in range(y, y + h) if x > 0)
     right_contacts = sum(rows[tile_y][x + w] == "#" for tile_y in range(y, y + h) if x + w < len(rows[tile_y]))
@@ -190,6 +194,33 @@ def replace_array(source: str, name: str, lines: list[str]) -> str:
             return source
         raise ValueError(f"{name} 배열을 찾을 수 없습니다.")
     return source[:match.end(1)] + fmt_array(lines) + "};" + source[match.end(2):]
+
+
+def upsert_type_a_walls(source: str, room_id: str, lines: list[str]) -> str:
+    name = f"g_room{room_id}_type_a_walls"
+    array_pattern = rf"static const RectF {re.escape(name)}\[\]\s*=\s*\{{.*?\s*\}};\n?"
+    if re.search(array_pattern, source, re.S):
+        if lines:
+            return replace_array(source, name, lines)
+        source = re.sub(array_pattern, "", source, count=1, flags=re.S)
+        fields = rf"{re.escape(name)},\s*\(int\)\(sizeof\({re.escape(name)}\) / sizeof\({re.escape(name)}\[0\]\)\),"
+        return re.sub(fields, "0, 0,", source, count=1)
+    if not lines:
+        return source
+    room_declaration = f"extern const RoomDef g_room{room_id}"
+    if room_declaration not in source:
+        raise ValueError("RoomDef 앞에 TYPE A 벽 배열을 추가할 위치를 찾을 수 없습니다.")
+    declaration = f"static const RectF {name}[] = {{" + fmt_array(lines) + "};\n"
+    source = source.replace(room_declaration, declaration + "\n" + room_declaration, 1)
+    platform_fields = (
+        rf"(g_room{room_id}_platforms,\s*\(int\)\(sizeof\(g_room{room_id}_platforms\) / "
+        rf"sizeof\(g_room{room_id}_platforms\[0\]\)\),\s*)0\s*,\s*0\s*,"
+    )
+    replacement = rf"\g<1>{name},\n    (int)(sizeof({name}) / sizeof({name}[0])),"
+    source, count = re.subn(platform_fields, replacement, source, count=1)
+    if count != 1:
+        raise ValueError("RoomDef의 TYPE A 벽 필드를 갱신할 수 없습니다.")
+    return source
 
 
 def upsert_room_array(source: str, ctype: str, name: str, lines: list[str]) -> str:
@@ -264,6 +295,39 @@ def source_enemies(source: str) -> list[dict]:
         {"x": float(x.rstrip("f")), "y": float(y.rstrip("f")), "speed": speed, "direction": direction, "kind": kind}
         for x, y, speed, direction, kind in re.findall(pattern, source)
     ]
+
+
+def upsert_walker_enemies(source: str, room_id: str, lines: list[str]) -> str:
+    name = f"g_room{room_id}_walker_enemies"
+    array_pattern = rf"static const WalkerEnemyDef {re.escape(name)}\[\]\s*=\s*\{{.*?\s*\}};\n?"
+    room_declaration = f"extern const RoomDef g_room{room_id}"
+    if re.search(array_pattern, source, re.S):
+        if not lines:
+            source = re.sub(array_pattern, "", source, flags=re.S)
+            enemy_fields = (
+                rf"{re.escape(name)},\s*\(int\)\(sizeof\({re.escape(name)}\) / "
+                rf"sizeof\({re.escape(name)}\[0\]\)\),\s*"
+            )
+            source, count = re.subn(enemy_fields, "0, ", source, count=1)
+            if count != 1:
+                raise ValueError("RoomDef의 워커 적 필드를 비울 수 없습니다.")
+            return source
+        return replace_array(source, name, lines)
+    if not lines:
+        return source
+    if room_declaration not in source:
+        raise ValueError("RoomDef 앞에 워커 적 배열을 추가할 위치를 찾을 수 없습니다.")
+    declaration = f"static const WalkerEnemyDef {name}[] = {{" + fmt_array(lines) + "};\n"
+    source = source.replace(room_declaration, declaration + "\n" + room_declaration, 1)
+    platform_fields = (
+        rf"(g_room{room_id}_pressure_platforms,\s*\(int\)\(sizeof\(g_room{room_id}_pressure_platforms\) / "
+        rf"sizeof\(g_room{room_id}_pressure_platforms\[0\]\)\),\s*\d+,\s*)0\s*,\s*0\s*,"
+    )
+    replacement = rf"\g<1>{name},\n    (int)(sizeof({name}) / sizeof({name}[0])),"
+    source, count = re.subn(platform_fields, replacement, source, count=1)
+    if count != 1:
+        raise ValueError("RoomDef의 워커 적 필드를 갱신할 수 없습니다.")
+    return source
 
 
 STATIC_SPIKE_MARKERS = {
@@ -348,7 +412,7 @@ def compile_map(rows: list[str], source: str, room_id: str) -> str:
         for x, y, height in vertical_runs(rows, "|")
     ]
     source = replace_array(source, f"g_room{room_id}_platforms", platform_lines)
-    source = replace_array(source, f"g_room{room_id}_type_a_walls", [fmt_rect(rect) for rect in pack_rects(cells(rows, "A"))])
+    source = upsert_type_a_walls(source, room_id, [fmt_rect(rect) for rect in pack_rects(cells(rows, "A"))])
 
     speaker_lines = []
     for component in components(cells(rows, "Kk")):
@@ -462,7 +526,7 @@ def compile_map(rows: list[str], source: str, room_id: str) -> str:
         enemy_lines.append(
             f"{{ {{ {fmt_num(x + .25)}, {fmt_num(y + .10)}, T(1.5f), T(0.9f) }}, {speed}, {direction}, WALKER_ENEMY_{kind} }}"
         )
-    source = replace_array(source, f"g_room{room_id}_walker_enemies", enemy_lines)
+    source = upsert_walker_enemies(source, room_id, enemy_lines)
 
     static_markers = static_spike_markers(rows)
     static_spike_lines = [
@@ -543,6 +607,10 @@ def compile_map(rows: list[str], source: str, room_id: str) -> str:
         checkpoint_def = rf"(g_room{room_id}_walker_enemies,\s*\(int\)\(sizeof\(g_room{room_id}_walker_enemies\) / sizeof\(g_room{room_id}_walker_enemies\[0\]\)\),\s*\d+,\s*)(\{{\s*T\([^)]+\),\s*T\([^)]+\),\s*T\(1\),\s*T\(1\)\s*\}})(?:,\s*{checkpoint_name},\s*\(int\)\(sizeof\({checkpoint_name}\) / sizeof\({checkpoint_name}\[0\]\)\))?(?=,\s*(?:g_room{room_id}_static_spikes|\}};))"
         replacement = rf"\g<1>{legacy_checkpoint}, {checkpoint_name}, (int)(sizeof({checkpoint_name}) / sizeof({checkpoint_name}[0]))"
         source, count = re.subn(checkpoint_def, replacement, source, count=1, flags=re.S)
+        if count != 1:
+            empty_checkpoint_def = rf"(g_room{room_id}_walker_enemies,\s*\(int\)\(sizeof\(g_room{room_id}_walker_enemies\) / sizeof\(g_room{room_id}_walker_enemies\[0\]\)\),\s*)(?:0,\s*)?\{{\}},\s*0,\s*0(?=\s*(?:,\s*g_room{room_id}_static_spikes|\}};))"
+            replacement = rf"\g<1>0, {legacy_checkpoint}, {checkpoint_name}, (int)(sizeof({checkpoint_name}) / sizeof({checkpoint_name}[0]))"
+            source, count = re.subn(empty_checkpoint_def, replacement, source, count=1, flags=re.S)
         if count != 1:
             raise ValueError("RoomDef checkpoints were not found.")
     source = upsert_static_spikes(source, room_id, static_spike_lines)
