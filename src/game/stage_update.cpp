@@ -3149,6 +3149,10 @@ void GameUpdateStage(GameState* state, float dt, int use_static_cache) {
     if (state->player_dead) {
         return;
     }
+    if (GamePlayerTouchesWalkerEnemy(state) || GamePlayerTouchesStaticSpike(state)) {
+        GameStartPlayerDeath(state);
+        return;
+    }
 
     RectF pr = GamePlayerRect(state);
     RectF door_player_probe = pr;
