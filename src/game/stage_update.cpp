@@ -473,91 +473,9 @@ static RectF GamePlayerFlexRectWithSize(const GameState* state, float tangent_si
     }
     return candidate;
 }
-static int GamePlayerResizeSolidCount(const RoomDef* room, int type_a_collision_active, int extra_solid_count) {
-    return room->platform_count + (type_a_collision_active ? room->type_a_count : 0) + extra_solid_count;
-}
-
-static const RectF* GamePlayerResizeSolidAt(const RoomDef* room, int type_a_collision_active, const RectF* extra_solids, int index) {
-    if (index < room->platform_count) {
-        return &room->platforms[index];
-    }
-    index -= room->platform_count;
-    int type_a_count = type_a_collision_active ? room->type_a_count : 0;
-    if (index < type_a_count) {
-        return &room->type_a_walls[index];
-    }
-    return &extra_solids[index - type_a_count];
-}
-
-static int GameResolvePlayerResizeRect(const GameState* state, RectF* rect, int allow_x, int allow_y) {
-    if (!allow_x && !allow_y) {
-        return !GameRectOverlapsSolids(state, rect);
-    }
-    const RoomDef* room = GameCurrentRoom(state);
-    int type_a_collision_active = GameFeatureActive(state, FEATURE_COLLISION_TYPE_A);
-    RectF piston_solids[GAME_MAX_DYNAMIC_SOLIDS];
-    int piston_solid_count = GameBuildPistonSolids(state, room, state->piston_time_seconds, piston_solids, GAME_MAX_DYNAMIC_SOLIDS);
-    piston_solid_count = GameAppendPressurePlatformSolids(state, piston_solids, piston_solid_count, GAME_MAX_DYNAMIC_SOLIDS);
-    piston_solid_count = GameAppendPressureSwitchSolids(state, piston_solids, piston_solid_count, GAME_MAX_DYNAMIC_SOLIDS);
-    piston_solid_count = GameAppendGravityBoxSolids(state, piston_solids, piston_solid_count, GAME_MAX_DYNAMIC_SOLIDS);
-    int total_count = GamePlayerResizeSolidCount(room, type_a_collision_active, piston_solid_count);
-    for (int pass = 0; pass < 8; ++pass) {
-        float best_abs = 1000000.0f;
-        float best_x = 0.0f;
-        float best_y = 0.0f;
-        for (int i = 0; i < total_count; ++i) {
-            const RectF* solid = GamePlayerResizeSolidAt(room, type_a_collision_active, piston_solids, i);
-            if (!RectsOverlap(rect, solid)) {
-                continue;
-            }
-            float push_left = solid->x - (rect->x + rect->w);
-            float push_right = (solid->x + solid->w) - rect->x;
-            float push_up = solid->y - (rect->y + rect->h);
-            float push_down = (solid->y + solid->h) - rect->y;
-            float abs_left = push_left < 0.0f ? -push_left : push_left;
-            float abs_right = push_right < 0.0f ? -push_right : push_right;
-            float abs_up = push_up < 0.0f ? -push_up : push_up;
-            float abs_down = push_down < 0.0f ? -push_down : push_down;
-            if (allow_x && abs_left < best_abs) {
-                best_abs = abs_left;
-                best_x = push_left;
-                best_y = 0.0f;
-            }
-            if (allow_x && abs_right < best_abs) {
-                best_abs = abs_right;
-                best_x = push_right;
-                best_y = 0.0f;
-            }
-            if (allow_y && abs_up < best_abs) {
-                best_abs = abs_up;
-                best_x = 0.0f;
-                best_y = push_up;
-            }
-            if (allow_y && abs_down < best_abs) {
-                best_abs = abs_down;
-                best_x = 0.0f;
-                best_y = push_down;
-            }
-        }
-        if (best_abs >= 1000000.0f) {
-            break;
-        }
-        rect->x += best_x;
-        rect->y += best_y;
-    }
-    return !GameRectOverlapsSolids(state, rect);
-}
-
-static int GamePlayerFlexSizeCanResolve(const GameState* state, float tangent_size, float gravity_size, GravityDirection anchor_direction, int allow_x, int allow_y) {
+static int GamePlayerFlexSizeFits(const GameState* state, float tangent_size, float gravity_size, GravityDirection anchor_direction) {
     RectF candidate = GamePlayerFlexRectWithSize(state, tangent_size, gravity_size, anchor_direction);
-    return GameResolvePlayerResizeRect(state, &candidate, allow_x, allow_y);
-}
-
-static void GameResolvePlayerResizeOverlap(GameState* state, int allow_x, int allow_y) {
-    RectF rect = GamePlayerRect(state);
-    GameResolvePlayerResizeRect(state, &rect, allow_x, allow_y);
-    state->player.x = rect.x;
-    state->player.y = rect.y;
+    return !GameRectOverlapsSolids(state, &candidate);
 }
 
 static RectF GamePlayerVisualRectForScale(const GameState* state, float sx, float sy) {
@@ -631,28 +549,14 @@ static void GameApplyPlayerFlexibility(GameState* state, int value, float move, 
         }
     }
 
-    float next_w = tangent_size;
-    float next_h = gravity_size;
-    if (state->gravity_direction == GRAVITY_LEFT || state->gravity_direction == GRAVITY_RIGHT) {
-        next_w = gravity_size;
-        next_h = tangent_size;
-    }
-    int allow_x = next_w > pr.w + 0.01f;
-    int allow_y = next_h > pr.h + 0.01f;
-
     int tangent_growing = tangent_size > current_tangent_size + 0.01f;
     int gravity_growing = gravity_size > current_gravity_size + 0.01f;
     if ((tangent_growing || gravity_growing) &&
-        !GamePlayerFlexSizeCanResolve(state, tangent_size, gravity_size, anchor_direction, allow_x, allow_y)) {
+        !GamePlayerFlexSizeFits(state, tangent_size, gravity_size, anchor_direction)) {
         tangent_size = current_tangent_size;
         gravity_size = current_gravity_size;
-        next_w = pr.w;
-        next_h = pr.h;
-        allow_x = 0;
-        allow_y = 0;
     }
     PlayerSetCollisionSizeAnchored(&state->player, tangent_size, gravity_size, state->gravity_direction, anchor_direction);
-    GameResolvePlayerResizeOverlap(state, allow_x, allow_y);
 }
 
 void GameSetPlayerFlexibility(GameState* state, int value) {
