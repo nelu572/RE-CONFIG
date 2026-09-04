@@ -306,9 +306,25 @@ def upsert_static_spikes(source: str, room_id: str, lines: list[str]) -> str:
     if room_start < 0 or room_end < 0:
         raise ValueError("RoomDef 끝을 찾아 정적 가시 배열을 연결할 수 없습니다.")
     tail = f"{name},\n    (int)(sizeof({name}) / sizeof({name}[0]))"
+    piston_static_tail = (
+        rf"(g_room{room_id}_pistons,\s*\(int\)\(sizeof\(g_room{room_id}_pistons\) / "
+        rf"sizeof\(g_room{room_id}_pistons\[0\]\)\),)\s*{name},\s*"
+        rf"\(int\)\(sizeof\({name}\) / sizeof\({name}\[0\]\)\)"
+    )
+    if re.search(piston_static_tail, source):
+        expanded = rf"\g<1>\n    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, {{}}, 0, 0, {tail}"
+        return re.sub(piston_static_tail, expanded, source, count=1)
     if re.search(tail_pattern, source):
         return re.sub(tail_pattern, rf"\g<separator>{tail},", source, count=1)
     room_def = source[room_start:room_end + 3]
+    piston_only_tail = (
+        rf"(g_room{room_id}_pistons,\s*\(int\)\(sizeof\(g_room{room_id}_pistons\) / "
+        rf"sizeof\(g_room{room_id}_pistons\[0\]\)\),)\s*\}};"
+    )
+    if re.search(piston_only_tail, room_def):
+        expanded = rf"\g<1>\n    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, {{}}, 0, 0, {tail},\n}};"
+        room_def = re.sub(piston_only_tail, expanded, room_def, count=1)
+        return source[:room_start] + room_def + source[room_end + 3:]
     short_tail = (
         rf"(g_room{room_id}_pressure_platforms,\s*\(int\)\(sizeof\(g_room{room_id}_pressure_platforms\) / "
         rf"sizeof\(g_room{room_id}_pressure_platforms\[0\]\)\),\s*)0,\s*\}};"
@@ -380,13 +396,35 @@ def compile_map(rows: list[str], source: str, room_id: str) -> str:
         )
         remaining_starts.remove(index)
         tuning_by_start[index] = piston
+    # An I/i rectangle can have both a horizontal and a vertical counterpart
+    # when pistons share the same columns or rows.  Prefer the vertically
+    # aligned counterpart: ROOM maps use that layout for opposing ceiling and
+    # floor pistons, while a horizontal piston has no vertically aligned goal.
+    remaining_targets = set(range(len(targets)))
+    paired_targets = {}
+    for index, start in enumerate(starts):
+        x, y, w, h = start["rect"]
+        candidates = [
+            candidate for candidate in remaining_targets
+            if targets[candidate]["rect"][2:] == (w, h)
+            and (targets[candidate]["rect"][0] == x or targets[candidate]["rect"][1] == y)
+        ]
+        if not candidates:
+            raise ValueError("I와 같은 크기의 수평 또는 수직 i 목표를 찾을 수 없습니다.")
+        vertical = [candidate for candidate in candidates if targets[candidate]["rect"][0] == x]
+        pool = vertical or candidates
+        target_index = min(
+            pool,
+            key=lambda candidate: abs(targets[candidate]["rect"][0] - x)
+            + abs(targets[candidate]["rect"][1] - y),
+        )
+        remaining_targets.remove(target_index)
+        paired_targets[index] = targets[target_index]
+
     piston_lines = []
     for index, start in enumerate(starts):
         x, y, w, h = start["rect"]
-        same_size = [target for target in targets if target["rect"][2:] == (w, h)]
-        if not same_size:
-            raise ValueError("I와 같은 크기의 i 목표를 찾을 수 없습니다.")
-        target = min(same_size, key=lambda item: abs(item["rect"][0] - x) + abs(item["rect"][1] - y))
+        target = paired_targets[index]
         dx, dy = target["rect"][0] - x, target["rect"][1] - y
         if dx and dy:
             raise ValueError("I/i 피스톤은 수평 또는 수직으로만 이동해야 합니다.")
