@@ -439,7 +439,9 @@ static const uint32_t SPEAKER_DARK = 0x0070272f;
 static const uint32_t SPEAKER_DEEP_DARK = 0x004b2428;
 static const uint32_t SPEAKER_BRACKET = 0x007b2b34;
 static constexpr float SPEAKER_WAVE_SPACING = 300.0f;
-static constexpr float SPEAKER_WAVE_SPEED = 520.0f;
+// Keep the visual pulse on the same beat as AudioUpdateSpeakers.
+static constexpr float SPEAKER_PULSE_BPM = 130.0f;
+static constexpr float SPEAKER_WAVE_SPEED = SPEAKER_WAVE_SPACING * SPEAKER_PULSE_BPM / 60.0f;
 static constexpr float SPEAKER_WAVE_RANGE = 1080.0f;
 static constexpr float SPEAKER_WAVE_START_RADIUS = 42.0f;
 
@@ -454,7 +456,7 @@ struct SpeakerAnimation {
 
 static SpeakerAnimation SpeakerAnimationForTime(double time_seconds, float volume) {
     volume = StageClampF(volume, 0.0f, 1.0f);
-    float wave_distance = (float)time_seconds * SPEAKER_WAVE_SPEED - SPEAKER_WAVE_START_RADIUS;
+    float wave_distance = (float)time_seconds * SPEAKER_WAVE_SPEED;
     float phase = StageWrap01(wave_distance / SPEAKER_WAVE_SPACING);
     float primary = StageClampF(1.0f - phase / 0.18f, 0.0f, 1.0f);
     float rebound = 0.0f;
@@ -909,15 +911,13 @@ static void DrawSpeakerWaves(const StageRenderState* state, const SpeakerDevice*
     }
 
     float wave_range = SPEAKER_WAVE_RANGE * volume * speaker->wave_range_scale;
-    float wave_spacing = wave_range < SPEAKER_WAVE_SPACING ? wave_range * 0.5f : SPEAKER_WAVE_SPACING;
-    if (wave_spacing <= 0.001f) {
-        return;
-    }
-    float travel = StageWrap01((float)state->speaker_time_seconds * SPEAKER_WAVE_SPEED / wave_spacing) * wave_spacing;
+    // Emission stays on the audio beat.  Only the visible range shrinks with volume.
+    float travel = SPEAKER_WAVE_START_RADIUS +
+                   StageWrap01((float)state->speaker_time_seconds * SPEAKER_WAVE_SPEED / SPEAKER_WAVE_SPACING) * SPEAKER_WAVE_SPACING;
     float source_x = speaker->x + speaker->width * 0.45f;
     float source_y = speaker->y + speaker->height * 0.66f;
     for (int i = 0; i < 4; ++i) {
-        float radius = travel + (float)i * wave_spacing;
+        float radius = travel + (float)i * SPEAKER_WAVE_SPACING;
         if (radius > wave_range) {
             continue;
         }

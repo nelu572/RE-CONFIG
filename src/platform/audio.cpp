@@ -38,7 +38,18 @@ extern "C" float ldexpf(float value, int exponent) {
 }
 static constexpr double SPEAKER_AUDIO_BPM = 130.0;
 static constexpr double SPEAKER_AUDIO_BEAT_SECONDS = 60.0 / SPEAKER_AUDIO_BPM;
+static constexpr float SPEAKER_AUDIO_BASE_RANGE = 1080.0f;
+// Audio starts outside the push edge, so a full-volume speaker can be heard
+// before it becomes difficult to approach.
+static constexpr float SPEAKER_AUDIO_RANGE_SCALE = 1.65f;
+// Speaker pulses must remain legible over the default BGM mix.
+static constexpr float SPEAKER_KICK_OUTPUT_GAIN = 2.00f;
 static constexpr int AUDIO_VOICE_COUNT = 4;
+static constexpr int AUDIO_MIXER_SAMPLE_RATE = 44100;
+static constexpr int AUDIO_MIXER_CHANNELS = 2;
+static constexpr int AUDIO_MIXER_FRAMES_PER_BUFFER = 512;
+static constexpr int AUDIO_MIXER_BUFFER_COUNT = 4;
+static constexpr int AUDIO_MIXER_EFFECT_VOICE_COUNT = 12;
 static constexpr int BGM_LOOP_FADE_MS = 8;
 static constexpr int BGM_FADE_IN_MS = 1600;
 static constexpr int BGM_FADE_OUT_MS = 240;
@@ -49,7 +60,6 @@ static constexpr int TRANSITION_SAMPLE_RATE = 22050;
 static constexpr int TRANSITION_SOUND_MS = 420;
 static constexpr int TRANSITION_SAMPLE_COUNT = TRANSITION_SAMPLE_RATE * TRANSITION_SOUND_MS / 1000;
 static constexpr float TRANSITION_OUTPUT_GAIN = 0.60f;
-static constexpr DWORD BGM_LOOP_FOREVER = 0xFFFFFFFFu;
 
 struct AudioWavData {
     WAVEFORMATEX format;
@@ -65,11 +75,8 @@ struct AudioBgmData {
 };
 
 static AudioBgmData g_bgm;
-static HWAVEOUT g_bgm_wave_out = 0;
-static WAVEHDR g_bgm_header;
 static int g_bgm_loaded = 0;
 static int g_bgm_load_attempted = 0;
-static int g_bgm_prepared = 0;
 static int g_bgm_playing = 0;
 static float g_bgm_volume = 1.0f;
 static DWORD g_bgm_fade_start_ms = 0;
@@ -85,9 +92,6 @@ static DWORD g_transition_sample_bytes = 0;
 static int g_transition_loaded = 0;
 static int g_transition_prepared = 0;
 
-static HWAVEOUT g_sfx_wave_out = 0;
-static WAVEFORMATEX g_sfx_format;
-static WAVEHDR g_sfx_header;
 struct AudioSfxData {
     short* samples;
     DWORD sample_bytes;
@@ -97,17 +101,43 @@ struct AudioSfxData {
 };
 
 static AudioSfxData g_sfx_assets[7];
-static int g_sfx_prepared = 0;
 static AudioWavData g_speaker_kick;
 static int g_speaker_kick_loaded = 0;
 static int g_speaker_kick_load_attempted = 0;
-static HWAVEOUT g_wave_out = 0;
-static WAVEHDR g_voice_headers[AUDIO_VOICE_COUNT];
-static unsigned char* g_voice_buffers[AUDIO_VOICE_COUNT];
-static int g_voice_prepared[AUDIO_VOICE_COUNT];
-static int g_next_voice = 0;
 static int g_speaker_audio_last_beat = -1;
 static int g_speaker_audio_was_active = 0;
+
+enum AudioMixerVoiceKind {
+    AUDIO_MIXER_VOICE_SFX,
+    AUDIO_MIXER_VOICE_SPEAKER,
+};
+
+struct AudioMixerVoice {
+    const short* samples;
+    DWORD frame_count;
+    int channels;
+    DWORD sample_rate;
+    unsigned long long phase;
+    unsigned long long step;
+    float gain;
+    int looping;
+    int kind;
+    int active;
+};
+
+static HWAVEOUT g_mixer_wave_out = 0;
+static WAVEHDR g_mixer_headers[AUDIO_MIXER_BUFFER_COUNT];
+static short g_mixer_buffers[AUDIO_MIXER_BUFFER_COUNT][AUDIO_MIXER_FRAMES_PER_BUFFER * AUDIO_MIXER_CHANNELS];
+static int g_mixer_prepared[AUDIO_MIXER_BUFFER_COUNT];
+static AudioMixerVoice g_mixer_bgm_voice;
+static AudioMixerVoice g_mixer_effect_voices[AUDIO_MIXER_EFFECT_VOICE_COUNT];
+static CRITICAL_SECTION g_mixer_lock;
+static int g_mixer_lock_initialized = 0;
+static HANDLE g_mixer_thread = 0;
+static volatile LONG g_mixer_thread_running = 0;
+
+static void AudioPumpMixer();
+static DWORD WINAPI AudioMixerThreadProc(LPVOID);
 
 static int AudioFileExists(const char* path) {
     DWORD attr = GetFileAttributesA(path);
@@ -410,10 +440,255 @@ static float AudioBgmDuckAmount() {
     return BGM_TRANSITION_DUCK_LEVEL + (1.0f - BGM_TRANSITION_DUCK_LEVEL) * recover;
 }
 
-static void AudioApplyBgmVolume() {
-    if (g_bgm_wave_out) {
-        float effective = g_bgm_volume * BGM_OUTPUT_GAIN * AudioBgmFadeAmount() * AudioBgmDuckAmount();
-        waveOutSetVolume(g_bgm_wave_out, AudioVolumeDword(effective));
+static void AudioMixerLock() {
+    if (g_mixer_lock_initialized) {
+        EnterCriticalSection(&g_mixer_lock);
+    }
+}
+
+static void AudioMixerUnlock() {
+    if (g_mixer_lock_initialized) {
+        LeaveCriticalSection(&g_mixer_lock);
+    }
+}
+
+static short AudioMixerClampI16(int value) {
+    if (value < -32768) value = -32768;
+    if (value > 32767) value = 32767;
+    return (short)value;
+}
+
+static float AudioMixerEffectGain(float gain) {
+    if (gain < 0.0f) return 0.0f;
+    // A speaker kick is deliberately allowed to exceed unity.  The final mix
+    // clamps to int16, giving it priority over the backing track.
+    if (gain > 2.0f) return 2.0f;
+    return gain;
+}
+
+static void AudioMixerStopVoicesByKind(int kind) {
+    AudioMixerLock();
+    for (int i = 0; i < AUDIO_MIXER_EFFECT_VOICE_COUNT; ++i) {
+        if (g_mixer_effect_voices[i].active && g_mixer_effect_voices[i].kind == kind) {
+            g_mixer_effect_voices[i].active = 0;
+        }
+    }
+    AudioMixerUnlock();
+}
+
+static void AudioMixerStopVoicesBySamples(const short* samples) {
+    AudioMixerLock();
+    for (int i = 0; i < AUDIO_MIXER_EFFECT_VOICE_COUNT; ++i) {
+        if (g_mixer_effect_voices[i].active && g_mixer_effect_voices[i].samples == samples) {
+            g_mixer_effect_voices[i].active = 0;
+        }
+    }
+    AudioMixerUnlock();
+}
+
+static void AudioMixerMixVoice(AudioMixerVoice* voice, float gain, int* out_left, int* out_right) {
+    if (!voice || !voice->active || !voice->samples || voice->frame_count == 0) {
+        return;
+    }
+
+    unsigned long long limit = (unsigned long long)voice->frame_count << 16;
+    if (voice->phase >= limit) {
+        if (voice->looping) {
+            voice->phase %= limit;
+        } else {
+            voice->active = 0;
+            return;
+        }
+    }
+
+    DWORD frame = (DWORD)(voice->phase >> 16);
+    const short* sample = voice->samples + frame * voice->channels;
+    int gain_1024 = (int)(AudioMixerEffectGain(gain) * 1024.0f + 0.5f);
+    *out_left += (int)sample[0] * gain_1024 / 1024;
+    *out_right += (int)(voice->channels > 1 ? sample[1] : sample[0]) * gain_1024 / 1024;
+
+    voice->phase += voice->step;
+    if (voice->phase >= limit) {
+        if (voice->looping) {
+            voice->phase %= limit;
+        } else {
+            voice->active = 0;
+        }
+    }
+}
+
+static void AudioMixerFillBuffer(short* output) {
+    float bgm_gain = g_bgm_volume * BGM_OUTPUT_GAIN * AudioBgmFadeAmount() * AudioBgmDuckAmount();
+    for (int frame = 0; frame < AUDIO_MIXER_FRAMES_PER_BUFFER; ++frame) {
+        int left = 0;
+        int right = 0;
+        AudioMixerMixVoice(&g_mixer_bgm_voice, bgm_gain, &left, &right);
+        for (int voice = 0; voice < AUDIO_MIXER_EFFECT_VOICE_COUNT; ++voice) {
+            AudioMixerMixVoice(&g_mixer_effect_voices[voice],
+                                g_mixer_effect_voices[voice].gain,
+                                &left,
+                                &right);
+        }
+        output[frame * 2] = AudioMixerClampI16(left);
+        output[frame * 2 + 1] = AudioMixerClampI16(right);
+    }
+}
+
+static int AudioEnsureMixer() {
+    if (g_mixer_wave_out) {
+        return 1;
+    }
+    if (!g_mixer_lock_initialized) {
+        InitializeCriticalSection(&g_mixer_lock);
+        g_mixer_lock_initialized = 1;
+    }
+
+    WAVEFORMATEX format;
+    AudioClearBytes(&format, sizeof(format));
+    format.wFormatTag = WAVE_FORMAT_PCM;
+    format.nChannels = AUDIO_MIXER_CHANNELS;
+    format.nSamplesPerSec = AUDIO_MIXER_SAMPLE_RATE;
+    format.wBitsPerSample = 16;
+    format.nBlockAlign = AUDIO_MIXER_CHANNELS * (format.wBitsPerSample / 8);
+    format.nAvgBytesPerSec = format.nSamplesPerSec * format.nBlockAlign;
+    MMRESULT mm = waveOutOpen(&g_mixer_wave_out, WAVE_MAPPER, &format, 0, 0, CALLBACK_NULL);
+    if (mm != MMSYSERR_NOERROR) {
+        g_mixer_wave_out = 0;
+        AudioDebugValue("mixer waveOutOpen failed: ", (DWORD)mm);
+        return 0;
+    }
+    waveOutSetVolume(g_mixer_wave_out, AudioVolumeDword(1.0f));
+    InterlockedExchange(&g_mixer_thread_running, 1);
+    g_mixer_thread = CreateThread(0, 0, AudioMixerThreadProc, 0, 0, 0);
+    if (!g_mixer_thread) {
+        InterlockedExchange(&g_mixer_thread_running, 0);
+        AudioDebugString("mixer thread creation failed; using main-thread pump");
+    }
+    return 1;
+}
+
+static void AudioPumpMixer() {
+    if (!g_mixer_wave_out) {
+        return;
+    }
+    AudioMixerLock();
+    for (int i = 0; i < AUDIO_MIXER_BUFFER_COUNT; ++i) {
+        WAVEHDR* header = &g_mixer_headers[i];
+        if (g_mixer_prepared[i] && (header->dwFlags & WHDR_DONE)) {
+            waveOutUnprepareHeader(g_mixer_wave_out, header, sizeof(*header));
+            g_mixer_prepared[i] = 0;
+        }
+        if (g_mixer_prepared[i]) {
+            continue;
+        }
+
+        AudioMixerFillBuffer(g_mixer_buffers[i]);
+        AudioClearBytes(header, sizeof(*header));
+        header->lpData = (LPSTR)g_mixer_buffers[i];
+        header->dwBufferLength = sizeof(g_mixer_buffers[i]);
+        MMRESULT mm = waveOutPrepareHeader(g_mixer_wave_out, header, sizeof(*header));
+        if (mm != MMSYSERR_NOERROR) {
+            AudioDebugValue("mixer waveOutPrepareHeader failed: ", (DWORD)mm);
+            continue;
+        }
+        g_mixer_prepared[i] = 1;
+        mm = waveOutWrite(g_mixer_wave_out, header, sizeof(*header));
+        if (mm != MMSYSERR_NOERROR) {
+            AudioDebugValue("mixer waveOutWrite failed: ", (DWORD)mm);
+            waveOutUnprepareHeader(g_mixer_wave_out, header, sizeof(*header));
+            g_mixer_prepared[i] = 0;
+        }
+    }
+    AudioMixerUnlock();
+}
+
+static DWORD WINAPI AudioMixerThreadProc(LPVOID) {
+    while (InterlockedCompareExchange(&g_mixer_thread_running, 1, 1) != 0) {
+        AudioPumpMixer();
+        Sleep(2);
+    }
+    return 0;
+}
+
+static int AudioMixerStartVoice(const short* samples,
+                                 DWORD frame_count,
+                                 int channels,
+                                 DWORD sample_rate,
+                                 float gain,
+                                 int kind) {
+    if (!samples || frame_count == 0 || channels < 1 || channels > 2 || sample_rate == 0 || gain <= 0.001f) {
+        return 0;
+    }
+    if (!AudioEnsureMixer()) {
+        return 0;
+    }
+
+    AudioMixerLock();
+    int slot = -1;
+    for (int i = 0; i < AUDIO_MIXER_EFFECT_VOICE_COUNT; ++i) {
+        if (!g_mixer_effect_voices[i].active) {
+            slot = i;
+            break;
+        }
+    }
+    if (slot < 0) {
+        slot = 0;
+        for (int i = 1; i < AUDIO_MIXER_EFFECT_VOICE_COUNT; ++i) {
+            if (g_mixer_effect_voices[i].gain < g_mixer_effect_voices[slot].gain) {
+                slot = i;
+            }
+        }
+    }
+
+    AudioMixerVoice* voice = &g_mixer_effect_voices[slot];
+    voice->samples = samples;
+    voice->frame_count = frame_count;
+    voice->channels = channels;
+    voice->sample_rate = sample_rate;
+    voice->phase = 0;
+    voice->step = ((unsigned long long)sample_rate << 16) / AUDIO_MIXER_SAMPLE_RATE;
+    if (voice->step == 0) voice->step = 1;
+    voice->gain = AudioMixerEffectGain(gain);
+    voice->looping = 0;
+    voice->kind = kind;
+    voice->active = 1;
+    AudioMixerUnlock();
+    AudioPumpMixer();
+    return 1;
+}
+
+static void AudioShutdownMixer() {
+    InterlockedExchange(&g_mixer_thread_running, 0);
+    if (g_mixer_thread) {
+        WaitForSingleObject(g_mixer_thread, INFINITE);
+        CloseHandle(g_mixer_thread);
+        g_mixer_thread = 0;
+    }
+    if (!g_mixer_wave_out) {
+        if (g_mixer_lock_initialized) {
+            DeleteCriticalSection(&g_mixer_lock);
+            g_mixer_lock_initialized = 0;
+        }
+        return;
+    }
+    AudioMixerLock();
+    waveOutReset(g_mixer_wave_out);
+    for (int i = 0; i < AUDIO_MIXER_BUFFER_COUNT; ++i) {
+        if (g_mixer_prepared[i]) {
+            waveOutUnprepareHeader(g_mixer_wave_out, &g_mixer_headers[i], sizeof(g_mixer_headers[i]));
+            g_mixer_prepared[i] = 0;
+        }
+    }
+    waveOutClose(g_mixer_wave_out);
+    g_mixer_wave_out = 0;
+    g_mixer_bgm_voice.active = 0;
+    for (int i = 0; i < AUDIO_MIXER_EFFECT_VOICE_COUNT; ++i) {
+        g_mixer_effect_voices[i].active = 0;
+    }
+    AudioMixerUnlock();
+    if (g_mixer_lock_initialized) {
+        DeleteCriticalSection(&g_mixer_lock);
+        g_mixer_lock_initialized = 0;
     }
 }
 
@@ -557,13 +832,16 @@ static int AudioLoadBgm() {
 }
 
 void AudioSetBgmVolume(float volume) {
+    AudioMixerLock();
     g_bgm_volume = AudioClampVolume(volume);
-    AudioApplyBgmVolume();
+    AudioMixerUnlock();
 }
 
 void AudioUpdateBgm(float volume) {
+    AudioMixerLock();
     g_bgm_volume = AudioClampVolume(volume);
-    AudioApplyBgmVolume();
+    AudioMixerUnlock();
+    AudioPumpMixer();
 }
 
 void AudioStartBgm(float volume) {
@@ -574,61 +852,32 @@ void AudioStartBgm(float volume) {
     if (!AudioLoadBgm()) {
         return;
     }
-    MMRESULT mm = waveOutOpen(&g_bgm_wave_out, WAVE_MAPPER, &g_bgm.format, 0, 0, CALLBACK_NULL);
-    if (mm != MMSYSERR_NOERROR) {
-        g_bgm_wave_out = 0;
-        AudioDebugValue("BGM waveOutOpen failed: ", (DWORD)mm);
+    if (!AudioEnsureMixer()) {
         return;
     }
+    AudioMixerLock();
     g_bgm_fade_start_ms = timeGetTime();
     g_bgm_fading_in = 1;
-    waveOutSetVolume(g_bgm_wave_out, AudioVolumeDword(0.0f));
-
-    AudioClearBytes(&g_bgm_header, sizeof(g_bgm_header));
-    g_bgm_header.lpData = (LPSTR)g_bgm.samples;
-    g_bgm_header.dwBufferLength = g_bgm.sample_bytes;
-    g_bgm_header.dwFlags = WHDR_BEGINLOOP | WHDR_ENDLOOP;
-    g_bgm_header.dwLoops = BGM_LOOP_FOREVER;
-    mm = waveOutPrepareHeader(g_bgm_wave_out, &g_bgm_header, sizeof(g_bgm_header));
-    if (mm != MMSYSERR_NOERROR) {
-        AudioDebugValue("BGM waveOutPrepareHeader failed: ", (DWORD)mm);
-        waveOutClose(g_bgm_wave_out);
-        g_bgm_wave_out = 0;
-        return;
-    }
-    g_bgm_prepared = 1;
-
-    mm = waveOutWrite(g_bgm_wave_out, &g_bgm_header, sizeof(g_bgm_header));
-    if (mm != MMSYSERR_NOERROR) {
-        AudioDebugValue("BGM waveOutWrite failed: ", (DWORD)mm);
-        waveOutReset(g_bgm_wave_out);
-        waveOutUnprepareHeader(g_bgm_wave_out, &g_bgm_header, sizeof(g_bgm_header));
-        waveOutClose(g_bgm_wave_out);
-        g_bgm_wave_out = 0;
-        g_bgm_prepared = 0;
-        return;
-    }
+    g_mixer_bgm_voice.samples = g_bgm.samples;
+    g_mixer_bgm_voice.frame_count = g_bgm.frame_count;
+    g_mixer_bgm_voice.channels = g_bgm.format.nChannels;
+    g_mixer_bgm_voice.sample_rate = g_bgm.format.nSamplesPerSec;
+    g_mixer_bgm_voice.phase = 0;
+    g_mixer_bgm_voice.step = ((unsigned long long)g_mixer_bgm_voice.sample_rate << 16) / AUDIO_MIXER_SAMPLE_RATE;
+    if (g_mixer_bgm_voice.step == 0) g_mixer_bgm_voice.step = 1;
+    g_mixer_bgm_voice.gain = 1.0f;
+    g_mixer_bgm_voice.looping = 1;
+    g_mixer_bgm_voice.active = 1;
+    AudioMixerUnlock();
     g_bgm_playing = 1;
+    AudioPumpMixer();
 }
 static void AudioStopBgm() {
-    if (!g_bgm_wave_out) {
-        return;
-    }
-    if (g_bgm_playing) {
-        const int steps = 12;
-        for (int i = steps; i >= 0; --i) {
-            float t = (float)i / (float)steps;
-            waveOutSetVolume(g_bgm_wave_out, AudioVolumeDword(g_bgm_volume * BGM_OUTPUT_GAIN * t));
-            Sleep(BGM_FADE_OUT_MS / steps);
-        }
-    }
-    waveOutReset(g_bgm_wave_out);
-    if (g_bgm_prepared) {
-        waveOutUnprepareHeader(g_bgm_wave_out, &g_bgm_header, sizeof(g_bgm_header));
-        g_bgm_prepared = 0;
-    }
+    AudioMixerLock();
+    g_mixer_bgm_voice.active = 0;
     g_bgm_playing = 0;
     g_bgm_fading_in = 0;
+    AudioMixerUnlock();
 }
 static short AudioClampI16(int value) {
     if (value < -32768) value = -32768;
@@ -886,61 +1135,24 @@ static int AudioLoadSfx(AudioSfxKind kind) {
     return 1;
 }
 
-static int AudioEnsureSfx() {
-    if (g_sfx_wave_out) {
-        return 1;
-    }
-    AudioClearBytes(&g_sfx_format, sizeof(g_sfx_format));
-    g_sfx_format.wFormatTag = WAVE_FORMAT_PCM;
-    g_sfx_format.nChannels = 1;
-    g_sfx_format.nSamplesPerSec = TRANSITION_SAMPLE_RATE;
-    g_sfx_format.wBitsPerSample = 16;
-    g_sfx_format.nBlockAlign = 2;
-    g_sfx_format.nAvgBytesPerSec = TRANSITION_SAMPLE_RATE * g_sfx_format.nBlockAlign;
-    MMRESULT mm = waveOutOpen(&g_sfx_wave_out, WAVE_MAPPER, &g_sfx_format, 0, 0, CALLBACK_NULL);
-    if (mm != MMSYSERR_NOERROR) {
-        g_sfx_wave_out = 0;
-        AudioDebugValue("sfx waveOutOpen failed: ", (DWORD)mm);
-        return 0;
-    }
-    return 1;
-}
-
 static void AudioPlaySfx(AudioSfxKind kind, float volume, float gain) {
     volume = AudioClampVolume(volume);
     if (volume <= 0.001f || gain <= 0.001f) {
         return;
     }
-    if (!AudioEnsureSfx()) {
-        return;
-    }
-
-    if (g_sfx_prepared) {
-        if ((g_sfx_header.dwFlags & WHDR_DONE) == 0) {
-            waveOutReset(g_sfx_wave_out);
-        }
-        waveOutUnprepareHeader(g_sfx_wave_out, &g_sfx_header, sizeof(g_sfx_header));
-        g_sfx_prepared = 0;
-    }
-
     if (!AudioLoadSfx(kind)) {
         return;
     }
     AudioSfxData* sfx = &g_sfx_assets[(int)kind];
-    waveOutSetVolume(g_sfx_wave_out, AudioVolumeDword(volume * gain));
-    AudioClearBytes(&g_sfx_header, sizeof(g_sfx_header));
-    g_sfx_header.lpData = (LPSTR)sfx->samples;
-    g_sfx_header.dwBufferLength = sfx->sample_bytes;
-    MMRESULT mm = waveOutPrepareHeader(g_sfx_wave_out, &g_sfx_header, sizeof(g_sfx_header));
-    if (mm != MMSYSERR_NOERROR) {
-        AudioDebugValue("sfx waveOutPrepareHeader failed: ", (DWORD)mm);
-        return;
+    if (kind == AUDIO_SFX_JUMP) {
+        AudioMixerStopVoicesBySamples(sfx->samples);
     }
-    g_sfx_prepared = 1;
-    mm = waveOutWrite(g_sfx_wave_out, &g_sfx_header, sizeof(g_sfx_header));
-    if (mm != MMSYSERR_NOERROR) {
-        AudioDebugValue("sfx waveOutWrite failed: ", (DWORD)mm);
-    }
+    AudioMixerStartVoice(sfx->samples,
+                          (DWORD)sfx->sample_count,
+                          1,
+                          TRANSITION_SAMPLE_RATE,
+                          volume * gain,
+                          AUDIO_MIXER_VOICE_SFX);
 }
 
 void AudioPlayUiMove(float volume) { (void)volume; }
@@ -952,14 +1164,7 @@ void AudioPlayDeath(float volume) { AudioPlaySfx(AUDIO_SFX_DEATH, volume, 1.55f)
 void AudioPlayClear(float volume) { (void)volume; }
 
 static void AudioStopSfx() {
-    if (!g_sfx_wave_out) {
-        return;
-    }
-    waveOutReset(g_sfx_wave_out);
-    if (g_sfx_prepared) {
-        waveOutUnprepareHeader(g_sfx_wave_out, &g_sfx_header, sizeof(g_sfx_header));
-        g_sfx_prepared = 0;
-    }
+    AudioMixerStopVoicesByKind(AUDIO_MIXER_VOICE_SFX);
 }
 static void AudioStopTransition() {
     if (!g_transition_wave_out) {
@@ -971,89 +1176,107 @@ static void AudioStopTransition() {
         g_transition_prepared = 0;
     }
 }
-static int AudioEnsureWaveOut() {
-    if (g_wave_out) {
-        return 1;
-    }
-    if (!AudioLoadSpeakerKick()) {
-        return 0;
-    }
-    if (waveOutOpen(&g_wave_out, WAVE_MAPPER, &g_speaker_kick.format, 0, 0, CALLBACK_NULL) != MMSYSERR_NOERROR) {
-        g_wave_out = 0;
-        return 0;
-    }
-    for (int i = 0; i < AUDIO_VOICE_COUNT; ++i) {
-        g_voice_buffers[i] = (unsigned char*)HeapAlloc(GetProcessHeap(), 0, g_speaker_kick.sample_bytes);
-        if (!g_voice_buffers[i]) {
-            return 0;
-        }
-        AudioClearBytes(&g_voice_headers[i], sizeof(g_voice_headers[i]));
-    }
-    return 1;
-}
-
-static short AudioScaleSample16(short sample, int volume_1000) {
-    int value = (int)sample * volume_1000 / 1000;
-    if (value < -32768) value = -32768;
-    if (value > 32767) value = 32767;
-    return (short)value;
-}
-
-static void AudioCopyScaled16(unsigned char* dst, const unsigned char* src, DWORD bytes, int volume_1000) {
-    short* out = (short*)dst;
-    const short* in = (const short*)src;
-    DWORD sample_count = bytes / 2;
-    for (DWORD i = 0; i < sample_count; ++i) {
-        out[i] = AudioScaleSample16(in[i], volume_1000);
-    }
-}
-
 static void AudioPlaySpeakerKick(float volume) {
-    if (!AudioEnsureWaveOut()) {
+    volume = AudioClampVolume(volume);
+    if (volume <= 0.001f || !AudioLoadSpeakerKick()) {
         return;
     }
-
-    int voice = g_next_voice;
-    g_next_voice = (g_next_voice + 1) % AUDIO_VOICE_COUNT;
-    WAVEHDR* header = &g_voice_headers[voice];
-    if (g_voice_prepared[voice]) {
-        if ((header->dwFlags & WHDR_DONE) == 0) {
-            waveOutReset(g_wave_out);
-        }
-        waveOutUnprepareHeader(g_wave_out, header, sizeof(*header));
-        g_voice_prepared[voice] = 0;
-    }
-
-    int volume_1000 = (int)(volume * 1000.0f + 0.5f);
-    if (volume_1000 < 0) volume_1000 = 0;
-    if (volume_1000 > 1000) volume_1000 = 1000;
-    AudioCopyScaled16(g_voice_buffers[voice], g_speaker_kick.samples, g_speaker_kick.sample_bytes, volume_1000);
-
-    AudioClearBytes(header, sizeof(*header));
-    header->lpData = (LPSTR)g_voice_buffers[voice];
-    header->dwBufferLength = g_speaker_kick.sample_bytes;
-    if (waveOutPrepareHeader(g_wave_out, header, sizeof(*header)) != MMSYSERR_NOERROR) {
-        return;
-    }
-    g_voice_prepared[voice] = 1;
-    waveOutWrite(g_wave_out, header, sizeof(*header));
+    AudioMixerStartVoice((const short*)g_speaker_kick.samples,
+                          g_speaker_kick.sample_bytes / g_speaker_kick.format.nBlockAlign,
+                          g_speaker_kick.format.nChannels,
+                          g_speaker_kick.format.nSamplesPerSec,
+                          volume,
+                          AUDIO_MIXER_VOICE_SPEAKER);
 }
 
 static void AudioStopSpeakerKick() {
-    if (!g_wave_out) {
-        return;
-    }
-    waveOutReset(g_wave_out);
-    for (int i = 0; i < AUDIO_VOICE_COUNT; ++i) {
-        if (g_voice_prepared[i]) {
-            waveOutUnprepareHeader(g_wave_out, &g_voice_headers[i], sizeof(g_voice_headers[i]));
-            g_voice_prepared[i] = 0;
-        }
-    }
+    AudioMixerStopVoicesByKind(AUDIO_MIXER_VOICE_SPEAKER);
 }
 
-void AudioUpdateSpeaker(double speaker_time_seconds, float volume, int active) {
-    active = active && volume > 0.001f;
+void AudioPauseSpeakers() {
+    // Keep the current beat index.  The mixer finishes an already queued short
+    // kick, then emits no new kick until the frozen game clock advances again.
+}
+
+static float AudioAbsF(float value) {
+    return value < 0.0f ? -value : value;
+}
+
+static float AudioApproxLength(float x, float y) {
+    float ax = AudioAbsF(x);
+    float ay = AudioAbsF(y);
+    float hi = ax > ay ? ax : ay;
+    float lo = ax > ay ? ay : ax;
+    return hi + lo * 0.375f;
+}
+
+static int AudioPlayAudibleSpeakerKicks(float volume,
+                                        const SpeakerDevice* speakers,
+                                        int speaker_count,
+                                        const RectF* listener,
+                                        int play) {
+    float strongest[AUDIO_VOICE_COUNT] = {};
+    int count = 0;
+    float listener_x = listener->x + listener->w * 0.5f;
+    float listener_y = listener->y + listener->h * 0.5f;
+
+    for (int i = 0; i < speaker_count; ++i) {
+        const SpeakerDevice* speaker = &speakers[i];
+        float range = SPEAKER_AUDIO_BASE_RANGE * SPEAKER_AUDIO_RANGE_SCALE * volume * speaker->wave_range_scale;
+        if (range <= 0.001f) {
+            continue;
+        }
+        float source_x = speaker->x + speaker->width * 0.45f;
+        float source_y = speaker->y + speaker->height * 0.66f;
+        float dx = listener_x - source_x;
+        float dy = listener_y - source_y;
+        if (dx * dx + dy * dy >= range * range) {
+            continue;
+        }
+
+        float proximity = 1.0f - AudioApproxLength(dx, dy) / range;
+        proximity = AudioClampVolume(proximity);
+        // The wave edge remains barely audible, but the middle of the push
+        // range must not vanish under the BGM.  The physical push itself is
+        // still governed by the same range in stage_update.cpp.
+        float distance_gain = 0.20f + 0.80f * proximity;
+        float gain = volume * speaker->push_strength_scale * distance_gain;
+        if (gain <= 0.001f) {
+            continue;
+        }
+
+        int insert_at = count;
+        if (insert_at >= AUDIO_VOICE_COUNT) {
+            insert_at = AUDIO_VOICE_COUNT - 1;
+            if (gain <= strongest[insert_at]) {
+                continue;
+            }
+        } else {
+            ++count;
+        }
+        while (insert_at > 0 && gain > strongest[insert_at - 1]) {
+            if (insert_at < AUDIO_VOICE_COUNT) {
+                strongest[insert_at] = strongest[insert_at - 1];
+            }
+            --insert_at;
+        }
+        strongest[insert_at] = gain;
+    }
+
+    if (play) {
+        for (int i = 0; i < count; ++i) {
+            AudioPlaySpeakerKick(strongest[i] * SPEAKER_KICK_OUTPUT_GAIN);
+        }
+    }
+    return count > 0;
+}
+
+void AudioUpdateSpeakers(double speaker_time_seconds,
+                         float volume,
+                         const SpeakerDevice* speakers,
+                         int speaker_count,
+                         const RectF* listener) {
+    int active = volume > 0.001f && speakers && speaker_count > 0 && listener;
     if (!active) {
         if (g_speaker_audio_was_active) {
             AudioStopSpeakerKick();
@@ -1068,19 +1291,27 @@ void AudioUpdateSpeaker(double speaker_time_seconds, float volume, int active) {
     }
 
     int beat = (int)(speaker_time_seconds / SPEAKER_AUDIO_BEAT_SECONDS);
-    if (beat != g_speaker_audio_last_beat) {
-        AudioPlaySpeakerKick(volume);
-        g_speaker_audio_last_beat = beat;
-    }
-    g_speaker_audio_was_active = 1;
+    // Starting inside the range should always produce an immediate cue;
+    // otherwise a player can cross a small speaker's range between beats and
+    // hear nothing at all.
+    int audible = AudioPlayAudibleSpeakerKicks(volume,
+                                                speakers,
+                                                speaker_count,
+                                                listener,
+                                                beat != g_speaker_audio_last_beat ||
+                                                !g_speaker_audio_was_active);
+    // Crossing a speaker range must not reset the output device while another
+    // gameplay effect is playing.  Stop new kicks here; the current short kick
+    // is allowed to decay naturally.
+    g_speaker_audio_last_beat = beat;
+    g_speaker_audio_was_active = audible;
 }
 
 void AudioShutdown() {
     AudioStopBgm();
-    if (g_bgm_wave_out) {
-        waveOutClose(g_bgm_wave_out);
-        g_bgm_wave_out = 0;
-    }
+    AudioStopSfx();
+    AudioStopSpeakerKick();
+    AudioShutdownMixer();
     if (g_bgm.samples) {
         HeapFree(GetProcessHeap(), 0, g_bgm.samples);
         g_bgm.samples = 0;
@@ -1088,12 +1319,6 @@ void AudioShutdown() {
     g_bgm_loaded = 0;
     g_bgm_load_attempted = 0;
     g_bgm_playing = 0;
-
-    AudioStopSfx();
-    if (g_sfx_wave_out) {
-        waveOutClose(g_sfx_wave_out);
-        g_sfx_wave_out = 0;
-    }
     for (int i = 0; i < 7; ++i) {
         if (g_sfx_assets[i].samples) {
             HeapFree(GetProcessHeap(), 0, g_sfx_assets[i].samples);
@@ -1116,18 +1341,6 @@ void AudioShutdown() {
     }
     g_transition_loaded = 0;
     g_transition_prepared = 0;
-
-    AudioStopSpeakerKick();
-    if (g_wave_out) {
-        waveOutClose(g_wave_out);
-        g_wave_out = 0;
-    }
-    for (int i = 0; i < AUDIO_VOICE_COUNT; ++i) {
-        if (g_voice_buffers[i]) {
-            HeapFree(GetProcessHeap(), 0, g_voice_buffers[i]);
-            g_voice_buffers[i] = 0;
-        }
-    }
     if (g_speaker_kick.samples) {
         HeapFree(GetProcessHeap(), 0, g_speaker_kick.samples);
         g_speaker_kick.samples = 0;

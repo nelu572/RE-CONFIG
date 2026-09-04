@@ -86,6 +86,7 @@ mkdir dist\assets\audio
 copy /Y assets\audio\bgm_main.ogg dist\assets\audio\bgm_main.ogg >nul
 copy /Y assets\audio\sfx_jump.ogg dist\assets\audio\sfx_jump.ogg >nul
 copy /Y assets\audio\sfx_death.ogg dist\assets\audio\sfx_death.ogg >nul
+copy /Y assets\audio\speaker_kick_sample.wav dist\assets\audio\speaker_kick_sample.wav >nul
 call size_check.bat
 endlocal
 exit /b 0

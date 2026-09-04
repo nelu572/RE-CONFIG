@@ -572,11 +572,14 @@ static void UpdateStage(float dt) {
     }
     const RoomDef* room = CurrentRoom();
     if (SettingsUiIsOpen()) {
-        AudioUpdateSpeaker(0.0, 0.0f, 0);
+        AudioPauseSpeakers();
     } else {
-        AudioUpdateSpeaker(g_game.speaker_time_seconds,
-                           SettingsUiSfxVolume(),
-                           room && room->speaker_count > 0);
+        RectF listener = GamePlayerRect(&g_game);
+        AudioUpdateSpeakers(g_game.speaker_time_seconds,
+                            SettingsUiSfxVolume(),
+                            room ? room->speakers : 0,
+                            room ? room->speaker_count : 0,
+                            &listener);
     }
 }
 
@@ -1544,13 +1547,13 @@ extern "C" void WinMainCRTStartup() {
                     PauseMenuClose(&g_pause_menu);
                     StartAppTransition(APP_STATE_STAGE_SELECT, g_game.current_room);
                 }
-                AudioUpdateSpeaker(0.0, 0.0f, 0);
+                AudioPauseSpeakers();
                 g_perf_frame_settings_anim = 0;
                 g_perf_frame_tutorial_fade = 0;
             } else if (InputWasPressed(KEY_ESCAPE) && !SettingsUiOverlayVisible()) {
                 PauseMenuOpen(&g_pause_menu);
                 g_pause_redraw_pending = 1;
-                AudioUpdateSpeaker(0.0, 0.0f, 0);
+                AudioPauseSpeakers();
                 g_perf_frame_settings_anim = 0;
                 g_perf_frame_tutorial_fade = 0;
             } else {
