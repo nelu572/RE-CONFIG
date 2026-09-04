@@ -13,8 +13,6 @@ void GameSetPlayerFlexibility(GameState* state, int value);
 RectF GamePlayerRect(const GameState* state);
 void GameClearCheckpoint(GameState* state);
 void GameResetStage(GameState* state);
-void GamePrepareRoomEntry(GameState* state, int room_index);
-void GameRequestStageRestart(GameState* state);
 void GameUpdateStage(GameState* state, float dt, int use_static_cache);
 int GameTypeABumpVisible(const GameState* state);
 int GameTypeASettingFeedbackVisible(const GameState* state);

@@ -37,8 +37,6 @@ struct GameState {
     int checkpoint_index;
     int checkpoint_active;
     float checkpoint_flag_drop;
-    int room09_route_initialized;
-    int room09_route3_safe;
     int cleared_room_this_frame;
     int player_dead;
     int audio_events;
