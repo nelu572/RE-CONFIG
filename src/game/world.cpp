@@ -11,7 +11,6 @@ static const RoomDef* const g_rooms[] = {
     &g_room07,
     &g_room08,
     &g_room09,
-    &g_room10,
 };
 
 const RoomDef* GetRoom(int index) {

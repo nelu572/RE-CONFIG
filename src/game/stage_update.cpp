@@ -53,8 +53,8 @@ static constexpr float WALKER_ENEMY_SPIKE_DEPLOY_SECONDS = 0.08f;
 static constexpr float WALKER_ENEMY_EYE_CROUCH_SECONDS = 0.18f;
 static constexpr float WALKER_ENEMY_LEAVE_RANGE = 240.0f;
 static constexpr float WALKER_ENEMY_TURN_SQUASH_SECONDS = 0.10f;
-static constexpr int ROOM10_INDEX = 9;
-static unsigned int g_room10_route_seed = 0x9e3779b9u;
+static constexpr int ROOM09_INDEX = 8;
+static unsigned int g_room09_route_seed = 0x9e3779b9u;
 
 struct GameSpeakerPushVelocity {
     float vx;
@@ -221,7 +221,7 @@ static int GamePressureSwitchMaskPressed(const GameState* state, unsigned int sw
     return 1;
 }
 
-static int GameRoom10PlatformCanOpen(const GameState* state, const PressurePlatformDevice* platform) {
+static int GameRoom09PlatformCanOpen(const GameState* state, const PressurePlatformDevice* platform) {
     (void)state;
     (void)platform;
     return 1;
@@ -697,32 +697,32 @@ void GameClearCheckpoint(GameState* state) {
     state->checkpoint_flag_drop = 0.0f;
 }
 
-static void GameRerollRoom10Route(GameState* state) {
+static void GameRerollRoom09Route(GameState* state) {
     unsigned int clock_bits = (unsigned int)(PerfNowSeconds() * 1000000.0);
-    g_room10_route_seed ^= clock_bits + 0x9e3779b9u + (g_room10_route_seed << 6) + (g_room10_route_seed >> 2);
-    g_room10_route_seed = g_room10_route_seed * 1664525u + 1013904223u;
-    state->room10_route3_safe = (int)((g_room10_route_seed >> 31) & 1u);
-    state->room10_route_initialized = 1;
+    g_room09_route_seed ^= clock_bits + 0x9e3779b9u + (g_room09_route_seed << 6) + (g_room09_route_seed >> 2);
+    g_room09_route_seed = g_room09_route_seed * 1664525u + 1013904223u;
+    state->room09_route3_safe = (int)((g_room09_route_seed >> 31) & 1u);
+    state->room09_route_initialized = 1;
 }
 
 void GamePrepareRoomEntry(GameState* state, int room_index) {
-    if (state && room_index == ROOM10_INDEX) {
-        state->room10_route_initialized = 0;
+    if (state && room_index == ROOM09_INDEX) {
+        state->room09_route_initialized = 0;
     }
 }
 
 void GameRequestStageRestart(GameState* state) {
-    if (state && state->current_room == ROOM10_INDEX) {
-        state->room10_route_initialized = 0;
+    if (state && state->current_room == ROOM09_INDEX) {
+        state->room09_route_initialized = 0;
     }
     GameResetStage(state);
 }
 
 void GameResetStage(GameState* state) {
-    if (state->current_room != ROOM10_INDEX) {
-        state->room10_route_initialized = 0;
-    } else if (!state->room10_route_initialized) {
-        GameRerollRoom10Route(state);
+    if (state->current_room != ROOM09_INDEX) {
+        state->room09_route_initialized = 0;
+    } else if (!state->room09_route_initialized) {
+        GameRerollRoom09Route(state);
     }
     DeleteState saved_delete_state = state->delete_state;
     const RoomDef* room = GameCurrentRoom(state);
@@ -2530,7 +2530,7 @@ static void GameUpdateRoomPressureSwitches(GameState* state, float dt) {
     for (int i = 0; i < platform_count; ++i) {
         float current = state->pressure_platform_open_amount[i];
         int platform_unlocked = GamePressureSwitchMaskPressed(state, room->pressure_platforms[i].required_switch_mask) &&
-                                GameRoom10PlatformCanOpen(state, &room->pressure_platforms[i]);
+                                GameRoom09PlatformCanOpen(state, &room->pressure_platforms[i]);
         if (platform_unlocked) {
             state->pressure_platform_open_cycle_pending[i] = 1;
         }

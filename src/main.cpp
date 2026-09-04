@@ -57,7 +57,7 @@ static int g_pause_redraw_pending = 0;
 static constexpr int START_ROOM_INDEX = 0;
 static constexpr int DEBUG_ROOM_01_INDEX = 0;
 static constexpr int DEBUG_ROOM_02_INDEX = 1;
-static constexpr int STAGE_SELECT_LAST_ROOM_INDEX = 9;
+static constexpr int STAGE_SELECT_LAST_ROOM_INDEX = 8;
 static constexpr int STAGE_SELECT_DISPLAY_COUNT = STAGE_SELECT_LAST_ROOM_INDEX + 1;
 static int g_stage_select_index = 0;
 static float g_stage_select_world_offset = 0.0f;
@@ -77,12 +77,15 @@ static int g_stage_select_cleared[STAGE_SELECT_DISPLAY_COUNT];
 static int g_last_played_room = START_ROOM_INDEX;
 
 static constexpr unsigned int STAGE_PROGRESS_MAGIC = 0x31535652u;
-static constexpr unsigned int STAGE_PROGRESS_VERSION = 4u;
+static constexpr unsigned int STAGE_PROGRESS_VERSION = 5u;
+static constexpr unsigned int STAGE_PROGRESS_PRE_REMOVAL_VERSION = 4u;
 static constexpr unsigned int STAGE_PROGRESS_PRE_RENUMBER_VERSION = 3u;
 static constexpr unsigned int STAGE_PROGRESS_CLEARS_ONLY_VERSION = 2u;
 static constexpr int STAGE_PROGRESS_LEGACY_ROOM_COUNT = 11;
+static constexpr int STAGE_PROGRESS_PRE_REMOVAL_ROOM_COUNT = 10;
 static constexpr int STAGE_PROGRESS_LEGACY_V2_DATA_SIZE = 8 + STAGE_PROGRESS_LEGACY_ROOM_COUNT;
 static constexpr int STAGE_PROGRESS_LEGACY_V3_DATA_SIZE = 12 + STAGE_PROGRESS_LEGACY_ROOM_COUNT;
+static constexpr int STAGE_PROGRESS_PRE_REMOVAL_DATA_SIZE = 12 + STAGE_PROGRESS_PRE_REMOVAL_ROOM_COUNT;
 static constexpr int STAGE_PROGRESS_CLEARED_OFFSET = 12;
 static constexpr int STAGE_PROGRESS_DATA_SIZE = STAGE_PROGRESS_CLEARED_OFFSET + STAGE_SELECT_DISPLAY_COUNT;
 
@@ -151,8 +154,8 @@ static void StageProgressSave() {
     CloseHandle(file);
 }
 
-static int StageProgressMapPreRenumberRoomIndex(int legacy_room_index) {
-    if (legacy_room_index <= 8) {
+static int StageProgressMapPreRemovalRoomIndex(int legacy_room_index) {
+    if (legacy_room_index <= 7) {
         return StageProgressClampRoomIndex(legacy_room_index);
     }
     return STAGE_SELECT_LAST_ROOM_INDEX;
@@ -187,11 +190,23 @@ static void StageProgressLoad() {
         return;
     }
 
+    if (version == STAGE_PROGRESS_PRE_REMOVAL_VERSION) {
+        if (read < STAGE_PROGRESS_PRE_REMOVAL_DATA_SIZE) {
+            return;
+        }
+        g_last_played_room = StageProgressMapPreRemovalRoomIndex((int)StageProgressReadU32(data, 8));
+        for (int i = 0; i < STAGE_SELECT_LAST_ROOM_INDEX; ++i) {
+            g_stage_select_cleared[i] = data[STAGE_PROGRESS_CLEARED_OFFSET + i] ? 1 : 0;
+        }
+        g_stage_select_cleared[STAGE_SELECT_LAST_ROOM_INDEX] = data[STAGE_PROGRESS_CLEARED_OFFSET + 9] ? 1 : 0;
+        return;
+    }
+
     if (version == STAGE_PROGRESS_PRE_RENUMBER_VERSION) {
         if (read < STAGE_PROGRESS_LEGACY_V3_DATA_SIZE) {
             return;
         }
-        g_last_played_room = StageProgressMapPreRenumberRoomIndex((int)StageProgressReadU32(data, 8));
+        g_last_played_room = StageProgressMapPreRemovalRoomIndex((int)StageProgressReadU32(data, 8));
         for (int i = 0; i < STAGE_SELECT_LAST_ROOM_INDEX; ++i) {
             g_stage_select_cleared[i] = data[12 + i] ? 1 : 0;
         }
