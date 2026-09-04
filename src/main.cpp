@@ -9,6 +9,7 @@
 #include "framebuffer.h"
 #include "input.h"
 #include "main_menu.h"
+#include "math_util.h"
 #include "pause_menu.h"
 #include "render.h"
 #include "settings_ui.h"
@@ -229,7 +230,8 @@ static void StageProgressLoad() {
 enum AppState {
     APP_STATE_MAIN_MENU,
     APP_STATE_STAGE_SELECT,
-    APP_STATE_GAME
+    APP_STATE_GAME,
+    APP_STATE_ENDING
 };
 
 static AppState g_app_state = APP_STATE_MAIN_MENU;
@@ -241,6 +243,18 @@ static float g_app_transition_amount = 0.0f;
 static float g_app_transition_hold_seconds = 0.0f;
 static constexpr float APP_TRANSITION_HOLD_SECONDS = 0.09f;
 static double g_app_transition_last_seconds = 0.0;
+static float g_ending_elapsed_seconds = 0.0f;
+
+static constexpr float ENDING_PLAYER_W = 40.0f;
+static constexpr float ENDING_PLAYER_H = 40.0f;
+static constexpr float ENDING_PLAYER_START_X = -80.0f;
+static constexpr float ENDING_PLAYER_END_X = FB_W + 80.0f;
+static constexpr float ENDING_PLAYER_WALK_SECONDS = 4.5f;
+static constexpr float ENDING_PLATFORM_START_Y = 760.0f;
+static constexpr float ENDING_PLATFORM_RISE_START_SECONDS = 2.25f;
+static constexpr float ENDING_PLATFORM_RISE_SECONDS = 4.2f;
+static constexpr float ENDING_TITLE_FADE_SECONDS = 1.9f;
+static constexpr float ENDING_RETURN_SECONDS = 8.9f;
 
 static uint32_t COL_BG = 0x00292324;
 static const uint32_t COL_STAGE_SOFT = 0x006f3038;
@@ -457,6 +471,13 @@ static void EnterStageNow(int room_index) {
     ResetStage();
 }
 
+static void EnterEndingNow() {
+    SettingsUiClose();
+    PauseMenuClose(&g_pause_menu);
+    g_ending_elapsed_seconds = 0.0f;
+    g_app_state = APP_STATE_ENDING;
+}
+
 static void DebugResetDataAndEnterMainMenu() {
     PauseMenuClose(&g_pause_menu);
     ClearBytes(g_stage_select_cleared, sizeof(g_stage_select_cleared));
@@ -481,6 +502,8 @@ static void ApplyAppTransitionTarget() {
         EnterMainMenuNow();
     } else if (g_app_transition_target_state == APP_STATE_STAGE_SELECT) {
         EnterStageSelectNow(g_app_transition_target_room);
+    } else if (g_app_transition_target_state == APP_STATE_ENDING) {
+        EnterEndingNow();
     } else {
         EnterStageNow(g_app_transition_target_room);
     }
@@ -560,14 +583,16 @@ static void UpdateStage(float dt) {
             g_stage_select_cleared[g_game.cleared_room_this_frame] = 1;
         }
         g_game.cleared_room_this_frame = -1;
-        int next_room = cleared_room + 1;
-        if (next_room >= DevelopedRoomCount()) {
-            next_room = cleared_room;
-        }
+        int final_room_cleared = cleared_room == DevelopedRoomCount() - 1;
+        int next_room = final_room_cleared ? cleared_room : cleared_room + 1;
         g_last_played_room = next_room;
         StageProgressSave();
-        g_stage_select_entry_from_room = next_room == cleared_room ? -1 : cleared_room;
-        StartAppTransition(APP_STATE_STAGE_SELECT, next_room);
+        if (final_room_cleared) {
+            StartAppTransition(APP_STATE_ENDING, cleared_room);
+        } else {
+            g_stage_select_entry_from_room = cleared_room;
+            StartAppTransition(APP_STATE_STAGE_SELECT, next_room);
+        }
     }
     const RoomDef* room = CurrentRoom();
     if (SettingsUiIsOpen()) {
@@ -1196,6 +1221,78 @@ static void DrawStageSelect() {
     StageSelectDrawPlayer();
     DrawStageSelectControlHints();
 }
+
+static float EndingClamp01(float value) {
+    if (value < 0.0f) return 0.0f;
+    if (value > 1.0f) return 1.0f;
+    return value;
+}
+
+static float EndingEase(float value) {
+    value = EndingClamp01(value);
+    return value * value * (3.0f - 2.0f * value);
+}
+
+static uint32_t EndingBlend(uint32_t src, uint32_t dst, float alpha) {
+    int a = (int)(EndingClamp01(alpha) * 255.0f + 0.5f);
+    int inv = 255 - a;
+    int sr = (int)((src >> 16) & 255);
+    int sg = (int)((src >> 8) & 255);
+    int sb = (int)(src & 255);
+    int dr = (int)((dst >> 16) & 255);
+    int dg = (int)((dst >> 8) & 255);
+    int db = (int)(dst & 255);
+    return (uint32_t)((((sr * a + dr * inv) / 255) << 16) |
+                      (((sg * a + dg * inv) / 255) << 8) |
+                      ((sb * a + db * inv) / 255));
+}
+
+static void UpdateEnding(float dt) {
+    g_ending_elapsed_seconds += dt;
+    if (g_ending_elapsed_seconds >= ENDING_RETURN_SECONDS) {
+        StartAppTransition(APP_STATE_MAIN_MENU, g_game.current_room);
+    }
+}
+
+static void DrawEnding() {
+    const uint32_t ending_bg = 0x00100b0d;
+    RenderClear(&g_render, ending_bg);
+
+    float elapsed = g_ending_elapsed_seconds;
+    float platform_rise = EndingEase((elapsed - ENDING_PLATFORM_RISE_START_SECONDS) / ENDING_PLATFORM_RISE_SECONDS);
+    int platform_y = (int)(ENDING_PLATFORM_START_Y * (1.0f - platform_rise) + 0.5f);
+    DrawRect(&g_render, 0, platform_y, FB_W, FB_H, COL_PLATFORM_FACE);
+
+    float walk_t = EndingClamp01(elapsed / ENDING_PLAYER_WALK_SECONDS);
+    if (walk_t < 1.0f) {
+        Player player = {};
+        player.x = ENDING_PLAYER_START_X + (ENDING_PLAYER_END_X - ENDING_PLAYER_START_X) * walk_t;
+        player.y = (float)platform_y - ENDING_PLAYER_H;
+        player.collision_w = ENDING_PLAYER_W;
+        player.collision_h = ENDING_PLAYER_H;
+        player.face_dir = 1.0f;
+        player.grounded = 1;
+        float step = SinApprox(elapsed * 13.0f);
+        player.visual_sx = 1.04f - step * 0.04f;
+        player.visual_sy = 0.96f + step * 0.04f;
+
+        Camera old_camera = *g_render.camera;
+        g_render.camera->x = 0.0f;
+        g_render.camera->y = 0.0f;
+        DrawPlayer(&g_render, &player, COL_PLAYER, EndingBlend(COL_PLATFORM, ending_bg, 0.72f), GRAVITY_DOWN);
+        *g_render.camera = old_camera;
+    }
+
+    float title_t = EndingEase((elapsed - ENDING_PLATFORM_RISE_START_SECONDS) / ENDING_TITLE_FADE_SECONDS);
+    if (title_t > 0.0f) {
+        const int title_scale = 12;
+        const int title_width = 6 * 7 * title_scale;
+        const int title_height = 7 * title_scale;
+        int title_y = platform_y + (FB_H - title_height) / 2;
+        uint32_t title_color = EndingBlend(COL_TEXT, ending_bg, title_t);
+        UiTextSmallDraw(&g_render, (FB_W - title_width) / 2, title_y, "THE END", title_scale, title_color);
+    }
+}
 static void ToggleFullscreen() {
     DWORD style = GetWindowLongA(g_window, GWL_STYLE);
     if (!g_fullscreen) {
@@ -1507,6 +1604,34 @@ extern "C" void WinMainCRTStartup() {
 
             t0 = g_perf_config.enabled ? PerfNowSeconds() : 0.0;
             DrawStageSelect();
+            DrawAppTransition();
+            t1 = g_perf_config.enabled ? PerfNowSeconds() : 0.0;
+            PerfAddDuration(t0, t1, &g_perf_stats.render_ms, &g_perf_stats.max_render_ms);
+
+            t0 = g_perf_config.enabled ? PerfNowSeconds() : 0.0;
+            FramebufferDownsampleRenderTarget();
+            t1 = g_perf_config.enabled ? PerfNowSeconds() : 0.0;
+            PerfAddDuration(t0, t1, &g_perf_stats.downsample_ms, &g_perf_stats.max_downsample_ms);
+
+            t0 = g_perf_config.enabled ? PerfNowSeconds() : 0.0;
+            FramebufferPresent(COL_BG);
+            t1 = g_perf_config.enabled ? PerfNowSeconds() : 0.0;
+            PerfAddDuration(t0, t1, &g_perf_stats.present_ms, &g_perf_stats.max_present_ms);
+            PerfBucketAddPresent((t1 - t0) * 1000.0);
+
+            PaceFrame(frame_timer, &next_frame_time, frame_start, target_frame_seconds);
+            continue;
+        }
+        if (g_app_state == APP_STATE_ENDING) {
+            t0 = g_perf_config.enabled ? PerfNowSeconds() : 0.0;
+            if (!AppTransitionActive()) {
+                UpdateEnding(app_dt);
+            }
+            t1 = g_perf_config.enabled ? PerfNowSeconds() : 0.0;
+            PerfAddDuration(t0, t1, &g_perf_stats.update_ms, &g_perf_stats.max_update_ms);
+
+            t0 = g_perf_config.enabled ? PerfNowSeconds() : 0.0;
+            DrawEnding();
             DrawAppTransition();
             t1 = g_perf_config.enabled ? PerfNowSeconds() : 0.0;
             PerfAddDuration(t0, t1, &g_perf_stats.render_ms, &g_perf_stats.max_render_ms);
