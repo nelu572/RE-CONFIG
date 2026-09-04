@@ -16,23 +16,18 @@ float PistonConnectionScale(const PistonDevice* piston) {
     return PistonClampF(piston->width / FIVE_TILE_PISTON_WIDTH, 0.0f, 1.0f);
 }
 
-static float PistonSmooth01(float value) {
-    value = PistonClampF(value, 0.0f, 1.0f);
-    return value * value * (3.0f - 2.0f * value);
+static float PistonCycleSeconds(const PistonDevice* piston) {
+    float travel = piston->travel > 0.0f ? piston->travel : 0.0f;
+    return PISTON_PRE_EXTENSION_HOLD_SECONDS
+        + travel / PISTON_EXTENSION_SPEED
+        + PISTON_EXTENDED_HOLD_SECONDS
+        + travel / PISTON_RETRACTION_SPEED
+        + PISTON_POST_RETRACTION_HOLD_SECONDS;
 }
 
-static float PistonDrop01(float value) {
-    value = PistonClampF(value, 0.0f, 1.0f);
-    return value * value * value;
-}
-
-static float PistonWrap01(float value) {
-    int whole = (int)value;
-    value -= (float)whole;
-    if (value < 0.0f) {
-        value += 1.0f;
-    }
-    return value;
+static float PistonCycleTime(float time_seconds, float cycle_seconds) {
+    int completed_cycles = (int)(time_seconds / cycle_seconds);
+    return time_seconds - (float)completed_cycles * cycle_seconds;
 }
 
 static PistonDirection PistonDirectionOrDefault(const PistonDevice* piston) {
@@ -71,25 +66,45 @@ PistonPose PistonPoseAt(const PistonDevice* piston, float piston_time_seconds) {
         return pose;
     }
 
-    float phase = PistonWrap01(piston_time_seconds / PISTON_CYCLE_SECONDS + piston->phase);
-    if (phase < 0.14f) {
+    float delayed_time = piston_time_seconds - piston->start_delay_seconds;
+    if (delayed_time <= 0.0f) {
         pose.extension = 0.0f;
         pose.descending = 0;
-    } else if (phase < 0.32f) {
-        float t = (phase - 0.14f) / 0.18f;
-        pose.extension = piston->travel * PistonDrop01(t);
+        return pose;
+    }
+
+    float cycle_time = PistonCycleTime(delayed_time, PistonCycleSeconds(piston));
+    if (cycle_time < PISTON_PRE_EXTENSION_HOLD_SECONDS) {
+        pose.extension = 0.0f;
+        pose.descending = 0;
+        return pose;
+    }
+
+    cycle_time -= PISTON_PRE_EXTENSION_HOLD_SECONDS;
+    float extension_time = piston->travel / PISTON_EXTENSION_SPEED;
+    if (cycle_time < extension_time) {
+        pose.extension = cycle_time * PISTON_EXTENSION_SPEED;
         pose.descending = 1;
-    } else if (phase < 0.42f) {
+        return pose;
+    }
+
+    cycle_time -= extension_time;
+    if (cycle_time < PISTON_EXTENDED_HOLD_SECONDS) {
         pose.extension = piston->travel;
         pose.descending = 0;
-    } else if (phase < 0.88f) {
-        float t = (phase - 0.42f) / 0.46f;
-        pose.extension = piston->travel * (1.0f - PistonSmooth01(t));
-        pose.descending = 0;
-    } else {
-        pose.extension = 0.0f;
-        pose.descending = 0;
+        return pose;
     }
+
+    cycle_time -= PISTON_EXTENDED_HOLD_SECONDS;
+    float retraction_time = piston->travel / PISTON_RETRACTION_SPEED;
+    if (cycle_time < retraction_time) {
+        pose.extension = piston->travel - cycle_time * PISTON_RETRACTION_SPEED;
+        pose.descending = 0;
+        return pose;
+    }
+
+    pose.extension = 0.0f;
+    pose.descending = 0;
     return pose;
 }
 

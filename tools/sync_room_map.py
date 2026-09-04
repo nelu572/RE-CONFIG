@@ -223,14 +223,14 @@ def source_pistons(source: str) -> list[dict]:
         r"(T\([^)]+\)),\s*(T\([^)]+\)),\s*T\([^)]+\),\s*([^,}]+)(?:,\s*PISTON_[A-Z]+)?\s*\}"
     )
     result = []
-    for x, y, shaft_width, plate_height, phase in re.findall(pattern, source):
+    for x, y, shaft_width, plate_height, start_delay_seconds in re.findall(pattern, source):
         result.append({
             "x": float(x.rstrip("f")),
             "y": float(y.rstrip("f")),
             "shaft_width": shaft_width,
             "plate_height": plate_height,
             "plate_height_value": float(re.search(r"T\(([^)]+)\)", plate_height).group(1).rstrip("f")),
-            "phase": phase,
+            "start_delay_seconds": start_delay_seconds,
         })
     return result
 
@@ -392,7 +392,7 @@ def compile_map(rows: list[str], source: str, room_id: str) -> str:
             raise ValueError("I/i 피스톤은 수평 또는 수직으로만 이동해야 합니다.")
         direction = "PISTON_UP" if dy < 0 else "PISTON_DOWN" if dy > 0 else "PISTON_LEFT" if dx < 0 else "PISTON_RIGHT"
         device_width, device_body_height = (h, w) if dx else (w, h)
-        tuning = tuning_by_start.get(index, {"shaft_width": "T(0.90f)", "plate_height": "T(1)", "plate_height_value": 1.0, "phase": "0.00f"})
+        tuning = tuning_by_start.get(index, {"shaft_width": "T(0.90f)", "plate_height": "T(1)", "plate_height_value": 1.0, "start_delay_seconds": "0.000f"})
         shaft_width = tuning["shaft_width"]
         plate_height = tuning["plate_height"]
         body_x, body_y = x, y
@@ -404,7 +404,7 @@ def compile_map(rows: list[str], source: str, room_id: str) -> str:
             body_y += tuning["plate_height_value"]
         else:
             body_y -= device_body_height
-        piston_lines.append(f"{{ {fmt_num(body_x)}, {fmt_num(body_y)}, {fmt_num(device_width)}, {fmt_num(device_body_height)}, {shaft_width}, {plate_height}, {fmt_num(abs(dx + dy))}, {tuning["phase"]}, {direction} }}")
+        piston_lines.append(f"{{ {fmt_num(body_x)}, {fmt_num(body_y)}, {fmt_num(device_width)}, {fmt_num(device_body_height)}, {shaft_width}, {plate_height}, {fmt_num(abs(dx + dy))}, {tuning["start_delay_seconds"]}, {direction} }}")
     source = upsert_pistons(source, room_id, piston_lines)
 
     markers = []

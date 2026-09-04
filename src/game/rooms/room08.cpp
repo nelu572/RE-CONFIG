@@ -33,7 +33,7 @@ static const RectF g_room08_type_a_walls[] = {
 };
 
 static const PistonDevice g_room08_pistons[] = {
-    { T(94), T(20), T(3), T(1), T(0.90f), T(1.00f), T(14), 0.40f, PISTON_UP },
+    { T(94), T(20), T(3), T(1), T(0.90f), T(1.00f), T(14), 0.440f, PISTON_UP },
     { T(44), T(23), T(3), T(1), T(0.90f), T(1.00f), T(18), 0.00f, PISTON_UP },
     { T(17), T(27), T(3), T(1), T(0.90f), T(1.00f), T(10), 0.00f, PISTON_UP },
     { T(37), T(27), T(2), T(1), T(0.90f), T(1.00f), T(12), 0.00f, PISTON_UP },

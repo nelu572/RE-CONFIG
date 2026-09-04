@@ -28,9 +28,9 @@ TYPE A 벽돌은 처음에는 플레이어의 진행을 막는 장막이고, 상
 - A 브릿지는 `(51T, 17T, 12T, 1T)`이다. 상단 왼쪽 발판에서 BRICK 충돌을 다시 켜야 건널 수 있다.
 - A 셔터는 `(84T, 14T, 2T, 4T)`이다. 마지막 상단 복도에서 BRICK 충돌을 다시 꺼야 통과할 수 있다.
 - 고정 발판은 `(40T, 17T, 9T, 1T)`, `(64T, 17T, 9T, 1T)`, `(80T, 18T, 13T, 1T)`이다.
-- 첫 번째 피스톤은 `PISTON_DOWN`, body `(22T, 8T)`, travel `15T`, phase `0.00`이다.
-- 두 번째 피스톤은 `PISTON_UP`, body `(31T, 24T)`, travel `8T`, phase `0.35`이다. BRICK 충돌이 OFF일 때 상단 A 천장이 사라져 피스톤 점프 경로가 열린다.
-- 세 번째 피스톤은 `PISTON_DOWN`, body `(74T, 5T)`, travel `12T`, phase `0.40`이다.
+- 첫 번째 피스톤은 `PISTON_DOWN`, body `(22T, 8T)`, travel `15T`, 시작 지연 `0.000초`다.
+- 두 번째 피스톤은 `PISTON_UP`, body `(31T, 24T)`, travel `8T`, 시작 지연 `0.385초`다. BRICK 충돌이 OFF일 때 상단 A 천장이 사라져 피스톤 점프 경로가 열린다.
+- 세 번째 피스톤은 `PISTON_DOWN`, body `(74T, 5T)`, travel `12T`, 시작 지연 `0.440초`다.
 - 공통 피스톤 규칙은 [피스톤](../design/piston.md), `I/i` 표기는 [ROOM 맵 가이드](ROOM_MAP_GUIDE.md)를 따른다.
 - EXIT는 `(89T, 16T, 2T, 2T)`이다.
 - 플레이어 시작 위치는 `(6T, 24T)`이다.

@@ -38,7 +38,12 @@ enum PistonDirection {
     PISTON_LEFT,
 };
 
-static constexpr float PISTON_CYCLE_SECONDS = 1.10f;
+// World-space speeds. A room tile is 40 world units.
+static constexpr float PISTON_EXTENSION_SPEED = 1200.0f;
+static constexpr float PISTON_RETRACTION_SPEED = 480.0f;
+static constexpr float PISTON_PRE_EXTENSION_HOLD_SECONDS = 0.154f;
+static constexpr float PISTON_EXTENDED_HOLD_SECONDS = 0.110f;
+static constexpr float PISTON_POST_RETRACTION_HOLD_SECONDS = 0.132f;
 
 struct PistonDevice {
     float x;
@@ -48,7 +53,7 @@ struct PistonDevice {
     float shaft_width;
     float plate_height;
     float travel;
-    float phase;
+    float start_delay_seconds;
     PistonDirection direction = PISTON_DOWN;
 };
 

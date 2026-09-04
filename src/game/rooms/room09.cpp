@@ -97,10 +97,10 @@ static const SpeakerDevice g_room09_speakers[] = {
     MiniSpeakerAt(T(129), T(47)),
 };
 static const PistonDevice g_room09_pistons[] = {
-    { T(32), T(3), T(3), T(1), T(0.90f), T(1), T(20), 0.05f, PISTON_RIGHT },
+    { T(32), T(3), T(3), T(1), T(0.90f), T(1), T(20), 0.055f, PISTON_RIGHT },
     { T(116), T(12), T(4), T(1), T(0.90f), T(1), T(26), 0.00f, PISTON_LEFT },
     { T(116), T(18), T(2), T(1), T(0.90f), T(1), T(24), 0.00f, PISTON_LEFT },
-    { T(118), T(22), T(5), T(1), T(0.90f), T(1), T(15), 0.42f, PISTON_UP },
+    { T(118), T(22), T(5), T(1), T(0.90f), T(1), T(15), 0.462f, PISTON_UP },
     { T(128), T(37), T(4), T(1), T(0.90f), T(1), T(6), 0.00f, PISTON_UP },
     { T(64), T(44), T(5), T(1), T(0.90f), T(1), T(17), 0.00f, PISTON_UP },
 };

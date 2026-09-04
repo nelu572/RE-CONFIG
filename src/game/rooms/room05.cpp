@@ -23,13 +23,13 @@ static const RectF g_room05_type_a_walls[] = {
 };
 
 static const PistonDevice g_room05_pistons[] = {
-    { T(8), T(2), T(5), T(1), T(1.05f), T(1), T(19), 0.00f, PISTON_DOWN },
-    { T(35), T(2), T(4), T(1), T(1.05f), T(1), T(10), 0.30f, PISTON_DOWN },
-    { T(65), T(8), T(4), T(1), T(1.05f), T(1), T(19), 0.54f, PISTON_LEFT },
-    { T(23), T(19), T(3), T(1), T(1.05f), T(1), T(5), 0.06f, PISTON_UP },
-    { T(58), T(21), T(3), T(1), T(0.90f), T(1), T(6), 0.00f, PISTON_UP },
-    { T(30), T(21), T(2), T(1), T(0.90f), T(1), T(33), 0.00f, PISTON_RIGHT },
-    { T(17), T(23), T(3), T(1), T(1.05f), T(1), T(5), 0.24f, PISTON_UP },
+    { T(8), T(2), T(5), T(1), T(1.05f), T(1), T(19), 0.000f, PISTON_DOWN },
+    { T(35), T(2), T(4), T(1), T(1.05f), T(1), T(10), 0.330f, PISTON_DOWN },
+    { T(65), T(8), T(4), T(1), T(1.05f), T(1), T(19), 0.594f, PISTON_LEFT },
+    { T(23), T(19), T(3), T(1), T(1.05f), T(1), T(5), 0.066f, PISTON_UP },
+    { T(58), T(21), T(3), T(1), T(0.90f), T(1), T(6), 0.000f, PISTON_UP },
+    { T(30), T(21), T(2), T(1), T(0.90f), T(1), T(33), 0.000f, PISTON_RIGHT },
+    { T(17), T(23), T(3), T(1), T(1.05f), T(1), T(5), 0.264f, PISTON_UP },
 };
 
 
