@@ -1,4 +1,5 @@
 ﻿#include "audio.h"
+#include "audio_resources.h"
 #include "speaker_kick_embedded_wav.h"
 
 #include <stdint.h>
@@ -212,6 +213,23 @@ static int AudioLoadFile(const char* path, unsigned char** data, DWORD* size) {
 
     *data = bytes;
     *size = file_size;
+    return 1;
+}
+
+static int AudioLoadResourceData(int resource_id, const unsigned char** data, DWORD* size) {
+    HMODULE module = GetModuleHandleA(0);
+    HRSRC resource = FindResourceA(module, MAKEINTRESOURCEA(resource_id), RT_RCDATA);
+    if (!resource) {
+        return 0;
+    }
+    DWORD resource_size = SizeofResource(module, resource);
+    HGLOBAL loaded = LoadResource(module, resource);
+    const unsigned char* resource_data = (const unsigned char*)LockResource(loaded);
+    if (!resource_data || resource_size == 0) {
+        return 0;
+    }
+    *data = resource_data;
+    *size = resource_size;
     return 1;
 }
 
@@ -725,18 +743,10 @@ static void AudioApplyBgmLoopFade(AudioBgmData* bgm) {
     }
 }
 
-static int AudioDecodeBgmOgg(const char* path, AudioBgmData* bgm) {
-    unsigned char* file = 0;
-    DWORD file_size = 0;
-    if (!AudioLoadFile(path, &file, &file_size)) {
-        AudioDebugString("BGM load failed: could not read assets\\audio\\bgm_main.ogg");
-        return 0;
-    }
-
+static int AudioDecodeBgmOgg(const unsigned char* file, DWORD file_size, AudioBgmData* bgm) {
     int error = 0;
     stb_vorbis* vorbis = stb_vorbis_open_memory(file, (int)file_size, &error, 0);
     if (!vorbis) {
-        HeapFree(GetProcessHeap(), 0, file);
         AudioDebugValue("BGM decode failed: stb_vorbis error ", (DWORD)error);
         return 0;
     }
@@ -744,7 +754,6 @@ static int AudioDecodeBgmOgg(const char* path, AudioBgmData* bgm) {
     stb_vorbis_info info = stb_vorbis_get_info(vorbis);
     if (info.channels < 1 || info.channels > 2 || info.sample_rate == 0) {
         stb_vorbis_close(vorbis);
-        HeapFree(GetProcessHeap(), 0, file);
         AudioDebugString("BGM decode failed: unsupported channel count or sample rate");
         return 0;
     }
@@ -752,7 +761,6 @@ static int AudioDecodeBgmOgg(const char* path, AudioBgmData* bgm) {
     unsigned int frame_count = stb_vorbis_stream_length_in_samples(vorbis);
     if (frame_count == 0) {
         stb_vorbis_close(vorbis);
-        HeapFree(GetProcessHeap(), 0, file);
         AudioDebugString("BGM decode failed: empty stream");
         return 0;
     }
@@ -761,7 +769,6 @@ static int AudioDecodeBgmOgg(const char* path, AudioBgmData* bgm) {
     unsigned long long total_bytes = total_shorts * sizeof(short);
     if (total_bytes > 0xFFFFFFFFull) {
         stb_vorbis_close(vorbis);
-        HeapFree(GetProcessHeap(), 0, file);
         AudioDebugString("BGM decode failed: stream too large");
         return 0;
     }
@@ -769,7 +776,6 @@ static int AudioDecodeBgmOgg(const char* path, AudioBgmData* bgm) {
     short* samples = (short*)HeapAlloc(GetProcessHeap(), 0, (SIZE_T)total_bytes);
     if (!samples) {
         stb_vorbis_close(vorbis);
-        HeapFree(GetProcessHeap(), 0, file);
         AudioDebugString("BGM decode failed: out of memory");
         return 0;
     }
@@ -788,7 +794,6 @@ static int AudioDecodeBgmOgg(const char* path, AudioBgmData* bgm) {
     }
 
     stb_vorbis_close(vorbis);
-    HeapFree(GetProcessHeap(), 0, file);
     if (decoded_frames == 0) {
         HeapFree(GetProcessHeap(), 0, samples);
         AudioDebugString("BGM decode failed: no PCM frames decoded");
@@ -819,12 +824,13 @@ static int AudioLoadBgm() {
     }
     g_bgm_load_attempted = 1;
 
-    char path[MAX_PATH];
-    if (!AudioFindBgmPath(path, (int)sizeof(path))) {
-        AudioDebugString("BGM load failed: assets\\audio\\bgm_main.ogg not found near executable");
+    const unsigned char* data = 0;
+    DWORD size = 0;
+    if (!AudioLoadResourceData(AUDIO_RESOURCE_BGM_MAIN, &data, &size)) {
+        AudioDebugString("BGM load failed: embedded resource not found");
         return 0;
     }
-    if (!AudioDecodeBgmOgg(path, &g_bgm)) {
+    if (!AudioDecodeBgmOgg(data, size, &g_bgm)) {
         return 0;
     }
     g_bgm_loaded = 1;
@@ -965,10 +971,10 @@ enum AudioSfxKind {
     AUDIO_SFX_CLEAR,
 };
 
-static const char* AudioSfxFileName(AudioSfxKind kind) {
+static int AudioSfxResourceId(AudioSfxKind kind) {
     switch (kind) {
-    case AUDIO_SFX_JUMP: return "sfx_jump.ogg";
-    case AUDIO_SFX_DEATH: return "sfx_death.ogg";
+    case AUDIO_SFX_JUMP: return AUDIO_RESOURCE_SFX_JUMP;
+    case AUDIO_SFX_DEATH: return AUDIO_RESOURCE_SFX_DEATH;
     default: return 0;
     }
 }
@@ -1033,18 +1039,10 @@ static void AudioNormalizeSfxAsset(AudioSfxData* sfx, int target_peak) {
     }
 }
 
-static int AudioDecodeSfxOgg(const char* path, AudioSfxData* sfx) {
-    unsigned char* file = 0;
-    DWORD file_size = 0;
-    if (!AudioLoadFile(path, &file, &file_size)) {
-        AudioDebugString("SFX load failed: could not read OGG file");
-        return 0;
-    }
-
+static int AudioDecodeSfxOgg(const unsigned char* file, DWORD file_size, AudioSfxData* sfx) {
     int error = 0;
     stb_vorbis* vorbis = stb_vorbis_open_memory(file, (int)file_size, &error, 0);
     if (!vorbis) {
-        HeapFree(GetProcessHeap(), 0, file);
         AudioDebugValue("SFX decode failed: stb_vorbis error ", (DWORD)error);
         return 0;
     }
@@ -1055,7 +1053,6 @@ static int AudioDecodeSfxOgg(const char* path, AudioSfxData* sfx) {
     int src_frames = stb_vorbis_stream_length_in_samples(vorbis);
     if (src_channels < 1 || src_channels > 2 || src_rate <= 0 || src_frames <= 0) {
         stb_vorbis_close(vorbis);
-        HeapFree(GetProcessHeap(), 0, file);
         AudioDebugString("SFX decode failed: unsupported OGG format");
         return 0;
     }
@@ -1064,13 +1061,11 @@ static int AudioDecodeSfxOgg(const char* path, AudioSfxData* sfx) {
     short* src_samples = (short*)HeapAlloc(GetProcessHeap(), 0, (SIZE_T)src_count * sizeof(short));
     if (!src_samples) {
         stb_vorbis_close(vorbis);
-        HeapFree(GetProcessHeap(), 0, file);
         AudioDebugString("SFX decode failed: out of memory");
         return 0;
     }
     int got_frames = stb_vorbis_get_samples_short_interleaved(vorbis, src_channels, src_samples, src_count);
     stb_vorbis_close(vorbis);
-    HeapFree(GetProcessHeap(), 0, file);
     if (got_frames <= 0) {
         HeapFree(GetProcessHeap(), 0, src_samples);
         AudioDebugString("SFX decode failed: no PCM frames decoded");
@@ -1119,16 +1114,17 @@ static int AudioLoadSfx(AudioSfxKind kind) {
     }
     sfx->load_attempted = 1;
 
-    const char* file_name = AudioSfxFileName(kind);
-    if (!file_name) {
+    int resource_id = AudioSfxResourceId(kind);
+    if (!resource_id) {
         return 0;
     }
-    char path[MAX_PATH];
-    if (!AudioFindSfxPath(file_name, path, (int)sizeof(path))) {
-        AudioDebugString("SFX load failed: OGG file not found near executable");
+    const unsigned char* data = 0;
+    DWORD size = 0;
+    if (!AudioLoadResourceData(resource_id, &data, &size)) {
+        AudioDebugString("SFX load failed: embedded resource not found");
         return 0;
     }
-    if (!AudioDecodeSfxOgg(path, sfx)) {
+    if (!AudioDecodeSfxOgg(data, size, sfx)) {
         return 0;
     }
     sfx->loaded = 1;

@@ -38,6 +38,7 @@ if errorlevel 1 (
 
 if not exist build mkdir build
 if not exist dist mkdir dist
+if not exist C:\_temp mkdir C:\_temp
 
 where python.exe >nul 2>nul
 if not errorlevel 1 (
@@ -55,13 +56,19 @@ if errorlevel 1 goto mingw_build
 if "%INCLUDE%"=="" goto mingw_build
 if not exist "%VCToolsInstallDir%include\stddef.h" goto mingw_build
 if not exist "%WindowsSdkDir%Include\%WindowsSDKVersion%um\windows.h" goto mingw_build
+rc.exe /nologo /fo build\audio_resources.res audio_resources.rc
+if errorlevel 1 goto mingw_build
 
-cl %CFLAGS% /Febuild\reconfig.exe /Fobuild\ src\main.cpp src\core\math_util.cpp src\core\perf.cpp src\platform\input.cpp src\platform\audio.cpp src\platform\stb_vorbis.c src\render\camera.cpp src\render\render.cpp src\render\framebuffer.cpp src\render\stage_render.cpp src\render\stage_cache.cpp src\game\world.cpp src\game\rooms\room01.cpp src\game\rooms\room02.cpp src\game\rooms\room03.cpp src\game\rooms\room04.cpp src\game\rooms\room05.cpp src\game\rooms\room06.cpp src\game\rooms\room07.cpp src\game\rooms\room08.cpp src\game\rooms\room09.cpp src\game\delete_rules.cpp src\game\piston.cpp src\game\player.cpp src\game\collision.cpp src\game\player_movement.cpp src\game\exit_sequence.cpp src\game\stage_update.cpp src\ui\main_menu.cpp src\ui\modal_ui.cpp src\ui\pause_menu.cpp src\ui\ui_text.cpp src\ui\ui_text_small.cpp src\ui\settings_ui.cpp src\ui\tutorial_ui.cpp %LFLAGS%
+cl %CFLAGS% /Febuild\reconfig.exe /Fobuild\ src\main.cpp src\core\math_util.cpp src\core\perf.cpp src\platform\input.cpp src\platform\audio.cpp src\platform\stb_vorbis.c src\render\camera.cpp src\render\render.cpp src\render\framebuffer.cpp src\render\stage_render.cpp src\render\stage_cache.cpp src\game\world.cpp src\game\rooms\room01.cpp src\game\rooms\room02.cpp src\game\rooms\room03.cpp src\game\rooms\room04.cpp src\game\rooms\room05.cpp src\game\rooms\room06.cpp src\game\rooms\room07.cpp src\game\rooms\room08.cpp src\game\rooms\room09.cpp src\game\delete_rules.cpp src\game\piston.cpp src\game\player.cpp src\game\collision.cpp src\game\player_movement.cpp src\game\exit_sequence.cpp src\game\stage_update.cpp src\ui\main_menu.cpp src\ui\modal_ui.cpp src\ui\pause_menu.cpp src\ui\ui_text.cpp src\ui\ui_text_small.cpp src\ui\settings_ui.cpp src\ui\tutorial_ui.cpp build\audio_resources.res %LFLAGS%
 if errorlevel 1 goto mingw_build
 goto copy_dist
 
 :mingw_build
 where g++.exe >nul 2>nul
+if errorlevel 1 exit /b 1
+where windres.exe >nul 2>nul
+if errorlevel 1 exit /b 1
+windres.exe -I. -O coff audio_resources.rc build\audio_resources.res
 if errorlevel 1 exit /b 1
 
 g++.exe -std=c++17 -Os -s ^
@@ -75,6 +82,7 @@ g++.exe -std=c++17 -Os -s ^
     src\game\collision.cpp src\game\player_movement.cpp src\game\exit_sequence.cpp ^
     src\game\stage_update.cpp src\ui\ui_text.cpp src\ui\ui_text_small.cpp ^
     src\ui\main_menu.cpp src\ui\modal_ui.cpp src\ui\pause_menu.cpp src\ui\settings_ui.cpp src\ui\tutorial_ui.cpp ^
+    build\audio_resources.res ^
     -mwindows -nostdlib -Wl,-e,WinMainCRTStartup ^
     -lkernel32 -luser32 -lgdi32 -lwinmm -lmsvcrt -lm -lgcc -o build\reconfig.exe
 if errorlevel 1 exit /b 1
@@ -82,11 +90,7 @@ if errorlevel 1 exit /b 1
 :copy_dist
 copy /Y build\reconfig.exe dist\reconfig.exe >nul
 if exist dist\assets rmdir /S /Q dist\assets
-mkdir dist\assets\audio
-copy /Y assets\audio\bgm_main.ogg dist\assets\audio\bgm_main.ogg >nul
-copy /Y assets\audio\sfx_jump.ogg dist\assets\audio\sfx_jump.ogg >nul
-copy /Y assets\audio\sfx_death.ogg dist\assets\audio\sfx_death.ogg >nul
-copy /Y assets\audio\speaker_kick_sample.wav dist\assets\audio\speaker_kick_sample.wav >nul
+copy /Y build\reconfig.exe C:\_temp\reconfig.exe >nul
 call size_check.bat
 endlocal
 exit /b 0

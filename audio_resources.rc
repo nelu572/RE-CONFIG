@@ -1,0 +1,5 @@
+#include "src/platform/audio_resources.h"
+
+AUDIO_RESOURCE_BGM_MAIN RCDATA "assets\\audio\\bgm_main.ogg"
+AUDIO_RESOURCE_SFX_JUMP RCDATA "assets\\audio\\sfx_jump.ogg"
+AUDIO_RESOURCE_SFX_DEATH RCDATA "assets\\audio\\sfx_death.ogg"
